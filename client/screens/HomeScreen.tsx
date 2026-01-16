@@ -280,9 +280,14 @@ export default function HomeScreen({ navigation }: any) {
   const handleMapMyRun = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     
-    // Navigate to pre-run setup screen for route planning
+    // Navigate to pre-run setup screen with current distance/time settings
     navigation.navigate("PreRun", {
       mode: 'route',
+      initialDistance: targetDistance,
+      initialTimeEnabled: targetTimeEnabled,
+      initialHours: parseInt(targetHours) || 0,
+      initialMinutes: parseInt(targetMinutes) || 0,
+      initialSeconds: parseInt(targetSeconds) || 0,
     });
   };
 
@@ -315,6 +320,11 @@ export default function HomeScreen({ navigation }: any) {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     navigation.navigate("PreRun", {
       mode: 'free',
+      initialDistance: targetDistance,
+      initialTimeEnabled: targetTimeEnabled,
+      initialHours: parseInt(targetHours) || 0,
+      initialMinutes: parseInt(targetMinutes) || 0,
+      initialSeconds: parseInt(targetSeconds) || 0,
     });
   };
 

@@ -17,7 +17,14 @@ export type RootStackParamList = {
   Login: undefined;
   LocationPermission: undefined;
   Main: undefined;
-  PreRun: { mode: 'route' | 'free' };
+  PreRun: { 
+    mode: 'route' | 'free';
+    initialDistance?: number;
+    initialTimeEnabled?: boolean;
+    initialHours?: number;
+    initialMinutes?: number;
+    initialSeconds?: number;
+  };
   RunSession: { 
     mode?: 'route' | 'free';
     activityType?: 'run' | 'walk';

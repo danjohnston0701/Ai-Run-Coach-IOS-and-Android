@@ -38,13 +38,20 @@ export default function PreRunScreen() {
   const mode = route.params?.mode || 'route';
   const isRouteMode = mode === 'route';
 
+  // Get initial values from navigation params (from HomeScreen)
+  const initialDistance = route.params?.initialDistance ?? 5;
+  const initialTimeEnabled = route.params?.initialTimeEnabled ?? false;
+  const initialHours = route.params?.initialHours ?? 0;
+  const initialMinutes = route.params?.initialMinutes ?? 25;
+  const initialSeconds = route.params?.initialSeconds ?? 0;
+
   const [activityType, setActivityType] = useState<ActivityType>('run');
   const [distanceEnabled, setDistanceEnabled] = useState(true);
-  const [distanceKm, setDistanceKm] = useState(user?.distanceMinKm || 5);
-  const [timeEnabled, setTimeEnabled] = useState(false);
-  const [timeHours, setTimeHours] = useState(0);
-  const [timeMinutes, setTimeMinutes] = useState(25);
-  const [timeSeconds, setTimeSeconds] = useState(0);
+  const [distanceKm, setDistanceKm] = useState(initialDistance);
+  const [timeEnabled, setTimeEnabled] = useState(initialTimeEnabled);
+  const [timeHours, setTimeHours] = useState(initialHours);
+  const [timeMinutes, setTimeMinutes] = useState(initialMinutes);
+  const [timeSeconds, setTimeSeconds] = useState(initialSeconds);
   const [liveTrackingEnabled, setLiveTrackingEnabled] = useState(false);
   const [aiCoachEnabled, setAiCoachEnabled] = useState(true);
 
