@@ -91,32 +91,51 @@ export async function clearStoredUser(): Promise<void> {
 
 export async function login(email: string, password: string): Promise<{ user: User; token?: string }> {
   const baseUrl = getApiUrl();
+  const url = `${baseUrl}/api/auth/login`;
   
-  const response = await fetch(`${baseUrl}/api/auth/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ email, password }),
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || 'Login failed');
-  }
-
-  const data = await response.json();
+  console.log('[Auth] Attempting login to:', url);
   
-  if (data.user) {
-    await setStoredUser(data.user);
-  }
-  
-  if (data.token) {
-    await setStoredToken(data.token);
-  }
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+      credentials: 'include',
+    });
 
-  return data;
+    console.log('[Auth] Login response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log('[Auth] Login error:', errorText);
+      
+      // Try to parse as JSON to get error message
+      try {
+        const errorJson = JSON.parse(errorText);
+        throw new Error(errorJson.error || errorJson.message || 'Login failed');
+      } catch {
+        throw new Error(errorText || 'Login failed');
+      }
+    }
+
+    const data = await response.json();
+    console.log('[Auth] Login successful, user:', data.user?.email);
+    
+    if (data.user) {
+      await setStoredUser(data.user);
+    }
+    
+    if (data.token) {
+      await setStoredToken(data.token);
+    }
+
+    return data;
+  } catch (error: any) {
+    console.log('[Auth] Login exception:', error.message);
+    throw error;
+  }
 }
 
 export async function register(name: string, email: string, password: string): Promise<{ user: User; token?: string }> {

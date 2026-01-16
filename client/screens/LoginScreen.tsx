@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { StyleSheet, View, Image, Pressable, Platform, Linking } from "react-native";
+import { StyleSheet, View, Image, Pressable, Platform, Linking, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
@@ -77,7 +77,15 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       }
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
-      setError(err.message || "Authentication failed");
+      const errorMessage = err.message || "Authentication failed";
+      console.log('[LoginScreen] Error:', errorMessage);
+      setError(errorMessage);
+      
+      // Also show an Alert on mobile for better visibility
+      if (Platform.OS !== 'web') {
+        Alert.alert('Login Failed', errorMessage);
+      }
+      
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setLoading(false);
