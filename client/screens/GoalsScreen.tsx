@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { StyleSheet, View, FlatList, RefreshControl, Pressable } from "react-native";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { StyleSheet, View, FlatList, RefreshControl, Pressable, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
-import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import {
@@ -19,11 +18,22 @@ import {
   IconChevronRight,
   IconMap,
   IconFlag,
+  IconPlus,
+  IconX,
+  IconTrash,
 } from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
 import { Goal } from "@/lib/types";
+
+type GoalTab = "active" | "completed" | "abandoned";
+
+const TABS: { key: GoalTab; label: string }[] = [
+  { key: "active", label: "Active" },
+  { key: "completed", label: "Completed" },
+  { key: "abandoned", label: "Abandoned" },
+];
 
 export default function GoalsScreen({ navigation }: any) {
   const { theme } = useTheme();
@@ -34,6 +44,7 @@ export default function GoalsScreen({ navigation }: any) {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<GoalTab>("active");
 
   const fetchGoals = useCallback(async () => {
     try {
@@ -61,6 +72,66 @@ export default function GoalsScreen({ navigation }: any) {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await fetchGoals();
     setRefreshing(false);
+  };
+
+  const updateGoalStatus = async (goalId: string, status: string) => {
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/goals/${goalId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (response.ok) {
+        await fetchGoals();
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.log("Failed to update goal:", error);
+    }
+  };
+
+  const deleteGoal = async (goalId: string) => {
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/goals/${goalId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (response.ok) {
+        await fetchGoals();
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.log("Failed to delete goal:", error);
+    }
+  };
+
+  const handleGoalAction = (goal: Goal, action: "complete" | "abandon" | "reactivate" | "delete") => {
+    const actionMessages = {
+      complete: { title: "Complete Goal", message: "Mark this goal as completed?", status: "completed" },
+      abandon: { title: "Abandon Goal", message: "Are you sure you want to abandon this goal?", status: "abandoned" },
+      reactivate: { title: "Reactivate Goal", message: "Reactivate this goal?", status: "active" },
+      delete: { title: "Delete Goal", message: "Are you sure you want to delete this goal? This cannot be undone.", status: null },
+    };
+
+    const { title, message, status } = actionMessages[action];
+
+    Alert.alert(title, message, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: action === "delete" ? "Delete" : "Confirm",
+        style: action === "delete" || action === "abandon" ? "destructive" : "default",
+        onPress: async () => {
+          if (status) {
+            await updateGoalStatus(goal.id, status);
+          } else {
+            await deleteGoal(goal.id);
+          }
+        },
+      },
+    ]);
   };
 
   const getGoalTypeIcon = (type: string, color: string) => {
@@ -114,6 +185,80 @@ export default function GoalsScreen({ navigation }: any) {
     });
   };
 
+  const filteredGoals = useMemo(() => {
+    return goals.filter((g) => g.status === activeTab);
+  }, [goals, activeTab]);
+
+  const goalCounts = useMemo(() => {
+    return {
+      active: goals.filter((g) => g.status === "active").length,
+      completed: goals.filter((g) => g.status === "completed").length,
+      abandoned: goals.filter((g) => g.status === "abandoned").length,
+    };
+  }, [goals]);
+
+  const renderGoalActions = (goal: Goal) => {
+    if (activeTab === "active") {
+      return (
+        <View style={styles.actionButtons}>
+          <Pressable
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              handleGoalAction(goal, "complete");
+            }}
+            style={[styles.actionButton, { backgroundColor: theme.success + "20" }]}
+          >
+            <IconCheck size={16} color={theme.success} />
+            <ThemedText type="small" style={{ color: theme.success, marginLeft: 4 }}>
+              Complete
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              handleGoalAction(goal, "abandon");
+            }}
+            style={[styles.actionButton, { backgroundColor: theme.error + "20" }]}
+          >
+            <IconX size={16} color={theme.error} />
+            <ThemedText type="small" style={{ color: theme.error, marginLeft: 4 }}>
+              Abandon
+            </ThemedText>
+          </Pressable>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.actionButtons}>
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            handleGoalAction(goal, "reactivate");
+          }}
+          style={[styles.actionButton, { backgroundColor: theme.primary + "20" }]}
+        >
+          <IconRepeat size={16} color={theme.primary} />
+          <ThemedText type="small" style={{ color: theme.primary, marginLeft: 4 }}>
+            Reactivate
+          </ThemedText>
+        </Pressable>
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            handleGoalAction(goal, "delete");
+          }}
+          style={[styles.actionButton, { backgroundColor: theme.error + "20" }]}
+        >
+          <IconTrash size={16} color={theme.error} />
+          <ThemedText type="small" style={{ color: theme.error, marginLeft: 4 }}>
+            Delete
+          </ThemedText>
+        </Pressable>
+      </View>
+    );
+  };
+
   const renderGoal = ({ item }: { item: Goal }) => {
     const typeColor = getGoalTypeColor(item.type);
     const statusColor = getStatusColor(item.status);
@@ -130,7 +275,7 @@ export default function GoalsScreen({ navigation }: any) {
           {
             backgroundColor: theme.backgroundSecondary,
             borderColor: theme.border,
-            opacity: pressed ? 0.8 : 1,
+            opacity: pressed ? 0.95 : 1,
           },
         ]}
       >
@@ -155,6 +300,10 @@ export default function GoalsScreen({ navigation }: any) {
             <View style={[styles.statusBadge, { backgroundColor: theme.success + "20" }]}>
               <IconCheck size={14} color={theme.success} />
             </View>
+          ) : item.status === "abandoned" ? (
+            <View style={[styles.statusBadge, { backgroundColor: theme.error + "20" }]}>
+              <IconX size={14} color={theme.error} />
+            </View>
           ) : (
             <IconChevronRight size={20} color={theme.textMuted} />
           )}
@@ -170,7 +319,6 @@ export default function GoalsScreen({ navigation }: any) {
           </ThemedText>
         ) : null}
 
-        {/* Progress Bar */}
         <View style={styles.progressContainer}>
           <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
             <View
@@ -188,7 +336,6 @@ export default function GoalsScreen({ navigation }: any) {
           </ThemedText>
         </View>
 
-        {/* Goal Details */}
         <View style={styles.goalDetails}>
           {item.distanceTarget ? (
             <View style={styles.detailItem}>
@@ -215,55 +362,156 @@ export default function GoalsScreen({ navigation }: any) {
             </View>
           ) : null}
         </View>
+
+        {renderGoalActions(item)}
       </Pressable>
     );
+  };
+
+  const getEmptyStateForTab = () => {
+    switch (activeTab) {
+      case "active":
+        return {
+          title: "No Active Goals",
+          description: "Set your first running goal and start tracking your progress",
+          actionLabel: "Create Goal",
+          onAction: () => navigation.navigate("CreateGoal"),
+        };
+      case "completed":
+        return {
+          title: "No Completed Goals",
+          description: "Complete your first goal to see it here",
+        };
+      case "abandoned":
+        return {
+          title: "No Abandoned Goals",
+          description: "Goals you abandon will appear here",
+        };
+    }
   };
 
   if (loading) {
     return <LoadingScreen message="Loading your goals..." />;
   }
 
-  const activeGoals = goals.filter((g) => g.status === "active");
-  const completedGoals = goals.filter((g) => g.status === "completed");
+  const emptyState = getEmptyStateForTab();
 
   return (
-    <FlatList
-      style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
-      contentContainerStyle={{
-        paddingTop: headerHeight + Spacing.lg,
-        paddingBottom: tabBarHeight + Spacing.xl,
-        paddingHorizontal: Spacing.lg,
-        flexGrow: goals.length === 0 ? 1 : undefined,
-      }}
-      scrollIndicatorInsets={{ bottom: insets.bottom }}
-      data={[...activeGoals, ...completedGoals]}
-      keyExtractor={(item) => item.id}
-      renderItem={renderGoal}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={theme.primary}
-        />
-      }
-      ListHeaderComponent={
-        activeGoals.length > 0 && completedGoals.length > 0 ? (
-          <ThemedText type="h4" style={styles.sectionHeader}>
-            Active Goals
-          </ThemedText>
-        ) : null
-      }
-      ListEmptyComponent={
-        <EmptyState
-          icon={<IconTarget size={48} color={theme.textMuted} />}
-          title="No Goals Yet"
-          description="Set your first running goal and track your progress towards achieving it"
-          actionLabel="Create Goal"
-          onAction={() => navigation.navigate("CreateGoal")}
-        />
-      }
-      ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
-    />
+    <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[
+          styles.tabContainer,
+          {
+            paddingTop: headerHeight + Spacing.md,
+            backgroundColor: theme.backgroundRoot,
+            borderBottomColor: theme.border,
+          },
+        ]}
+      >
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.key;
+          const count = goalCounts[tab.key];
+          return (
+            <Pressable
+              key={tab.key}
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setActiveTab(tab.key);
+              }}
+              style={[
+                styles.tab,
+                {
+                  backgroundColor: isActive ? theme.primary : "transparent",
+                  borderColor: isActive ? theme.primary : theme.border,
+                },
+              ]}
+            >
+              <ThemedText
+                type="small"
+                style={{
+                  color: isActive ? theme.buttonText : theme.text,
+                  fontWeight: "600",
+                }}
+              >
+                {tab.label}
+              </ThemedText>
+              {count > 0 ? (
+                <View
+                  style={[
+                    styles.tabBadge,
+                    {
+                      backgroundColor: isActive
+                        ? "rgba(255,255,255,0.3)"
+                        : theme.backgroundSecondary,
+                    },
+                  ]}
+                >
+                  <ThemedText
+                    type="small"
+                    style={{
+                      color: isActive ? theme.buttonText : theme.textSecondary,
+                      fontSize: 11,
+                    }}
+                  >
+                    {count}
+                  </ThemedText>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <FlatList
+        style={styles.list}
+        contentContainerStyle={{
+          paddingTop: Spacing.lg,
+          paddingBottom: tabBarHeight + Spacing.xl,
+          paddingHorizontal: Spacing.lg,
+          flexGrow: filteredGoals.length === 0 ? 1 : undefined,
+        }}
+        scrollIndicatorInsets={{ bottom: insets.bottom }}
+        data={filteredGoals}
+        keyExtractor={(item) => item.id}
+        renderItem={renderGoal}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.primary}
+          />
+        }
+        ListEmptyComponent={
+          <EmptyState
+            icon={<IconTarget size={48} color={theme.textMuted} />}
+            title={emptyState.title}
+            description={emptyState.description}
+            actionLabel={emptyState.actionLabel}
+            onAction={emptyState.onAction}
+          />
+        }
+        ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
+      />
+
+      {activeTab === "active" ? (
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            navigation.navigate("CreateGoal");
+          }}
+          style={({ pressed }) => [
+            styles.fab,
+            {
+              backgroundColor: theme.primary,
+              bottom: tabBarHeight + Spacing.lg,
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <IconPlus size={24} color={theme.buttonText} />
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -271,8 +519,33 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  sectionHeader: {
-    marginBottom: Spacing.md,
+  tabContainer: {
+    flexDirection: "row",
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    gap: Spacing.sm,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    gap: Spacing.xs,
+  },
+  tabBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+    minWidth: 20,
+    alignItems: "center",
+  },
+  list: {
+    flex: 1,
   },
   goalCard: {
     padding: Spacing.lg,
@@ -330,5 +603,35 @@ const styles = StyleSheet.create({
   detailItem: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  actionButtons: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+  },
+  fab: {
+    position: "absolute",
+    right: Spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#00D4FF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
   },
 });
