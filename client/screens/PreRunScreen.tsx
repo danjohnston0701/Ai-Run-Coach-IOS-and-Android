@@ -59,14 +59,26 @@ export default function PreRunScreen() {
   const maxDistance = user?.distanceMaxKm || 50;
 
   const handleGenerateRoute = () => {
-    navigation.navigate('RunSession', {
-      mode,
-      activityType,
-      targetDistance: distanceEnabled ? distanceKm : null,
-      targetTime: timeEnabled ? { hours: timeHours, minutes: timeMinutes, seconds: timeSeconds } : null,
-      liveTracking: liveTrackingEnabled,
-      aiCoach: aiCoachEnabled,
-    });
+    if (isRouteMode) {
+      navigation.navigate('RoutePreview', {
+        mode,
+        activityType,
+        targetDistance: distanceEnabled ? distanceKm : 5,
+        targetTime: timeEnabled ? { hours: timeHours, minutes: timeMinutes, seconds: timeSeconds } : null,
+        liveTracking: liveTrackingEnabled,
+        aiCoach: aiCoachEnabled,
+        difficulty: 'moderate',
+      });
+    } else {
+      navigation.navigate('RunSession', {
+        mode,
+        activityType,
+        targetDistance: distanceEnabled ? distanceKm : null,
+        targetTime: timeEnabled ? { hours: timeHours, minutes: timeMinutes, seconds: timeSeconds } : null,
+        liveTracking: liveTrackingEnabled,
+        aiCoach: aiCoachEnabled,
+      });
+    }
   };
 
   const handleRunWithFriends = () => {
