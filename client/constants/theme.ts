@@ -83,6 +83,7 @@ export const BorderRadius = {
   "2xl": 32,
   "3xl": 40,
   full: 9999,
+  pill: 9999,
 };
 
 export const Typography = {
@@ -121,6 +122,11 @@ export const Typography = {
   small: {
     fontSize: 14,
     lineHeight: 20,
+    fontWeight: "400" as const,
+  },
+  bodySmall: {
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "400" as const,
   },
   caption: {

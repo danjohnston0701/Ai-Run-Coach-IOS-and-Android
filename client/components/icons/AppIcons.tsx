@@ -505,6 +505,32 @@ export function IconChevronDown({ size = 24, color = "#00D4FF" }: IconProps) {
   );
 }
 
+export function IconChevronUp({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Polyline points="18 15 12 9 6 15" />
+    </Svg>
+  );
+}
+
+export function IconNavigation({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M3 11l19-9-9 19-2-8-8-2z" />
+    </Svg>
+  );
+}
+
+export function IconVolumeX({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M11 5L6 9H2v6h4l5 4V5z" />
+      <Line x1="23" y1="9" x2="17" y2="15" />
+      <Line x1="17" y1="9" x2="23" y2="15" />
+    </Svg>
+  );
+}
+
 export function IconCamera({ size = 24, color = "#00D4FF" }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
