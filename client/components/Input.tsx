@@ -113,11 +113,12 @@ export const Input = forwardRef<TextInput, InputProps>(
             <Pressable
               onPress={() => setIsPasswordVisible(!isPasswordVisible)}
               style={styles.rightIcon}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Feather
                 name={isPasswordVisible ? "eye-off" : "eye"}
-                size={20}
-                color={theme.textMuted}
+                size={22}
+                color={theme.textSecondary}
               />
             </Pressable>
           ) : rightIcon ? (
