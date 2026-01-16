@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import MainTabNavigator from "@/navigation/MainTabNavigator";
 import LoginScreen from "@/screens/LoginScreen";
+import LocationPermissionScreen from "@/screens/LocationPermissionScreen";
 import RunSessionScreen from "@/screens/RunSessionScreen";
 import RunInsightsScreen from "@/screens/RunInsightsScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
@@ -11,6 +12,7 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 
 export type RootStackParamList = {
   Login: undefined;
+  LocationPermission: undefined;
   Main: undefined;
   RunSession: { routeId?: string } | undefined;
   RunInsights: { runId: string };
@@ -27,15 +29,29 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootStackNavigator() {
   const screenOptions = useScreenOptions();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen message="Loading..." />;
   }
 
+  const needsLocationPermission = isAuthenticated && !user?.locationPermissionGranted;
+
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      {isAuthenticated ? (
+      {!isAuthenticated ? (
+        <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{ headerShown: false }}
+        />
+      ) : needsLocationPermission ? (
+        <Stack.Screen
+          name="LocationPermission"
+          component={LocationPermissionScreen}
+          options={{ headerShown: false }}
+        />
+      ) : (
         <>
           <Stack.Screen
             name="Main"
@@ -59,12 +75,6 @@ export default function RootStackNavigator() {
             }}
           />
         </>
-      ) : (
-        <Stack.Screen
-          name="Login"
-          component={LoginScreen}
-          options={{ headerShown: false }}
-        />
       )}
     </Stack.Navigator>
   );
