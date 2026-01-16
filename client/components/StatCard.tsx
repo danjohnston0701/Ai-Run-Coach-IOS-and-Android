@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, View, ViewStyle, Image, ImageSourcePropType } from "react-native";
+import { StyleSheet, View, ViewStyle } from "react-native";
 
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
@@ -9,7 +9,7 @@ interface StatCardProps {
   label: string;
   value: string;
   unit?: string;
-  icon?: ImageSourcePropType;
+  icon?: React.ReactNode;
   color?: string;
   style?: ViewStyle;
   size?: "sm" | "md" | "lg";
@@ -54,7 +54,7 @@ export function StatCard({
       <View style={styles.header}>
         {icon ? (
           <View style={[styles.iconContainer, { backgroundColor: accentColor + "20" }]}>
-            <Image source={icon} style={[styles.iconImage, { tintColor: accentColor }]} />
+            {icon}
           </View>
         ) : null}
         <ThemedText type="small" style={{ color: theme.textSecondary }}>
@@ -93,10 +93,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: Spacing.sm,
-  },
-  iconImage: {
-    width: 16,
-    height: 16,
   },
   valueContainer: {
     flexDirection: "row",

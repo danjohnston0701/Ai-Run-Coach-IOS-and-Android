@@ -1,13 +1,8 @@
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { BlurView } from "expo-blur";
-import { Platform, StyleSheet, Image } from "react-native";
-
-const iconHome = require("../../assets/icons/icon-home.png");
-const iconChart = require("../../assets/icons/icon-chart.png");
-const iconCalendar = require("../../assets/icons/icon-calendar.png");
-const iconTarget = require("../../assets/icons/icon-target.png");
-const iconProfile = require("../../assets/icons/icon-profile.png");
+import { Platform, StyleSheet } from "react-native";
+import { IconHome, IconChart, IconCalendar, IconTarget, IconProfile } from "@/components/icons/AppIcons";
 
 import HomeStackNavigator from "@/navigation/HomeStackNavigator";
 import HistoryStackNavigator from "@/navigation/HistoryStackNavigator";
@@ -61,9 +56,7 @@ export default function MainTabNavigator() {
         component={HomeStackNavigator}
         options={{
           title: "Home",
-          tabBarIcon: ({ color }) => (
-            <Image source={iconHome} style={{ width: 24, height: 24, tintColor: color }} />
-          ),
+          tabBarIcon: ({ color }) => <IconHome size={24} color={color} />,
         }}
       />
       <Tab.Screen
@@ -71,9 +64,7 @@ export default function MainTabNavigator() {
         component={HistoryStackNavigator}
         options={{
           title: "History",
-          tabBarIcon: ({ color }) => (
-            <Image source={iconChart} style={{ width: 24, height: 24, tintColor: color }} />
-          ),
+          tabBarIcon: ({ color }) => <IconChart size={24} color={color} />,
         }}
       />
       <Tab.Screen
@@ -81,9 +72,7 @@ export default function MainTabNavigator() {
         component={EventsStackNavigator}
         options={{
           title: "Events",
-          tabBarIcon: ({ color }) => (
-            <Image source={iconCalendar} style={{ width: 24, height: 24, tintColor: color }} />
-          ),
+          tabBarIcon: ({ color }) => <IconCalendar size={24} color={color} />,
         }}
       />
       <Tab.Screen
@@ -91,9 +80,7 @@ export default function MainTabNavigator() {
         component={GoalsStackNavigator}
         options={{
           title: "Goals",
-          tabBarIcon: ({ color }) => (
-            <Image source={iconTarget} style={{ width: 24, height: 24, tintColor: color }} />
-          ),
+          tabBarIcon: ({ color }) => <IconTarget size={24} color={color} />,
         }}
       />
       <Tab.Screen
@@ -101,9 +88,7 @@ export default function MainTabNavigator() {
         component={ProfileStackNavigator}
         options={{
           title: "Profile",
-          tabBarIcon: ({ color }) => (
-            <Image source={iconProfile} style={{ width: 24, height: 24, tintColor: color }} />
-          ),
+          tabBarIcon: ({ color }) => <IconProfile size={24} color={color} />,
         }}
       />
     </Tab.Navigator>

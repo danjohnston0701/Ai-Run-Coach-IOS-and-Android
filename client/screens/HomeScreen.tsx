@@ -6,16 +6,10 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-
-const iconMap = require("../../assets/icons/icon-map.png");
-const iconRunning = require("../../assets/icons/icon-running.png");
-const iconTimer = require("../../assets/icons/icon-timer.png");
-const iconTrending = require("../../assets/icons/icon-trending.png");
-const iconPlay = require("../../assets/icons/icon-play.png");
-const iconProfile = require("../../assets/icons/icon-profile.png");
-const iconCalendar = require("../../assets/icons/icon-calendar.png");
-const iconTarget = require("../../assets/icons/icon-target.png");
-const iconChart = require("../../assets/icons/icon-chart.png");
+import { 
+  IconMap, IconRunning, IconTimer, IconTrending, IconPlay, 
+  IconProfile, IconCalendar, IconTarget, IconChart, IconSettings 
+} from "@/components/icons/AppIcons";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
@@ -165,7 +159,7 @@ export default function HomeScreen({ navigation }: any) {
               style={styles.avatar}
             />
           ) : (
-            <Image source={iconProfile} style={{ width: 24, height: 24, tintColor: theme.textMuted }} />
+            <IconProfile size={24} color={theme.textMuted} />
           )}
         </Pressable>
       </View>
@@ -185,10 +179,11 @@ export default function HomeScreen({ navigation }: any) {
             onPress={handleStartRun}
             style={[styles.startButton, { backgroundColor: theme.primary }]}
           >
-            <Image 
-              source={locationPermission ? iconPlay : iconMap} 
-              style={{ width: 28, height: 28, tintColor: theme.buttonText }} 
-            />
+            {locationPermission ? (
+              <IconPlay size={28} color={theme.buttonText} />
+            ) : (
+              <IconMap size={28} color={theme.buttonText} />
+            )}
           </Pressable>
         </View>
       </Card>
@@ -199,14 +194,14 @@ export default function HomeScreen({ navigation }: any) {
           label="Total Distance"
           value={stats.totalDistance.toString()}
           unit="km"
-          icon={iconMap}
+          icon={<IconMap size={16} color={theme.primary} />}
           color={theme.primary}
           style={styles.statCard}
         />
         <StatCard
           label="Total Runs"
           value={stats.totalRuns.toString()}
-          icon={iconRunning}
+          icon={<IconRunning size={16} color={theme.accent} />}
           color={theme.accent}
           style={styles.statCard}
         />
@@ -214,7 +209,7 @@ export default function HomeScreen({ navigation }: any) {
           label="Avg Pace"
           value={stats.avgPace}
           unit="/km"
-          icon={iconTimer}
+          icon={<IconTimer size={16} color={theme.success} />}
           color={theme.success}
           style={styles.statCard}
         />
@@ -222,7 +217,7 @@ export default function HomeScreen({ navigation }: any) {
           label="This Week"
           value={stats.thisWeekDistance.toString()}
           unit="km"
-          icon={iconTrending}
+          icon={<IconTrending size={16} color={theme.warning} />}
           color={theme.warning}
           style={styles.statCard}
         />
@@ -252,13 +247,13 @@ export default function HomeScreen({ navigation }: any) {
                 </View>
                 <View style={styles.runStats}>
                   <View style={styles.runStat}>
-                    <Image source={iconTimer} style={{ width: 14, height: 14, tintColor: theme.textMuted }} />
+                    <IconTimer size={14} color={theme.textMuted} />
                     <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                       {formatDuration(run.duration)}
                     </ThemedText>
                   </View>
                   <View style={styles.runStat}>
-                    <Image source={iconTrending} style={{ width: 14, height: 14, tintColor: theme.textMuted }} />
+                    <IconTrending size={14} color={theme.textMuted} />
                     <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                       {run.avgPace || "--:--"}/km
                     </ThemedText>
@@ -270,7 +265,7 @@ export default function HomeScreen({ navigation }: any) {
         ) : (
           <Card style={styles.emptyCard}>
             <View style={styles.emptyContent}>
-              <Image source={iconMap} style={{ width: 32, height: 32, tintColor: theme.textMuted }} />
+              <IconMap size={32} color={theme.textMuted} />
               <ThemedText
                 type="body"
                 style={{ color: theme.textSecondary, marginTop: Spacing.md, textAlign: "center" }}
@@ -293,7 +288,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("EventsTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.primary + "20" }]}>
-              <Image source={iconCalendar} style={{ width: 20, height: 20, tintColor: theme.primary }} />
+              <IconCalendar size={20} color={theme.primary} />
             </View>
             <ThemedText type="small">Events</ThemedText>
           </Pressable>
@@ -302,7 +297,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("GoalsTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.accent + "20" }]}>
-              <Image source={iconTarget} style={{ width: 20, height: 20, tintColor: theme.accent }} />
+              <IconTarget size={20} color={theme.accent} />
             </View>
             <ThemedText type="small">Goals</ThemedText>
           </Pressable>
@@ -311,7 +306,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("HistoryTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.success + "20" }]}>
-              <Image source={iconChart} style={{ width: 20, height: 20, tintColor: theme.success }} />
+              <IconChart size={20} color={theme.success} />
             </View>
             <ThemedText type="small">History</ThemedText>
           </Pressable>
@@ -320,7 +315,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("ProfileTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.warning + "20" }]}>
-              <Image source={iconProfile} style={{ width: 20, height: 20, tintColor: theme.warning }} />
+              <IconSettings size={20} color={theme.warning} />
             </View>
             <ThemedText type="small">Settings</ThemedText>
           </Pressable>
