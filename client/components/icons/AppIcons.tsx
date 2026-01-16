@@ -504,3 +504,62 @@ export function IconChevronDown({ size = 24, color = "#00D4FF" }: IconProps) {
     </Svg>
   );
 }
+
+export function IconCamera({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+      <Circle cx="12" cy="13" r="4" />
+    </Svg>
+  );
+}
+
+export function IconUserPlus({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+      <Circle cx="8.5" cy="7" r="4" />
+      <Line x1="20" y1="8" x2="20" y2="14" />
+      <Line x1="23" y1="11" x2="17" y2="11" />
+    </Svg>
+  );
+}
+
+export function IconUserX({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+      <Circle cx="8.5" cy="7" r="4" />
+      <Line x1="18" y1="8" x2="23" y2="13" />
+      <Line x1="23" y1="8" x2="18" y2="13" />
+    </Svg>
+  );
+}
+
+export function IconUserCheck({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+      <Circle cx="8.5" cy="7" r="4" />
+      <Polyline points="17 11 19 13 23 9" />
+    </Svg>
+  );
+}
+
+export function IconCopy({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <Path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+    </Svg>
+  );
+}
+
+export function IconEdit({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+      <Path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </Svg>
+  );
+}

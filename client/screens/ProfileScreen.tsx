@@ -1,9 +1,22 @@
-import React, { useState, ReactNode } from "react";
-import { StyleSheet, View, Pressable, Image, Alert, Platform, Linking } from "react-native";
+import React, { useState, useEffect, useCallback, ReactNode } from "react";
+import {
+  StyleSheet,
+  View,
+  Pressable,
+  Image,
+  Alert,
+  Platform,
+  Linking,
+  TextInput,
+  FlatList,
+  Modal,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
+import * as Clipboard from "expo-clipboard";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { ThemedText } from "@/components/ThemedText";
@@ -19,10 +32,34 @@ import {
   IconGlobe,
   IconCreditCard,
   IconChevronRight,
+  IconCamera,
+  IconUsers,
+  IconUserPlus,
+  IconUserX,
+  IconUserCheck,
+  IconCopy,
+  IconSearch,
+  IconX,
 } from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Spacing, BorderRadius } from "@/constants/theme";
+import { getApiUrl } from "@/lib/query-client";
+
+interface Friend {
+  id: string;
+  name: string;
+  email?: string;
+  profilePic?: string;
+  userCode?: string;
+}
+
+interface FriendRequest {
+  id: string;
+  fromUser: Friend;
+  status: string;
+  createdAt: string;
+}
 
 interface MenuItemProps {
   icon: ReactNode;
@@ -31,9 +68,10 @@ interface MenuItemProps {
   onPress: () => void;
   color?: string;
   showArrow?: boolean;
+  badge?: number;
 }
 
-function MenuItem({ icon, label, value, onPress, color, showArrow = true }: MenuItemProps) {
+function MenuItem({ icon, label, value, onPress, color, showArrow = true, badge }: MenuItemProps) {
   const { theme } = useTheme();
   const iconColor = color || theme.textMuted;
 
@@ -58,9 +96,14 @@ function MenuItem({ icon, label, value, onPress, color, showArrow = true }: Menu
           </ThemedText>
         ) : null}
       </View>
-      {showArrow ? (
-        <IconChevronRight size={20} color={theme.textMuted} />
+      {badge && badge > 0 ? (
+        <View style={[styles.badgeCount, { backgroundColor: theme.error }]}>
+          <ThemedText type="small" style={{ color: "#fff", fontSize: 11 }}>
+            {badge}
+          </ThemedText>
+        </View>
       ) : null}
+      {showArrow ? <IconChevronRight size={20} color={theme.textMuted} /> : null}
     </Pressable>
   );
 }
@@ -70,8 +113,37 @@ export default function ProfileScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
-  const { user, logout, isLoading } = useAuth();
+  const { user, logout, isLoading, refreshUser } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [showFriendsModal, setShowFriendsModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Friend[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const fetchFriends = useCallback(async () => {
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/friends`, {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setFriends(data.friends || []);
+        setFriendRequests(data.requests || []);
+      }
+    } catch (error) {
+      console.log("Failed to fetch friends:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFriends();
+  }, [fetchFriends]);
 
   const handleLogout = async () => {
     const doLogout = async () => {
@@ -91,20 +163,192 @@ export default function ProfileScreen({ navigation }: any) {
         doLogout();
       }
     } else {
-      Alert.alert(
-        "Sign Out",
-        "Are you sure you want to sign out?",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Sign Out", style: "destructive", onPress: doLogout },
-        ]
-      );
+      Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Sign Out", style: "destructive", onPress: doLogout },
+      ]);
     }
   };
 
   const openWebApp = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Linking.openURL("https://airuncoach.live");
+  };
+
+  const copyUserCode = async () => {
+    if (user?.userCode) {
+      await Clipboard.setStringAsync(user.userCode);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (Platform.OS === "web") {
+        alert("User code copied to clipboard!");
+      } else {
+        Alert.alert("Copied", "Your user code has been copied to the clipboard.");
+      }
+    }
+  };
+
+  const pickImage = async (useCamera: boolean) => {
+    let result;
+    if (useCamera) {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Camera permission is required to take photos.");
+        return;
+      }
+      result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+    } else {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Photo library permission is required.");
+        return;
+      }
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+    }
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadProfilePhoto(result.assets[0].uri);
+    }
+  };
+
+  const uploadProfilePhoto = async (uri: string) => {
+    setUploadingPhoto(true);
+    try {
+      const baseUrl = getApiUrl();
+      const formData = new FormData();
+      
+      const filename = uri.split("/").pop() || "photo.jpg";
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : "image/jpeg";
+      
+      formData.append("photo", {
+        uri,
+        name: filename,
+        type,
+      } as any);
+
+      const response = await fetch(`${baseUrl}/api/user/profile-photo`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+
+      if (response.ok) {
+        await refreshUser?.();
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.log("Failed to upload photo:", error);
+      Alert.alert("Error", "Failed to upload profile photo. Please try again.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const showPhotoOptions = () => {
+    if (Platform.OS === "web") {
+      pickImage(false);
+    } else {
+      Alert.alert("Update Profile Photo", "Choose an option", [
+        { text: "Take Photo", onPress: () => pickImage(true) },
+        { text: "Choose from Library", onPress: () => pickImage(false) },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  };
+
+  const searchUsers = async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/users/search?q=${encodeURIComponent(query)}`, {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSearchResults(data.users || []);
+      }
+    } catch (error) {
+      console.log("Search failed:", error);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const sendFriendRequest = async (userId: string) => {
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/friends/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ toUserId: userId }),
+      });
+      if (response.ok) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Success", "Friend request sent!");
+        setShowSearchModal(false);
+        setSearchQuery("");
+        setSearchResults([]);
+      }
+    } catch (error) {
+      console.log("Failed to send friend request:", error);
+    }
+  };
+
+  const respondToRequest = async (requestId: string, accept: boolean) => {
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/friends/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ requestId, accept }),
+      });
+      if (response.ok) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await fetchFriends();
+      }
+    } catch (error) {
+      console.log("Failed to respond to request:", error);
+    }
+  };
+
+  const removeFriend = async (friendId: string) => {
+    Alert.alert("Remove Friend", "Are you sure you want to remove this friend?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const baseUrl = getApiUrl();
+            const response = await fetch(`${baseUrl}/api/friends/${friendId}`, {
+              method: "DELETE",
+              credentials: "include",
+            });
+            if (response.ok) {
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              await fetchFriends();
+            }
+          } catch (error) {
+            console.log("Failed to remove friend:", error);
+          }
+        },
+      },
+    ]);
   };
 
   const getSubscriptionBadge = () => {
@@ -119,6 +363,101 @@ export default function ProfileScreen({ navigation }: any) {
 
   const badge = getSubscriptionBadge();
 
+  const renderFriendItem = ({ item }: { item: Friend }) => (
+    <Pressable
+      onPress={async () => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setShowFriendsModal(false);
+        navigation.navigate("FriendProfile", { friendId: item.id });
+      }}
+      style={({ pressed }) => [
+        styles.friendItem,
+        { backgroundColor: pressed ? theme.backgroundTertiary : theme.backgroundSecondary },
+      ]}
+    >
+      <View style={[styles.friendAvatar, { backgroundColor: theme.backgroundTertiary }]}>
+        {item.profilePic ? (
+          <Image source={{ uri: item.profilePic }} style={styles.friendAvatarImage} />
+        ) : (
+          <IconProfile size={20} color={theme.textMuted} />
+        )}
+      </View>
+      <View style={styles.friendInfo}>
+        <ThemedText type="body">{item.name}</ThemedText>
+        {item.userCode ? (
+          <ThemedText type="small" style={{ color: theme.textSecondary }}>
+            #{item.userCode}
+          </ThemedText>
+        ) : null}
+      </View>
+      <Pressable
+        onPress={() => removeFriend(item.id)}
+        hitSlop={8}
+        style={[styles.removeButton, { backgroundColor: theme.error + "20" }]}
+      >
+        <IconUserX size={16} color={theme.error} />
+      </Pressable>
+    </Pressable>
+  );
+
+  const renderSearchResult = ({ item }: { item: Friend }) => (
+    <View style={[styles.friendItem, { backgroundColor: theme.backgroundSecondary }]}>
+      <View style={[styles.friendAvatar, { backgroundColor: theme.backgroundTertiary }]}>
+        {item.profilePic ? (
+          <Image source={{ uri: item.profilePic }} style={styles.friendAvatarImage} />
+        ) : (
+          <IconProfile size={20} color={theme.textMuted} />
+        )}
+      </View>
+      <View style={styles.friendInfo}>
+        <ThemedText type="body">{item.name}</ThemedText>
+        {item.userCode ? (
+          <ThemedText type="small" style={{ color: theme.textSecondary }}>
+            #{item.userCode}
+          </ThemedText>
+        ) : null}
+      </View>
+      <Pressable
+        onPress={() => sendFriendRequest(item.id)}
+        style={[styles.addButton, { backgroundColor: theme.primary }]}
+      >
+        <IconUserPlus size={16} color={theme.buttonText} />
+      </Pressable>
+    </View>
+  );
+
+  const renderFriendRequest = ({ item }: { item: FriendRequest }) => (
+    <View style={[styles.friendItem, { backgroundColor: theme.backgroundSecondary }]}>
+      <View style={[styles.friendAvatar, { backgroundColor: theme.backgroundTertiary }]}>
+        {item.fromUser.profilePic ? (
+          <Image source={{ uri: item.fromUser.profilePic }} style={styles.friendAvatarImage} />
+        ) : (
+          <IconProfile size={20} color={theme.textMuted} />
+        )}
+      </View>
+      <View style={styles.friendInfo}>
+        <ThemedText type="body">{item.fromUser.name}</ThemedText>
+        <ThemedText type="small" style={{ color: theme.textSecondary }}>
+          Friend request
+        </ThemedText>
+      </View>
+      <View style={styles.requestActions}>
+        <Pressable
+          onPress={() => respondToRequest(item.id, true)}
+          style={[styles.acceptButton, { backgroundColor: theme.success }]}
+        >
+          <IconUserCheck size={16} color={theme.buttonText} />
+        </Pressable>
+        <Pressable
+          onPress={() => respondToRequest(item.id, false)}
+          style={[styles.declineButton, { backgroundColor: theme.error }]}
+        >
+          <IconX size={16} color={theme.buttonText} />
+        </Pressable>
+      </View>
+    </View>
+  );
+
   return (
     <KeyboardAwareScrollViewCompat
       style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
@@ -129,29 +468,72 @@ export default function ProfileScreen({ navigation }: any) {
       }}
       scrollIndicatorInsets={{ bottom: insets.bottom }}
     >
-      {/* Profile Header */}
       <View style={styles.profileHeader}>
-        <View style={[styles.avatarContainer, { backgroundColor: theme.backgroundSecondary }]}>
+        <Pressable
+          onPress={showPhotoOptions}
+          style={[
+            styles.avatarContainer,
+            {
+              backgroundColor: theme.backgroundSecondary,
+              opacity: uploadingPhoto ? 0.6 : 1,
+            },
+          ]}
+        >
           {user?.profilePic ? (
             <Image source={{ uri: user.profilePic }} style={styles.avatar} />
           ) : (
             <IconProfile size={40} color={theme.textMuted} />
           )}
-        </View>
+          <View style={[styles.cameraButton, { backgroundColor: theme.primary }]}>
+            <IconCamera size={14} color={theme.buttonText} />
+          </View>
+        </Pressable>
         <ThemedText type="h3" style={styles.userName}>
           {user?.name || "Runner"}
         </ThemedText>
         <ThemedText type="body" style={{ color: theme.textSecondary }}>
           {user?.email}
         </ThemedText>
-        <View style={[styles.badge, { backgroundColor: badge.color + "20" }]}>
+
+        {user?.userCode ? (
+          <Pressable onPress={copyUserCode} style={styles.userCodeContainer}>
+            <ThemedText type="small" style={{ color: theme.primary }}>
+              User Code: #{user.userCode}
+            </ThemedText>
+            <IconCopy size={14} color={theme.primary} style={{ marginLeft: 6 }} />
+          </Pressable>
+        ) : null}
+
+        <View style={[styles.subscriptionBadge, { backgroundColor: badge.color + "20" }]}>
           <ThemedText type="small" style={{ color: badge.color }}>
             {badge.label}
           </ThemedText>
         </View>
       </View>
 
-      {/* Coach Settings */}
+      <View style={styles.section}>
+        <ThemedText type="h4" style={styles.sectionTitle}>
+          Friends
+        </ThemedText>
+        <Card style={styles.menuCard}>
+          <MenuItem
+            icon={<IconUsers size={18} color={theme.accent} />}
+            label="My Friends"
+            value={`${friends.length} friend${friends.length !== 1 ? "s" : ""}`}
+            onPress={() => setShowFriendsModal(true)}
+            color={theme.accent}
+            badge={friendRequests.length}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <MenuItem
+            icon={<IconUserPlus size={18} color={theme.success} />}
+            label="Add Friends"
+            onPress={() => setShowSearchModal(true)}
+            color={theme.success}
+          />
+        </Card>
+      </View>
+
       <View style={styles.section}>
         <ThemedText type="h4" style={styles.sectionTitle}>
           AI Coach
@@ -183,7 +565,6 @@ export default function ProfileScreen({ navigation }: any) {
         </Card>
       </View>
 
-      {/* Profile Settings */}
       <View style={styles.section}>
         <ThemedText type="h4" style={styles.sectionTitle}>
           Profile
@@ -213,7 +594,6 @@ export default function ProfileScreen({ navigation }: any) {
         </Card>
       </View>
 
-      {/* App Settings */}
       <View style={styles.section}>
         <ThemedText type="h4" style={styles.sectionTitle}>
           Settings
@@ -243,7 +623,6 @@ export default function ProfileScreen({ navigation }: any) {
         </Card>
       </View>
 
-      {/* Sign Out */}
       <Button
         variant="outline"
         onPress={handleLogout}
@@ -254,13 +633,115 @@ export default function ProfileScreen({ navigation }: any) {
         Sign Out
       </Button>
 
-      {/* Version */}
-      <ThemedText
-        type="small"
-        style={[styles.version, { color: theme.textMuted }]}
-      >
+      <ThemedText type="small" style={[styles.version, { color: theme.textMuted }]}>
         AI Run Coach v1.0.0
       </ThemedText>
+
+      <Modal
+        visible={showFriendsModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowFriendsModal(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+            <ThemedText type="h3">Friends</ThemedText>
+            <Pressable onPress={() => setShowFriendsModal(false)} hitSlop={8}>
+              <IconX size={24} color={theme.text} />
+            </Pressable>
+          </View>
+
+          {friendRequests.length > 0 ? (
+            <View style={styles.modalSection}>
+              <ThemedText type="h4" style={styles.modalSectionTitle}>
+                Friend Requests ({friendRequests.length})
+              </ThemedText>
+              <FlatList
+                data={friendRequests}
+                keyExtractor={(item) => item.id}
+                renderItem={renderFriendRequest}
+                ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
+                scrollEnabled={false}
+              />
+            </View>
+          ) : null}
+
+          <View style={styles.modalSection}>
+            <ThemedText type="h4" style={styles.modalSectionTitle}>
+              My Friends ({friends.length})
+            </ThemedText>
+            {friends.length === 0 ? (
+              <ThemedText type="body" style={{ color: theme.textSecondary, marginTop: Spacing.md }}>
+                You haven't added any friends yet. Add friends to share your progress!
+              </ThemedText>
+            ) : (
+              <FlatList
+                data={friends}
+                keyExtractor={(item) => item.id}
+                renderItem={renderFriendItem}
+                ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
+                scrollEnabled={false}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showSearchModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowSearchModal(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+            <ThemedText type="h3">Add Friends</ThemedText>
+            <Pressable onPress={() => setShowSearchModal(false)} hitSlop={8}>
+              <IconX size={24} color={theme.text} />
+            </Pressable>
+          </View>
+
+          <View style={styles.searchContainer}>
+            <View style={[styles.searchInputContainer, { backgroundColor: theme.backgroundSecondary }]}>
+              <IconSearch size={20} color={theme.textMuted} />
+              <TextInput
+                style={[styles.searchInput, { color: theme.text }]}
+                placeholder="Search by name or user code..."
+                placeholderTextColor={theme.textMuted}
+                value={searchQuery}
+                onChangeText={(text) => {
+                  setSearchQuery(text);
+                  searchUsers(text);
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          </View>
+
+          {searchResults.length > 0 ? (
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => item.id}
+              renderItem={renderSearchResult}
+              contentContainerStyle={{ padding: Spacing.lg }}
+              ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
+            />
+          ) : searchQuery.length >= 2 ? (
+            <View style={styles.emptySearch}>
+              <ThemedText type="body" style={{ color: theme.textSecondary }}>
+                {searching ? "Searching..." : "No users found"}
+              </ThemedText>
+            </View>
+          ) : (
+            <View style={styles.emptySearch}>
+              <ThemedText type="body" style={{ color: theme.textSecondary }}>
+                Enter a name or user code to search
+              </ThemedText>
+            </View>
+          )}
+        </View>
+      </Modal>
     </KeyboardAwareScrollViewCompat>
   );
 }
@@ -286,10 +767,27 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
   },
+  cameraButton: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   userName: {
     marginBottom: Spacing.xs,
   },
-  badge: {
+  userCodeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+  },
+  subscriptionBadge: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.full,
@@ -322,6 +820,15 @@ const styles = StyleSheet.create({
   menuContent: {
     flex: 1,
   },
+  badgeCount: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+    marginRight: Spacing.sm,
+  },
   divider: {
     height: 1,
     marginLeft: 68,
@@ -332,5 +839,96 @@ const styles = StyleSheet.create({
   version: {
     textAlign: "center",
     marginTop: Spacing.xl,
+  },
+  modalContainer: {
+    flex: 1,
+    paddingTop: Spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+  },
+  modalSection: {
+    padding: Spacing.lg,
+  },
+  modalSectionTitle: {
+    marginBottom: Spacing.md,
+  },
+  friendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+  },
+  friendAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  friendAvatarImage: {
+    width: 44,
+    height: 44,
+  },
+  friendInfo: {
+    flex: 1,
+    marginLeft: Spacing.md,
+  },
+  removeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  requestActions: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  acceptButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  declineButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchContainer: {
+    padding: Spacing.lg,
+  },
+  searchInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    height: 48,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: Spacing.sm,
+    fontSize: 16,
+  },
+  emptySearch: {
+    alignItems: "center",
+    padding: Spacing.xl,
   },
 });
