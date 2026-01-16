@@ -280,15 +280,9 @@ export default function HomeScreen({ navigation }: any) {
   const handleMapMyRun = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     
-    // Navigate to run session with route planning params
-    const targetTime = targetTimeEnabled 
-      ? `${targetHours}:${targetMinutes.padStart(2, '0')}:${targetSeconds.padStart(2, '0')}`
-      : null;
-    
-    navigation.navigate("RunSession", {
-      targetDistance,
-      targetTime,
-      startLocation: location,
+    // Navigate to pre-run setup screen for route planning
+    navigation.navigate("PreRun", {
+      mode: 'route',
     });
   };
 
@@ -319,8 +313,8 @@ export default function HomeScreen({ navigation }: any) {
 
   const handleRunWithoutRoute = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.navigate("RunSession", {
-      freeRun: true,
+    navigation.navigate("PreRun", {
+      mode: 'free',
     });
   };
 

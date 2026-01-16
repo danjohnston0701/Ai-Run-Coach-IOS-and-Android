@@ -563,3 +563,23 @@ export function IconEdit({ size = 24, color = "#00D4FF" }: IconProps) {
     </Svg>
   );
 }
+
+export function IconBroadcast({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Circle cx="12" cy="12" r="2" />
+      <Path d="M16.24 7.76a6 6 0 010 8.49m-8.48-.01a6 6 0 010-8.49m11.31-2.82a10 10 0 010 14.14m-14.14 0a10 10 0 010-14.14" />
+    </Svg>
+  );
+}
+
+export function IconMicrophone({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+      <Path d="M19 10v2a7 7 0 01-14 0v-2" />
+      <Line x1="12" y1="19" x2="12" y2="23" />
+      <Line x1="8" y1="23" x2="16" y2="23" />
+    </Svg>
+  );
+}

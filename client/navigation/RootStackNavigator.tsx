@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import MainTabNavigator from "@/navigation/MainTabNavigator";
 import LoginScreen from "@/screens/LoginScreen";
 import LocationPermissionScreen from "@/screens/LocationPermissionScreen";
+import PreRunScreen from "@/screens/PreRunScreen";
 import RunSessionScreen from "@/screens/RunSessionScreen";
 import RunInsightsScreen from "@/screens/RunInsightsScreen";
 import NotificationsScreen from "@/screens/NotificationsScreen";
@@ -16,7 +17,16 @@ export type RootStackParamList = {
   Login: undefined;
   LocationPermission: undefined;
   Main: undefined;
-  RunSession: { routeId?: string } | undefined;
+  PreRun: { mode: 'route' | 'free' };
+  RunSession: { 
+    mode?: 'route' | 'free';
+    activityType?: 'run' | 'walk';
+    targetDistance?: number | null;
+    targetTime?: { hours: number; minutes: number; seconds: number } | null;
+    liveTracking?: boolean;
+    aiCoach?: boolean;
+    routeId?: string;
+  } | undefined;
   RunInsights: { runId: string };
   EventDetails: { eventId: string };
   GoalDetails: { goalId: string };
@@ -61,6 +71,14 @@ export default function RootStackNavigator() {
             name="Main"
             component={MainTabNavigator}
             options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="PreRun"
+            component={PreRunScreen}
+            options={{
+              headerTitle: "Run Setup",
+              presentation: "modal",
+            }}
           />
           <Stack.Screen
             name="RunSession"
