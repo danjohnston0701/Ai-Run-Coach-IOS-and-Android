@@ -158,6 +158,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           onChangeText={setPassword}
           leftIcon="lock"
           secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
           autoComplete={isSignUp ? "new-password" : "current-password"}
           testID="input-password"
         />
@@ -170,6 +172,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             onChangeText={setConfirmPassword}
             leftIcon="lock"
             secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
             autoComplete="new-password"
             testID="input-confirm-password"
           />
