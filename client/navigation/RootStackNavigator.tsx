@@ -6,6 +6,8 @@ import LoginScreen from "@/screens/LoginScreen";
 import LocationPermissionScreen from "@/screens/LocationPermissionScreen";
 import RunSessionScreen from "@/screens/RunSessionScreen";
 import RunInsightsScreen from "@/screens/RunInsightsScreen";
+import NotificationsScreen from "@/screens/NotificationsScreen";
+import FriendProfileScreen from "@/screens/FriendProfileScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingScreen } from "@/components/LoadingScreen";
@@ -23,6 +25,8 @@ export type RootStackParamList = {
   PersonalDetails: undefined;
   FitnessSettings: undefined;
   NotificationSettings: undefined;
+  Notifications: undefined;
+  FriendProfile: { friendId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -72,6 +76,20 @@ export default function RootStackNavigator() {
             component={RunInsightsScreen}
             options={{
               headerTitle: "Run Details",
+            }}
+          />
+          <Stack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{
+              headerTitle: "Notifications",
+            }}
+          />
+          <Stack.Screen
+            name="FriendProfile"
+            component={FriendProfileScreen}
+            options={{
+              headerTitle: "Friend",
             }}
           />
         </>
