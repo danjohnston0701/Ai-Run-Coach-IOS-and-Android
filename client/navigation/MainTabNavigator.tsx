@@ -1,7 +1,13 @@
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { BlurView } from "expo-blur";
-import { Platform, StyleSheet, Text } from "react-native";
+import { Platform, StyleSheet, Image } from "react-native";
+
+const iconHome = require("../../assets/icons/icon-home.png");
+const iconChart = require("../../assets/icons/icon-chart.png");
+const iconCalendar = require("../../assets/icons/icon-calendar.png");
+const iconTarget = require("../../assets/icons/icon-target.png");
+const iconProfile = require("../../assets/icons/icon-profile.png");
 
 import HomeStackNavigator from "@/navigation/HomeStackNavigator";
 import HistoryStackNavigator from "@/navigation/HistoryStackNavigator";
@@ -56,7 +62,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Home",
           tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 22 }}>🏠</Text>
+            <Image source={iconHome} style={{ width: 24, height: 24, tintColor: color }} />
           ),
         }}
       />
@@ -66,7 +72,7 @@ export default function MainTabNavigator() {
         options={{
           title: "History",
           tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 22 }}>📊</Text>
+            <Image source={iconChart} style={{ width: 24, height: 24, tintColor: color }} />
           ),
         }}
       />
@@ -76,7 +82,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Events",
           tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 22 }}>📅</Text>
+            <Image source={iconCalendar} style={{ width: 24, height: 24, tintColor: color }} />
           ),
         }}
       />
@@ -86,7 +92,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Goals",
           tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 22 }}>🎯</Text>
+            <Image source={iconTarget} style={{ width: 24, height: 24, tintColor: color }} />
           ),
         }}
       />
@@ -96,7 +102,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 22 }}>👤</Text>
+            <Image source={iconProfile} style={{ width: 24, height: 24, tintColor: color }} />
           ),
         }}
       />

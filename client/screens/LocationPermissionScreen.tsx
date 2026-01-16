@@ -1,9 +1,15 @@
 import React, { useState } from "react";
-import { StyleSheet, View, Platform, Linking, Alert, Image, Text } from "react-native";
+import { StyleSheet, View, Platform, Linking, Alert, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const iconLocation = require("../../assets/icons/icon-location.png");
+const iconRunning = require("../../assets/icons/icon-running.png");
+const iconMap = require("../../assets/icons/icon-map.png");
+const iconTimer = require("../../assets/icons/icon-timer.png");
+const iconShield = require("../../assets/icons/icon-shield.png");
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -104,25 +110,25 @@ export default function LocationPermissionScreen() {
 
         <Card style={styles.featuresCard}>
           <View style={styles.featureRow}>
-            <Text style={styles.featureIcon}>📍</Text>
+            <Image source={iconLocation} style={[styles.featureIcon, { tintColor: theme.primary }]} />
             <ThemedText type="body" style={styles.featureText}>
               Real-time GPS tracking during runs
             </ThemedText>
           </View>
           <View style={styles.featureRow}>
-            <Text style={styles.featureIcon}>⚡</Text>
+            <Image source={iconRunning} style={[styles.featureIcon, { tintColor: theme.primary }]} />
             <ThemedText type="body" style={styles.featureText}>
               Accurate distance and pace calculation
             </ThemedText>
           </View>
           <View style={styles.featureRow}>
-            <Text style={styles.featureIcon}>🗺️</Text>
+            <Image source={iconMap} style={[styles.featureIcon, { tintColor: theme.primary }]} />
             <ThemedText type="body" style={styles.featureText}>
               Route mapping and elevation data
             </ThemedText>
           </View>
           <View style={styles.featureRow}>
-            <Text style={styles.featureIcon}>📱</Text>
+            <Image source={iconTimer} style={[styles.featureIcon, { tintColor: theme.primary }]} />
             <ThemedText type="body" style={styles.featureText}>
               Background tracking (screen locked)
             </ThemedText>
@@ -130,7 +136,7 @@ export default function LocationPermissionScreen() {
         </Card>
 
         <View style={styles.privacyNote}>
-          <Text style={styles.privacyIcon}>🛡️</Text>
+          <Image source={iconShield} style={[styles.privacyIcon, { tintColor: theme.textSecondary }]} />
           <ThemedText type="small" style={[styles.privacyText, { color: theme.textSecondary }]}>
             Your location data is only used during runs and is never shared with third parties.
           </ThemedText>
@@ -192,11 +198,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   featureIcon: {
-    fontSize: 20,
-    width: 28,
+    width: 20,
+    height: 20,
   },
   featureText: {
-    marginLeft: Spacing.sm,
+    marginLeft: Spacing.md,
     flex: 1,
   },
   privacyNote: {
@@ -205,7 +211,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
   },
   privacyIcon: {
-    fontSize: 16,
+    width: 18,
+    height: 18,
+    marginTop: 2,
   },
   privacyText: {
     marginLeft: Spacing.sm,

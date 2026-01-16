@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from "react";
-import { StyleSheet, View, ScrollView, Pressable, RefreshControl, Image, Text } from "react-native";
+import { StyleSheet, View, ScrollView, Pressable, RefreshControl, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
+
+const iconMap = require("../../assets/icons/icon-map.png");
+const iconRunning = require("../../assets/icons/icon-running.png");
+const iconTimer = require("../../assets/icons/icon-timer.png");
+const iconTrending = require("../../assets/icons/icon-trending.png");
+const iconPlay = require("../../assets/icons/icon-play.png");
+const iconProfile = require("../../assets/icons/icon-profile.png");
+const iconCalendar = require("../../assets/icons/icon-calendar.png");
+const iconTarget = require("../../assets/icons/icon-target.png");
+const iconChart = require("../../assets/icons/icon-chart.png");
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
@@ -155,7 +165,7 @@ export default function HomeScreen({ navigation }: any) {
               style={styles.avatar}
             />
           ) : (
-            <Text style={{ fontSize: 24 }}>👤</Text>
+            <Image source={iconProfile} style={{ width: 24, height: 24, tintColor: theme.textMuted }} />
           )}
         </Pressable>
       </View>
@@ -175,7 +185,10 @@ export default function HomeScreen({ navigation }: any) {
             onPress={handleStartRun}
             style={[styles.startButton, { backgroundColor: theme.primary }]}
           >
-            <Text style={{ fontSize: 28 }}>{locationPermission ? "▶️" : "📍"}</Text>
+            <Image 
+              source={locationPermission ? iconPlay : iconMap} 
+              style={{ width: 28, height: 28, tintColor: theme.buttonText }} 
+            />
           </Pressable>
         </View>
       </Card>
@@ -186,14 +199,14 @@ export default function HomeScreen({ navigation }: any) {
           label="Total Distance"
           value={stats.totalDistance.toString()}
           unit="km"
-          icon="🗺️"
+          icon={iconMap}
           color={theme.primary}
           style={styles.statCard}
         />
         <StatCard
           label="Total Runs"
           value={stats.totalRuns.toString()}
-          icon="🏃"
+          icon={iconRunning}
           color={theme.accent}
           style={styles.statCard}
         />
@@ -201,7 +214,7 @@ export default function HomeScreen({ navigation }: any) {
           label="Avg Pace"
           value={stats.avgPace}
           unit="/km"
-          icon="⏱️"
+          icon={iconTimer}
           color={theme.success}
           style={styles.statCard}
         />
@@ -209,7 +222,7 @@ export default function HomeScreen({ navigation }: any) {
           label="This Week"
           value={stats.thisWeekDistance.toString()}
           unit="km"
-          icon="📈"
+          icon={iconTrending}
           color={theme.warning}
           style={styles.statCard}
         />
@@ -239,13 +252,13 @@ export default function HomeScreen({ navigation }: any) {
                 </View>
                 <View style={styles.runStats}>
                   <View style={styles.runStat}>
-                    <Text style={{ fontSize: 12 }}>⏱️</Text>
+                    <Image source={iconTimer} style={{ width: 14, height: 14, tintColor: theme.textMuted }} />
                     <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                       {formatDuration(run.duration)}
                     </ThemedText>
                   </View>
                   <View style={styles.runStat}>
-                    <Text style={{ fontSize: 12 }}>⚡</Text>
+                    <Image source={iconTrending} style={{ width: 14, height: 14, tintColor: theme.textMuted }} />
                     <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                       {run.avgPace || "--:--"}/km
                     </ThemedText>
@@ -257,7 +270,7 @@ export default function HomeScreen({ navigation }: any) {
         ) : (
           <Card style={styles.emptyCard}>
             <View style={styles.emptyContent}>
-              <Text style={{ fontSize: 32 }}>🗺️</Text>
+              <Image source={iconMap} style={{ width: 32, height: 32, tintColor: theme.textMuted }} />
               <ThemedText
                 type="body"
                 style={{ color: theme.textSecondary, marginTop: Spacing.md, textAlign: "center" }}
@@ -280,7 +293,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("EventsTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.primary + "20" }]}>
-              <Text style={{ fontSize: 20 }}>📅</Text>
+              <Image source={iconCalendar} style={{ width: 20, height: 20, tintColor: theme.primary }} />
             </View>
             <ThemedText type="small">Events</ThemedText>
           </Pressable>
@@ -289,7 +302,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("GoalsTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.accent + "20" }]}>
-              <Text style={{ fontSize: 20 }}>🎯</Text>
+              <Image source={iconTarget} style={{ width: 20, height: 20, tintColor: theme.accent }} />
             </View>
             <ThemedText type="small">Goals</ThemedText>
           </Pressable>
@@ -298,7 +311,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("HistoryTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.success + "20" }]}>
-              <Text style={{ fontSize: 20 }}>📊</Text>
+              <Image source={iconChart} style={{ width: 20, height: 20, tintColor: theme.success }} />
             </View>
             <ThemedText type="small">History</ThemedText>
           </Pressable>
@@ -307,7 +320,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("ProfileTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.warning + "20" }]}>
-              <Text style={{ fontSize: 20 }}>⚙️</Text>
+              <Image source={iconProfile} style={{ width: 20, height: 20, tintColor: theme.warning }} />
             </View>
             <ThemedText type="small">Settings</ThemedText>
           </Pressable>
