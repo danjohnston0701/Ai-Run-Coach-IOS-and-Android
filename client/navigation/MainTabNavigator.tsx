@@ -1,8 +1,7 @@
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { Platform, StyleSheet } from "react-native";
+import { Platform, StyleSheet, Text } from "react-native";
 
 import HomeStackNavigator from "@/navigation/HomeStackNavigator";
 import HistoryStackNavigator from "@/navigation/HistoryStackNavigator";
@@ -56,8 +55,8 @@ export default function MainTabNavigator() {
         component={HomeStackNavigator}
         options={{
           title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 22 }}>🏠</Text>
           ),
         }}
       />
@@ -66,8 +65,8 @@ export default function MainTabNavigator() {
         component={HistoryStackNavigator}
         options={{
           title: "History",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 22 }}>📊</Text>
           ),
         }}
       />
@@ -76,8 +75,8 @@ export default function MainTabNavigator() {
         component={EventsStackNavigator}
         options={{
           title: "Events",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 22 }}>📅</Text>
           ),
         }}
       />
@@ -86,8 +85,8 @@ export default function MainTabNavigator() {
         component={GoalsStackNavigator}
         options={{
           title: "Goals",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flag-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 22 }}>🎯</Text>
           ),
         }}
       />
@@ -96,8 +95,8 @@ export default function MainTabNavigator() {
         component={ProfileStackNavigator}
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 22 }}>👤</Text>
           ),
         }}
       />

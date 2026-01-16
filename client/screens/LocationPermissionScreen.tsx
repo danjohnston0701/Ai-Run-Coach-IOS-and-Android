@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { StyleSheet, View, Platform, Linking, Alert, Image } from "react-native";
+import { StyleSheet, View, Platform, Linking, Alert, Image, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -105,25 +104,25 @@ export default function LocationPermissionScreen() {
 
         <Card style={styles.featuresCard}>
           <View style={styles.featureRow}>
-            <Ionicons name="navigate-outline" size={20} color={theme.primary} />
+            <Text style={styles.featureIcon}>📍</Text>
             <ThemedText type="body" style={styles.featureText}>
               Real-time GPS tracking during runs
             </ThemedText>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="pulse-outline" size={20} color={theme.primary} />
+            <Text style={styles.featureIcon}>⚡</Text>
             <ThemedText type="body" style={styles.featureText}>
               Accurate distance and pace calculation
             </ThemedText>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="map-outline" size={20} color={theme.primary} />
+            <Text style={styles.featureIcon}>🗺️</Text>
             <ThemedText type="body" style={styles.featureText}>
               Route mapping and elevation data
             </ThemedText>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="phone-portrait-outline" size={20} color={theme.primary} />
+            <Text style={styles.featureIcon}>📱</Text>
             <ThemedText type="body" style={styles.featureText}>
               Background tracking (screen locked)
             </ThemedText>
@@ -131,7 +130,7 @@ export default function LocationPermissionScreen() {
         </Card>
 
         <View style={styles.privacyNote}>
-          <Ionicons name="shield-checkmark-outline" size={18} color={theme.textSecondary} />
+          <Text style={styles.privacyIcon}>🛡️</Text>
           <ThemedText type="small" style={[styles.privacyText, { color: theme.textSecondary }]}>
             Your location data is only used during runs and is never shared with third parties.
           </ThemedText>
@@ -192,14 +191,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: Spacing.md,
   },
+  featureIcon: {
+    fontSize: 20,
+    width: 28,
+  },
   featureText: {
-    marginLeft: Spacing.md,
+    marginLeft: Spacing.sm,
     flex: 1,
   },
   privacyNote: {
     flexDirection: "row",
     alignItems: "flex-start",
     paddingHorizontal: Spacing.lg,
+  },
+  privacyIcon: {
+    fontSize: 16,
   },
   privacyText: {
     marginLeft: Spacing.sm,
