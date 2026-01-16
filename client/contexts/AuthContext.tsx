@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { 
   User, 
   getStoredUser, 
@@ -8,10 +9,13 @@ import {
   logout as authLogout 
 } from '@/lib/auth';
 
+const LOCATION_PERMISSION_KEY = "location_permission_granted";
+
 interface AuthState {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  locationPermissionGranted: boolean;
 }
 
 interface AuthContextType extends AuthState {
@@ -19,6 +23,7 @@ interface AuthContextType extends AuthState {
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  setLocationPermission: (granted: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,22 +37,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user: null,
     isLoading: true,
     isAuthenticated: false,
+    locationPermissionGranted: false,
   });
 
   const refreshUser = useCallback(async () => {
     try {
       const storedUser = await getStoredUser();
+      const locationPermission = await AsyncStorage.getItem(LOCATION_PERMISSION_KEY);
+      
       if (storedUser) {
         setState({
           user: storedUser,
           isLoading: false,
           isAuthenticated: true,
+          locationPermissionGranted: locationPermission === "true",
         });
       } else {
         setState({
           user: null,
           isLoading: false,
           isAuthenticated: false,
+          locationPermissionGranted: false,
         });
       }
     } catch {
@@ -55,6 +65,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         user: null,
         isLoading: false,
         isAuthenticated: false,
+        locationPermissionGranted: false,
       });
     }
   }, []);
@@ -62,6 +73,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     refreshUser();
   }, [refreshUser]);
+
+  const setLocationPermission = useCallback((granted: boolean) => {
+    setState(prev => ({ ...prev, locationPermissionGranted: granted }));
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     setState(prev => ({ ...prev, isLoading: true }));
@@ -105,7 +120,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ ...state, login, register, logout, refreshUser, setLocationPermission }}>
       {children}
     </AuthContext.Provider>
   );

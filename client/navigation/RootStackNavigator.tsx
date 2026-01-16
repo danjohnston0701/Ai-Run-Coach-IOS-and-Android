@@ -29,13 +29,13 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootStackNavigator() {
   const screenOptions = useScreenOptions();
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, locationPermissionGranted } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen message="Loading..." />;
   }
 
-  const needsLocationPermission = isAuthenticated && !user?.locationPermissionGranted;
+  const needsLocationPermission = isAuthenticated && !locationPermissionGranted;
 
   return (
     <Stack.Navigator screenOptions={screenOptions}>

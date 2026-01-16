@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -11,13 +12,31 @@ import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
-import { Spacing, BorderRadius } from "@/constants/theme";
-import { getApiUrl } from "@/lib/query-client";
+import { Spacing } from "@/constants/theme";
+
+const LOCATION_PERMISSION_KEY = "location_permission_granted";
+
+export async function getLocalLocationPermission(): Promise<boolean> {
+  try {
+    const value = await AsyncStorage.getItem(LOCATION_PERMISSION_KEY);
+    return value === "true";
+  } catch {
+    return false;
+  }
+}
+
+export async function setLocalLocationPermission(granted: boolean): Promise<void> {
+  try {
+    await AsyncStorage.setItem(LOCATION_PERMISSION_KEY, granted ? "true" : "false");
+  } catch (error) {
+    console.log("[LocationPermission] Failed to save locally:", error);
+  }
+}
 
 export default function LocationPermissionScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { user, refreshUser } = useAuth();
+  const { setLocationPermission } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
   const requestLocationPermission = async () => {
@@ -46,15 +65,13 @@ export default function LocationPermissionScreen() {
         return;
       }
 
-      let backgroundGranted = false;
       if (Platform.OS !== "web") {
-        const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-        backgroundGranted = backgroundStatus === "granted";
+        await Location.requestBackgroundPermissionsAsync();
       }
 
-      await savePermissionToBackend(foregroundStatus === "granted", backgroundGranted);
+      await setLocalLocationPermission(true);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await refreshUser();
+      setLocationPermission(true);
     } catch (error: any) {
       console.log("[LocationPermission] Error:", error.message);
       Alert.alert("Error", "Failed to request location permission. Please try again.");
@@ -63,31 +80,10 @@ export default function LocationPermissionScreen() {
     }
   };
 
-  const savePermissionToBackend = async (foreground: boolean, background: boolean) => {
-    try {
-      const baseUrl = getApiUrl();
-      const response = await fetch(`${baseUrl}/api/users/location-permission`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          userId: user?.id,
-          foregroundGranted: foreground,
-          backgroundGranted: background,
-        }),
-        credentials: "include",
-      });
-      
-      if (!response.ok) {
-        console.log("[LocationPermission] Failed to save to backend");
-      }
-    } catch (error) {
-      console.log("[LocationPermission] Backend save error:", error);
-    }
-  };
-
   const skipForNow = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await refreshUser();
+    await setLocalLocationPermission(true);
+    setLocationPermission(true);
   };
 
   return (

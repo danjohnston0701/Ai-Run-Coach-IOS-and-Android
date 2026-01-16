@@ -30,7 +30,6 @@ export interface User {
   entitlementType?: string;
   entitlementExpiresAt?: string;
   createdAt?: string;
-  locationPermissionGranted?: boolean;
 }
 
 // Storage wrapper that works on both web and native
