@@ -183,7 +183,7 @@ export default function GoalsScreen({ navigation }: any) {
               ]}
             />
           </View>
-          <ThemedText type="caption" style={{ color: statusColor, marginLeft: Spacing.sm }}>
+          <ThemedText type="small" style={{ color: statusColor, marginLeft: Spacing.sm }}>
             {progress}%
           </ThemedText>
         </View>
@@ -193,7 +193,7 @@ export default function GoalsScreen({ navigation }: any) {
           {item.distanceTarget ? (
             <View style={styles.detailItem}>
               <IconMap size={12} color={theme.textMuted} />
-              <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
+              <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                 {item.distanceTarget.replace(/_/g, " ")}
               </ThemedText>
             </View>
@@ -201,7 +201,7 @@ export default function GoalsScreen({ navigation }: any) {
           {item.weeklyRunTarget ? (
             <View style={styles.detailItem}>
               <IconRepeat size={12} color={theme.textMuted} />
-              <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
+              <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                 {item.weeklyRunTarget}x/week
               </ThemedText>
             </View>
@@ -209,7 +209,7 @@ export default function GoalsScreen({ navigation }: any) {
           {item.eventName ? (
             <View style={styles.detailItem}>
               <IconFlag size={12} color={theme.textMuted} />
-              <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
+              <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                 {item.eventName}
               </ThemedText>
             </View>

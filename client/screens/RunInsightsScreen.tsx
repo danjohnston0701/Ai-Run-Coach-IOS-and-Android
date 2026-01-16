@@ -166,7 +166,7 @@ export default function RunInsightsScreen({
             ]}
           >
             <ThemedText
-              type="caption"
+              type="small"
               style={{ color: getDifficultyColor(run.difficulty) }}
             >
               {run.difficulty}
@@ -343,7 +343,7 @@ export default function RunInsightsScreen({
               <View style={styles.noteHeader}>
                 <IconMic size={14} color={theme.primary} />
                 <ThemedText
-                  type="caption"
+                  type="small"
                   style={{ color: theme.textMuted, marginLeft: Spacing.sm }}
                 >
                   {formatTime(note.time)}

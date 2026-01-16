@@ -135,7 +135,7 @@ export default function RunHistoryScreen({ navigation }: any) {
               ]}
             >
               <ThemedText
-                type="caption"
+                type="small"
                 style={{ color: getDifficultyColor(item.difficulty) }}
               >
                 {item.difficulty}
@@ -188,7 +188,7 @@ export default function RunHistoryScreen({ navigation }: any) {
       {item.aiCoachEnabled ? (
         <View style={[styles.aiCoachBadge, { backgroundColor: theme.primary + "20" }]}>
           <IconMic size={12} color={theme.primary} />
-          <ThemedText type="caption" style={{ color: theme.primary, marginLeft: 4 }}>
+          <ThemedText type="small" style={{ color: theme.primary, marginLeft: 4 }}>
             AI Coached
           </ThemedText>
         </View>

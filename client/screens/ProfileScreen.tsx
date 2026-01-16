@@ -145,7 +145,7 @@ export default function ProfileScreen({ navigation }: any) {
           {user?.email}
         </ThemedText>
         <View style={[styles.badge, { backgroundColor: badge.color + "20" }]}>
-          <ThemedText type="caption" style={{ color: badge.color }}>
+          <ThemedText type="small" style={{ color: badge.color }}>
             {badge.label}
           </ThemedText>
         </View>
@@ -256,7 +256,7 @@ export default function ProfileScreen({ navigation }: any) {
 
       {/* Version */}
       <ThemedText
-        type="caption"
+        type="small"
         style={[styles.version, { color: theme.textMuted }]}
       >
         AI Run Coach v1.0.0

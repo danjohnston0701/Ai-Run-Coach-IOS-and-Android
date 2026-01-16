@@ -496,3 +496,11 @@ export function IconMountain({ size = 24, color = "#00D4FF" }: IconProps) {
     </Svg>
   );
 }
+
+export function IconChevronDown({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Polyline points="6 9 12 15 18 9" />
+    </Svg>
+  );
+}
