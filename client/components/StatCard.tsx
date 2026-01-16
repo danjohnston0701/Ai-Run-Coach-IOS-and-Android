@@ -1,7 +1,5 @@
 import React from "react";
-import { StyleSheet, View, ViewStyle } from "react-native";
-import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
+import { StyleSheet, View, ViewStyle, Text } from "react-native";
 
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
@@ -11,7 +9,7 @@ interface StatCardProps {
   label: string;
   value: string;
   unit?: string;
-  icon?: keyof typeof Feather.glyphMap;
+  icon?: string;
   color?: string;
   style?: ViewStyle;
   size?: "sm" | "md" | "lg";
@@ -56,7 +54,7 @@ export function StatCard({
       <View style={styles.header}>
         {icon ? (
           <View style={[styles.iconContainer, { backgroundColor: accentColor + "20" }]}>
-            <Feather name={icon} size={16} color={accentColor} />
+            <Text style={styles.iconEmoji}>{icon}</Text>
           </View>
         ) : null}
         <ThemedText type="small" style={{ color: theme.textSecondary }}>
@@ -95,6 +93,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: Spacing.sm,
+  },
+  iconEmoji: {
+    fontSize: 14,
   },
   valueContainer: {
     flexDirection: "row",

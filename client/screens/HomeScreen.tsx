@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { StyleSheet, View, ScrollView, Pressable, RefreshControl, Image } from "react-native";
+import { StyleSheet, View, ScrollView, Pressable, RefreshControl, Image, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 
@@ -156,7 +155,7 @@ export default function HomeScreen({ navigation }: any) {
               style={styles.avatar}
             />
           ) : (
-            <Feather name="user" size={24} color={theme.textMuted} />
+            <Text style={{ fontSize: 24 }}>👤</Text>
           )}
         </Pressable>
       </View>
@@ -176,11 +175,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={handleStartRun}
             style={[styles.startButton, { backgroundColor: theme.primary }]}
           >
-            <Feather
-              name={locationPermission ? "play" : "map-pin"}
-              size={28}
-              color={theme.buttonText}
-            />
+            <Text style={{ fontSize: 28 }}>{locationPermission ? "▶️" : "📍"}</Text>
           </Pressable>
         </View>
       </Card>
@@ -191,14 +186,14 @@ export default function HomeScreen({ navigation }: any) {
           label="Total Distance"
           value={stats.totalDistance.toString()}
           unit="km"
-          icon="map"
+          icon="🗺️"
           color={theme.primary}
           style={styles.statCard}
         />
         <StatCard
           label="Total Runs"
           value={stats.totalRuns.toString()}
-          icon="activity"
+          icon="🏃"
           color={theme.accent}
           style={styles.statCard}
         />
@@ -206,7 +201,7 @@ export default function HomeScreen({ navigation }: any) {
           label="Avg Pace"
           value={stats.avgPace}
           unit="/km"
-          icon="clock"
+          icon="⏱️"
           color={theme.success}
           style={styles.statCard}
         />
@@ -214,7 +209,7 @@ export default function HomeScreen({ navigation }: any) {
           label="This Week"
           value={stats.thisWeekDistance.toString()}
           unit="km"
-          icon="trending-up"
+          icon="📈"
           color={theme.warning}
           style={styles.statCard}
         />
@@ -244,13 +239,13 @@ export default function HomeScreen({ navigation }: any) {
                 </View>
                 <View style={styles.runStats}>
                   <View style={styles.runStat}>
-                    <Feather name="clock" size={14} color={theme.textMuted} />
+                    <Text style={{ fontSize: 12 }}>⏱️</Text>
                     <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                       {formatDuration(run.duration)}
                     </ThemedText>
                   </View>
                   <View style={styles.runStat}>
-                    <Feather name="zap" size={14} color={theme.textMuted} />
+                    <Text style={{ fontSize: 12 }}>⚡</Text>
                     <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                       {run.avgPace || "--:--"}/km
                     </ThemedText>
@@ -262,7 +257,7 @@ export default function HomeScreen({ navigation }: any) {
         ) : (
           <Card style={styles.emptyCard}>
             <View style={styles.emptyContent}>
-              <Feather name="map" size={32} color={theme.textMuted} />
+              <Text style={{ fontSize: 32 }}>🗺️</Text>
               <ThemedText
                 type="body"
                 style={{ color: theme.textSecondary, marginTop: Spacing.md, textAlign: "center" }}
@@ -285,7 +280,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("EventsTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.primary + "20" }]}>
-              <Feather name="calendar" size={20} color={theme.primary} />
+              <Text style={{ fontSize: 20 }}>📅</Text>
             </View>
             <ThemedText type="small">Events</ThemedText>
           </Pressable>
@@ -294,7 +289,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("GoalsTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.accent + "20" }]}>
-              <Feather name="target" size={20} color={theme.accent} />
+              <Text style={{ fontSize: 20 }}>🎯</Text>
             </View>
             <ThemedText type="small">Goals</ThemedText>
           </Pressable>
@@ -303,7 +298,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("HistoryTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.success + "20" }]}>
-              <Feather name="bar-chart-2" size={20} color={theme.success} />
+              <Text style={{ fontSize: 20 }}>📊</Text>
             </View>
             <ThemedText type="small">History</ThemedText>
           </Pressable>
@@ -312,7 +307,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("ProfileTab")}
           >
             <View style={[styles.actionIcon, { backgroundColor: theme.warning + "20" }]}>
-              <Feather name="settings" size={20} color={theme.warning} />
+              <Text style={{ fontSize: 20 }}>⚙️</Text>
             </View>
             <ThemedText type="small">Settings</ThemedText>
           </Pressable>
