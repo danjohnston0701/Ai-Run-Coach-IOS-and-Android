@@ -478,3 +478,21 @@ export function IconMenu({ size = 24, color = "#00D4FF" }: IconProps) {
     </Svg>
   );
 }
+
+export function IconHistory({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M3 3v5h5" />
+      <Path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
+      <Path d="M12 7v5l4 2" />
+    </Svg>
+  );
+}
+
+export function IconMountain({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M8 3l4 8 5-5 5 15H2L8 3z" />
+    </Svg>
+  );
+}

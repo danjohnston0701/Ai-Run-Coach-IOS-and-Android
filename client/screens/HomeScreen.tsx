@@ -28,8 +28,10 @@ import {
   IconTrophy,
   IconPlus,
   IconChevronRight,
-  IconMenu,
   IconRunning,
+  IconPlay,
+  IconHistory,
+  IconMountain,
 } from "@/components/icons/AppIcons";
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
@@ -58,6 +60,23 @@ interface LocationData {
   longitude: number;
 }
 
+interface RecentRoute {
+  id: number;
+  distance: number;
+  elevation: number;
+  address: string;
+  difficulty: string;
+  status: string;
+}
+
+interface PreviousRun {
+  id: number;
+  distance: number;
+  avgPace: string;
+  date: string;
+  difficulty: string;
+}
+
 export default function HomeScreen({ navigation }: any) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -77,13 +96,19 @@ export default function HomeScreen({ navigation }: any) {
   const [targetDistance, setTargetDistance] = useState(5);
   const [targetTimeEnabled, setTargetTimeEnabled] = useState(false);
   const [targetHours, setTargetHours] = useState("0");
-  const [targetMinutes, setTargetMinutes] = useState("30");
+  const [targetMinutes, setTargetMinutes] = useState("25");
   const [targetSeconds, setTargetSeconds] = useState("00");
+
+  // Recent routes and previous runs
+  const [recentRoutes, setRecentRoutes] = useState<RecentRoute[]>([]);
+  const [previousRun, setPreviousRun] = useState<PreviousRun | null>(null);
 
   useEffect(() => {
     fetchGoals();
     fetchWeather();
     fetchLocation();
+    fetchRecentRoutes();
+    fetchPreviousRun();
     
     // Update time every minute
     const timer = setInterval(() => {
@@ -91,6 +116,16 @@ export default function HomeScreen({ navigation }: any) {
     }, 60000);
     
     return () => clearInterval(timer);
+  }, []);
+
+  // Calculate target time based on 5 min/km pace when distance changes
+  const calculateDefaultTime = useCallback((distance: number) => {
+    const totalMinutes = distance * 5; // 5 minutes per km
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = Math.floor(totalMinutes % 60);
+    setTargetHours(hours.toString());
+    setTargetMinutes(minutes.toString().padStart(2, '0'));
+    setTargetSeconds("00");
   }, []);
 
   const fetchGoals = async () => {
@@ -147,6 +182,45 @@ export default function HomeScreen({ navigation }: any) {
     return "Cloudy";
   };
 
+  const fetchRecentRoutes = async () => {
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/routes`, {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const routes = await response.json();
+        setRecentRoutes(routes.slice(0, 4));
+      }
+    } catch (error) {
+      console.log("Failed to fetch routes:", error);
+    }
+  };
+
+  const fetchPreviousRun = async () => {
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/runs`, {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const runs = await response.json();
+        if (runs.length > 0) {
+          const lastRun = runs[0];
+          setPreviousRun({
+            id: lastRun.id,
+            distance: parseFloat(lastRun.distance) || 0,
+            avgPace: lastRun.avgPace || "--'--\"",
+            date: lastRun.date || new Date().toLocaleDateString(),
+            difficulty: lastRun.difficulty || "moderate",
+          });
+        }
+      }
+    } catch (error) {
+      console.log("Failed to fetch runs:", error);
+    }
+  };
+
   const fetchLocation = async () => {
     try {
       setLoadingLocation(true);
@@ -194,7 +268,7 @@ export default function HomeScreen({ navigation }: any) {
   const onRefresh = async () => {
     setRefreshing(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await Promise.all([fetchGoals(), fetchWeather(), fetchLocation()]);
+    await Promise.all([fetchGoals(), fetchWeather(), fetchLocation(), fetchRecentRoutes(), fetchPreviousRun()]);
     setRefreshing(false);
   };
 
@@ -227,8 +301,36 @@ export default function HomeScreen({ navigation }: any) {
   };
 
   const handleDistanceChange = useCallback((value: number) => {
-    setTargetDistance(Math.round(value));
-  }, []);
+    const distance = Math.round(value);
+    setTargetDistance(distance);
+    if (targetTimeEnabled) {
+      calculateDefaultTime(distance);
+    }
+  }, [targetTimeEnabled, calculateDefaultTime]);
+
+  const handleToggleTargetTime = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const newEnabled = !targetTimeEnabled;
+    setTargetTimeEnabled(newEnabled);
+    if (newEnabled) {
+      calculateDefaultTime(targetDistance);
+    }
+  };
+
+  const handleRunWithoutRoute = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    navigation.navigate("RunSession", {
+      freeRun: true,
+    });
+  };
+
+  const handleRoutePress = (route: RecentRoute) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate("RunSession", {
+      routeId: route.id,
+      targetDistance: route.distance,
+    });
+  };
 
   return (
     <ScrollView
@@ -249,18 +351,13 @@ export default function HomeScreen({ navigation }: any) {
     >
       {/* Welcome Header */}
       <View style={styles.welcomeSection}>
-        <View style={styles.welcomeLeft}>
-          <Pressable style={styles.menuButton}>
-            <IconMenu size={24} color={theme.textMuted} />
-          </Pressable>
-          <View style={styles.welcomeText}>
-            <ThemedText type="h2" style={{ color: theme.primary }}>
-              {(user?.name || "Runner").toUpperCase()}
-            </ThemedText>
-            <ThemedText type="body" style={{ color: theme.textSecondary }}>
-              Welcome, Plan your run with Coach Carter
-            </ThemedText>
-          </View>
+        <View style={styles.welcomeText}>
+          <ThemedText type="h2" style={{ color: theme.primary }}>
+            {(user?.name || "Runner").toUpperCase()}
+          </ThemedText>
+          <ThemedText type="body" style={{ color: theme.textSecondary }}>
+            Welcome, Plan your run with Coach Carter
+          </ThemedText>
         </View>
         <Pressable
           onPress={() => navigation.navigate("ProfileTab")}
@@ -396,94 +493,133 @@ export default function HomeScreen({ navigation }: any) {
       </View>
 
       {/* Target Time */}
-      <Card style={styles.targetTimeCard}>
-        <View style={styles.targetTimeHeader}>
-          <View style={styles.targetTimeLeft}>
-            <View style={[styles.targetTimeIcon, { backgroundColor: theme.backgroundSecondary }]}>
-              <IconClock size={20} color={theme.primary} />
+      <Pressable onPress={handleToggleTargetTime}>
+        <Card style={styles.targetTimeCard}>
+          <View style={styles.targetTimeHeader}>
+            <View style={styles.targetTimeLeft}>
+              <View style={[styles.targetTimeIcon, { backgroundColor: theme.backgroundSecondary }]}>
+                <IconClock size={20} color={theme.primary} />
+              </View>
+              <View>
+                <ThemedText type="h4">TARGET TIME</ThemedText>
+                <ThemedText type="small" style={{ color: theme.textMuted }}>
+                  {targetTimeEnabled ? "Set your goal time" : "Tap to enable"}
+                </ThemedText>
+              </View>
             </View>
-            <View>
-              <ThemedText type="h4">TARGET TIME</ThemedText>
-              <ThemedText type="small" style={{ color: theme.textMuted }}>
-                {targetTimeEnabled ? "Set your goal time" : "Tap to enable"}
+            <View style={[
+              styles.toggleBadge, 
+              { backgroundColor: targetTimeEnabled ? theme.primary : theme.backgroundSecondary }
+            ]}>
+              <ThemedText 
+                type="small" 
+                style={{ color: targetTimeEnabled ? theme.buttonText : theme.textMuted }}
+              >
+                {targetTimeEnabled ? "ON" : "OFF"}
               </ThemedText>
             </View>
           </View>
-          <View style={[
-            styles.toggleBadge, 
-            { backgroundColor: targetTimeEnabled ? theme.primary : theme.backgroundSecondary }
-          ]}>
-            <ThemedText 
-              type="small" 
-              style={{ color: targetTimeEnabled ? theme.buttonText : theme.textMuted }}
-            >
-              {targetTimeEnabled ? "ON" : "OFF"}
+        </Card>
+      </Pressable>
+
+      {/* Time Inputs - shown when enabled */}
+      {targetTimeEnabled ? (
+        <View style={styles.timeInputs}>
+          <View style={styles.timeInputGroup}>
+            <ThemedText type="small" style={{ color: theme.textMuted }}>
+              HOURS
             </ThemedText>
+            <View style={[styles.timeInput, { backgroundColor: theme.backgroundSecondary }]}>
+              <TextInput
+                style={[styles.timeInputText, { color: theme.primary }]}
+                value={targetHours}
+                onChangeText={setTargetHours}
+                keyboardType="number-pad"
+                maxLength={2}
+                placeholderTextColor={theme.textMuted}
+              />
+            </View>
           </View>
-          <Switch
-            value={targetTimeEnabled}
-            onValueChange={(value) => {
-              setTargetTimeEnabled(value);
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-            trackColor={{ false: theme.backgroundSecondary, true: theme.primary + "50" }}
-            thumbColor={targetTimeEnabled ? theme.primary : theme.textMuted}
-            style={{ opacity: 0, position: "absolute" }}
-          />
+          <ThemedText type="h3" style={{ color: theme.textMuted, marginTop: Spacing.xl }}>:</ThemedText>
+          <View style={styles.timeInputGroup}>
+            <ThemedText type="small" style={{ color: theme.textMuted }}>
+              MINUTES
+            </ThemedText>
+            <View style={[styles.timeInput, { backgroundColor: theme.backgroundSecondary }]}>
+              <TextInput
+                style={[styles.timeInputText, { color: theme.primary }]}
+                value={targetMinutes}
+                onChangeText={setTargetMinutes}
+                keyboardType="number-pad"
+                maxLength={2}
+                placeholderTextColor={theme.textMuted}
+              />
+            </View>
+          </View>
+          <ThemedText type="h3" style={{ color: theme.textMuted, marginTop: Spacing.xl }}>:</ThemedText>
+          <View style={styles.timeInputGroup}>
+            <ThemedText type="small" style={{ color: theme.textMuted }}>
+              SECONDS
+            </ThemedText>
+            <View style={[styles.timeInput, { backgroundColor: theme.backgroundSecondary }]}>
+              <TextInput
+                style={[styles.timeInputText, { color: theme.primary }]}
+                value={targetSeconds}
+                onChangeText={setTargetSeconds}
+                keyboardType="number-pad"
+                maxLength={2}
+                placeholderTextColor={theme.textMuted}
+              />
+            </View>
+          </View>
         </View>
-        
-        {targetTimeEnabled ? (
-          <View style={styles.timeInputs}>
-            <View style={styles.timeInputGroup}>
-              <ThemedText type="caption" style={{ color: theme.textMuted }}>
-                HOURS
-              </ThemedText>
-              <View style={[styles.timeInput, { backgroundColor: theme.backgroundSecondary }]}>
-                <TextInput
-                  style={[styles.timeInputText, { color: theme.primary }]}
-                  value={targetHours}
-                  onChangeText={setTargetHours}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholderTextColor={theme.textMuted}
-                />
+      ) : null}
+
+      {/* Recent Routes */}
+      {recentRoutes.length > 0 ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <ThemedText type="h4">RECENT ROUTES</ThemedText>
+            <Pressable onPress={() => navigation.navigate("HistoryTab")}>
+              <View style={styles.viewAllButton}>
+                <ThemedText type="link">View All</ThemedText>
+                <IconChevronRight size={16} color={theme.primary} />
               </View>
-            </View>
-            <ThemedText type="h3" style={{ color: theme.textMuted, marginTop: Spacing.xl }}>:</ThemedText>
-            <View style={styles.timeInputGroup}>
-              <ThemedText type="caption" style={{ color: theme.textMuted }}>
-                MINUTES
-              </ThemedText>
-              <View style={[styles.timeInput, { backgroundColor: theme.backgroundSecondary }]}>
-                <TextInput
-                  style={[styles.timeInputText, { color: theme.primary }]}
-                  value={targetMinutes}
-                  onChangeText={setTargetMinutes}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholderTextColor={theme.textMuted}
-                />
-              </View>
-            </View>
-            <ThemedText type="h3" style={{ color: theme.textMuted, marginTop: Spacing.xl }}>:</ThemedText>
-            <View style={styles.timeInputGroup}>
-              <ThemedText type="caption" style={{ color: theme.textMuted }}>
-                SECONDS
-              </ThemedText>
-              <View style={[styles.timeInput, { backgroundColor: theme.backgroundSecondary }]}>
-                <TextInput
-                  style={[styles.timeInputText, { color: theme.primary }]}
-                  value={targetSeconds}
-                  onChangeText={setTargetSeconds}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholderTextColor={theme.textMuted}
-                />
-              </View>
-            </View>
+            </Pressable>
           </View>
-        ) : null}
-      </Card>
+          {recentRoutes.map((route) => (
+            <Pressable key={route.id} onPress={() => handleRoutePress(route)}>
+              <Card style={styles.routeCard}>
+                <View style={styles.routeContent}>
+                  <View style={styles.routeLeft}>
+                    <View style={[styles.difficultyBadge, { backgroundColor: theme.backgroundSecondary }]}>
+                      <ThemedText type="small" style={{ color: theme.warning }}>
+                        {route.difficulty?.toUpperCase() || "MODERATE"}
+                      </ThemedText>
+                    </View>
+                    <ThemedText type="h4" style={{ color: theme.primary, marginLeft: Spacing.md }}>
+                      {route.distance?.toFixed(1) || "0"} km
+                    </ThemedText>
+                  </View>
+                  <IconChevronRight size={20} color={theme.textMuted} />
+                </View>
+                <ThemedText type="body" style={{ marginTop: Spacing.xs }}>
+                  {route.address || "Unknown location"}
+                </ThemedText>
+                <View style={styles.routeMeta}>
+                  <IconMountain size={14} color={theme.textMuted} />
+                  <ThemedText type="small" style={{ color: theme.textMuted, marginLeft: Spacing.xs }}>
+                    {route.elevation || 0}m
+                  </ThemedText>
+                  <ThemedText type="small" style={{ color: theme.textMuted, marginLeft: Spacing.lg }}>
+                    {route.status || "Never started"}
+                  </ThemedText>
+                </View>
+              </Card>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       {/* Map My Run Button */}
       <Pressable
@@ -495,6 +631,68 @@ export default function HomeScreen({ navigation }: any) {
           MAP MY RUN
         </ThemedText>
       </Pressable>
+
+      {/* Run Without Route Button */}
+      <Pressable
+        onPress={handleRunWithoutRoute}
+        style={[styles.freeRunButton, { backgroundColor: theme.backgroundSecondary }]}
+      >
+        <IconPlay size={20} color={theme.text} />
+        <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+          RUN WITHOUT ROUTE
+        </ThemedText>
+      </Pressable>
+
+      {/* Previous Runs */}
+      {previousRun ? (
+        <Pressable onPress={() => navigation.navigate("HistoryTab")}>
+          <Card style={styles.previousRunCard}>
+            <View style={styles.previousRunHeader}>
+              <IconHistory size={20} color={theme.primary} />
+              <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+                PREVIOUS RUNS
+              </ThemedText>
+            </View>
+            <View style={styles.previousRunStats}>
+              <View style={styles.previousRunStat}>
+                <ThemedText type="small" style={{ color: theme.textMuted }}>DISTANCE</ThemedText>
+                <ThemedText type="h4" style={{ color: theme.primary }}>
+                  {previousRun.distance?.toFixed(2) || "0.00"} km
+                </ThemedText>
+              </View>
+              <View style={styles.previousRunStat}>
+                <ThemedText type="small" style={{ color: theme.textMuted }}>AVG PACE</ThemedText>
+                <ThemedText type="h4" style={{ color: theme.primary }}>
+                  {previousRun.avgPace}/km
+                </ThemedText>
+              </View>
+            </View>
+            <View style={styles.previousRunMeta}>
+              <View style={styles.previousRunMetaItem}>
+                <ThemedText type="small" style={{ color: theme.textMuted }}>DATE</ThemedText>
+                <ThemedText type="body">{previousRun.date}</ThemedText>
+              </View>
+              <View style={styles.previousRunMetaItem}>
+                <ThemedText type="small" style={{ color: theme.textMuted }}>LEVEL</ThemedText>
+                <View style={[styles.difficultyBadge, { backgroundColor: theme.backgroundSecondary }]}>
+                  <ThemedText type="small" style={{ color: theme.warning }}>
+                    {previousRun.difficulty || "moderate"}
+                  </ThemedText>
+                </View>
+              </View>
+            </View>
+            <Pressable 
+              style={[styles.viewDashboardButton, { borderColor: theme.primary }]}
+              onPress={() => navigation.navigate("HistoryTab")}
+            >
+              <ThemedText type="body" style={{ color: theme.primary }}>
+                View Run Dashboard
+              </ThemedText>
+              <IconChevronRight size={16} color={theme.primary} />
+            </Pressable>
+          </Card>
+        </Pressable>
+      ) : null}
     </ScrollView>
   );
 }
@@ -663,5 +861,80 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
     borderRadius: BorderRadius.lg,
     marginTop: Spacing.md,
+  },
+  freeRunButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    marginTop: Spacing.md,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.md,
+  },
+  viewAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+  },
+  routeCard: {
+    marginBottom: Spacing.md,
+  },
+  routeContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  routeLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  routeMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: Spacing.sm,
+  },
+  difficultyBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+  },
+  previousRunCard: {
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  previousRunHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Spacing.lg,
+  },
+  previousRunStats: {
+    flexDirection: "row",
+    gap: Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  previousRunStat: {
+    flex: 1,
+  },
+  previousRunMeta: {
+    flexDirection: "row",
+    gap: Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  previousRunMetaItem: {
+    gap: Spacing.xs,
+  },
+  viewDashboardButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    gap: Spacing.sm,
   },
 });
