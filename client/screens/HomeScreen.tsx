@@ -29,6 +29,7 @@ import {
   IconPlus,
   IconChevronRight,
   IconMenu,
+  IconRunning,
 } from "@/components/icons/AppIcons";
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
@@ -261,15 +262,12 @@ export default function HomeScreen({ navigation }: any) {
         </View>
         <Pressable
           onPress={() => navigation.navigate("ProfileTab")}
-          style={[styles.avatarContainer, { borderColor: theme.primary }]}
+          style={[styles.avatarContainer, { borderColor: theme.primary, backgroundColor: theme.primary + "20" }]}
         >
           {user?.profilePic ? (
             <Image source={{ uri: user.profilePic }} style={styles.avatar} />
           ) : (
-            <Image 
-              source={require("../../assets/icon.png")} 
-              style={styles.avatar}
-            />
+            <IconRunning size={32} color={theme.primary} />
           )}
         </Pressable>
       </View>

@@ -98,6 +98,23 @@ export function IconPlay({ size = 24, color = "#00D4FF" }: IconProps) {
   );
 }
 
+export function IconPause({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Rect x="6" y="4" width="4" height="16" fill={color} />
+      <Rect x="14" y="4" width="4" height="16" fill={color} />
+    </Svg>
+  );
+}
+
+export function IconSquare({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Rect x="3" y="3" width="18" height="18" rx="2" ry="2" fill={color} />
+    </Svg>
+  );
+}
+
 export function IconShield({ size = 24, color = "#00D4FF" }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -359,31 +376,6 @@ export function IconActivity({ size = 24, color = "#00D4FF" }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-    </Svg>
-  );
-}
-
-export function IconPlay({ size = 24, color = "#00D4FF" }: IconProps) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M5 3l14 9-14 9V3z" fill={color} />
-    </Svg>
-  );
-}
-
-export function IconPause({ size = 24, color = "#00D4FF" }: IconProps) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Rect x="6" y="4" width="4" height="16" fill={color} />
-      <Rect x="14" y="4" width="4" height="16" fill={color} />
-    </Svg>
-  );
-}
-
-export function IconSquare({ size = 24, color = "#00D4FF" }: IconProps) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Rect x="3" y="3" width="18" height="18" rx="2" ry="2" fill={color} />
     </Svg>
   );
 }
