@@ -121,17 +121,25 @@ export async function login(email: string, password: string): Promise<{ user: Us
     }
 
     const data = await response.json();
-    console.log('[Auth] Login successful, user:', data.user?.email);
+    console.log('[Auth] Login successful, full response:', JSON.stringify(data));
     
-    if (data.user) {
-      await setStoredUser(data.user);
+    // Handle different response formats from backend
+    // Some backends return { user, token }, others return the user directly
+    const user = data.user || data;
+    const token = data.token || data.accessToken || data.jwt;
+    
+    console.log('[Auth] Extracted user:', JSON.stringify(user));
+    console.log('[Auth] Extracted token:', token ? 'present' : 'none');
+    
+    if (user && (user.id || user.email)) {
+      await setStoredUser(user);
     }
     
-    if (data.token) {
-      await setStoredToken(data.token);
+    if (token) {
+      await setStoredToken(token);
     }
 
-    return data;
+    return { user, token };
   } catch (error: any) {
     console.log('[Auth] Login exception:', error.message);
     throw error;
