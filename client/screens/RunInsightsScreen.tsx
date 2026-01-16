@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { StyleSheet, View, ScrollView, RefreshControl, Dimensions } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import { StyleSheet, View, ScrollView, RefreshControl, Dimensions, Pressable, Share, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RouteProp } from "@react-navigation/native";
+import MapView, { Polyline, Marker, PROVIDER_DEFAULT } from "react-native-maps";
 import * as Haptics from "expo-haptics";
 
 import {
@@ -19,17 +20,31 @@ import {
   IconActivity,
   IconTrending,
   IconRepeat,
+  IconShare,
+  IconCheck,
 } from "@/components/icons/AppIcons";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { StatCard } from "@/components/StatCard";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
-import { Spacing, BorderRadius, Typography } from "@/constants/theme";
+import { Colors, Spacing, BorderRadius, Typography } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { Run } from "@/lib/types";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+const mapStyle = [
+  { elementType: "geometry", stylers: [{ color: "#1d2c4d" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#8ec3b9" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#1a3646" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#304a7d" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#255763" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0e1626" }] },
+];
 
 type RunInsightsScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, "RunInsights">;
@@ -44,10 +59,12 @@ export default function RunInsightsScreen({
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
+  const mapRef = useRef<MapView>(null);
 
   const [run, setRun] = useState<Run | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [generatingInsights, setGeneratingInsights] = useState(false);
 
   const fetchRun = async () => {
     try {
@@ -114,6 +131,78 @@ export default function RunInsightsScreen({
     }
   };
 
+  const handleShare = async () => {
+    if (!run) return;
+    
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    const message = `I just completed a ${run.distance.toFixed(2)} km run in ${formatTime(run.duration)}! Average pace: ${run.avgPace || "--:--"}/km. Tracked with AI Run Coach!`;
+    
+    try {
+      await Share.share({
+        message,
+        title: "My Run",
+      });
+    } catch (error) {
+      console.log("Share error:", error);
+    }
+  };
+
+  const generateAIInsights = async () => {
+    if (!run || run.aiInsights) return;
+    
+    setGeneratingInsights(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/runs/${runId}/ai-insights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      
+      if (response.ok) {
+        await fetchRun();
+      }
+    } catch (error) {
+      console.log("Failed to generate AI insights:", error);
+    } finally {
+      setGeneratingInsights(false);
+    }
+  };
+
+  const gpsTrackCoordinates = run?.gpsTrack?.map((point: any) => ({
+    latitude: point.lat,
+    longitude: point.lng,
+  })) || [];
+
+  const getMapRegion = () => {
+    if (gpsTrackCoordinates.length === 0) return null;
+    
+    let minLat = gpsTrackCoordinates[0].latitude;
+    let maxLat = gpsTrackCoordinates[0].latitude;
+    let minLng = gpsTrackCoordinates[0].longitude;
+    let maxLng = gpsTrackCoordinates[0].longitude;
+    
+    gpsTrackCoordinates.forEach((coord: any) => {
+      minLat = Math.min(minLat, coord.latitude);
+      maxLat = Math.max(maxLat, coord.latitude);
+      minLng = Math.min(minLng, coord.longitude);
+      maxLng = Math.max(maxLng, coord.longitude);
+    });
+    
+    const latDelta = (maxLat - minLat) * 1.3;
+    const lngDelta = (maxLng - minLng) * 1.3;
+    
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: Math.max(latDelta, 0.01),
+      longitudeDelta: Math.max(lngDelta, 0.01),
+    };
+  };
+
   if (loading) {
     return <LoadingScreen message="Loading run details..." />;
   }
@@ -145,6 +234,49 @@ export default function RunInsightsScreen({
         />
       }
     >
+      {/* Success Banner */}
+      <View style={[styles.successBanner, { backgroundColor: theme.success + "15" }]}>
+        <IconCheck size={24} color={theme.success} />
+        <ThemedText type="body" style={{ color: theme.success, marginLeft: Spacing.sm }}>
+          Run Complete!
+        </ThemedText>
+      </View>
+
+      {/* GPS Track Map */}
+      {gpsTrackCoordinates.length > 0 ? (
+        <View style={styles.mapContainer}>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            provider={PROVIDER_DEFAULT}
+            initialRegion={getMapRegion() || undefined}
+            customMapStyle={mapStyle}
+            scrollEnabled={false}
+            zoomEnabled={false}
+          >
+            <Polyline
+              coordinates={gpsTrackCoordinates}
+              strokeColor={theme.primary}
+              strokeWidth={4}
+            />
+            {gpsTrackCoordinates.length > 0 ? (
+              <>
+                <Marker
+                  coordinate={gpsTrackCoordinates[0]}
+                  title="Start"
+                  pinColor={theme.success}
+                />
+                <Marker
+                  coordinate={gpsTrackCoordinates[gpsTrackCoordinates.length - 1]}
+                  title="Finish"
+                  pinColor={theme.error}
+                />
+              </>
+            ) : null}
+          </MapView>
+        </View>
+      ) : null}
+
       {/* Header */}
       <View style={styles.header}>
         <ThemedText type="small" style={{ color: theme.textSecondary }}>
@@ -268,11 +400,11 @@ export default function RunInsightsScreen({
       ) : null}
 
       {/* AI Insights */}
-      {run.aiInsights ? (
-        <View style={styles.section}>
-          <ThemedText type="h4" style={styles.sectionTitle}>
-            AI Analysis
-          </ThemedText>
+      <View style={styles.section}>
+        <ThemedText type="h4" style={styles.sectionTitle}>
+          AI Analysis
+        </ThemedText>
+        {run.aiInsights ? (
           <Card gradient>
             <View style={styles.aiHeader}>
               <View style={[styles.aiIcon, { backgroundColor: theme.primary + "20" }]}>
@@ -286,8 +418,21 @@ export default function RunInsightsScreen({
               {run.aiInsights}
             </ThemedText>
           </Card>
-        </View>
-      ) : null}
+        ) : (
+          <Card>
+            <ThemedText type="body" style={{ color: theme.textSecondary, marginBottom: Spacing.md }}>
+              Get personalized insights from your AI coach about this run.
+            </ThemedText>
+            <Button
+              onPress={generateAIInsights}
+              loading={generatingInsights}
+              style={{ alignSelf: "flex-start" }}
+            >
+              Generate AI Insights
+            </Button>
+          </Card>
+        )}
+      </View>
 
       {/* Weather Data */}
       {run.weatherData ? (
@@ -354,6 +499,26 @@ export default function RunInsightsScreen({
           ))}
         </View>
       ) : null}
+
+      {/* Share Button */}
+      <Pressable
+        onPress={handleShare}
+        style={[styles.shareButton, { backgroundColor: theme.primary }]}
+      >
+        <IconShare size={20} color={theme.buttonText} />
+        <ThemedText type="body" style={{ color: theme.buttonText, marginLeft: Spacing.sm, fontWeight: "600" }}>
+          Share Run
+        </ThemedText>
+      </Pressable>
+
+      {/* Done Button */}
+      <Button
+        onPress={() => navigation.goBack()}
+        variant="secondary"
+        style={{ marginTop: Spacing.md }}
+      >
+        Done
+      </Button>
     </ScrollView>
   );
 }
@@ -437,5 +602,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: Spacing.sm,
+  },
+  successBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.xl,
+  },
+  mapContainer: {
+    height: 200,
+    borderRadius: BorderRadius.xl,
+    overflow: "hidden",
+    marginBottom: Spacing.xl,
+  },
+  map: {
+    flex: 1,
+  },
+  shareButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    marginTop: Spacing.md,
   },
 });
