@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, View, ActivityIndicator } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import * as Font from "expo-font";
-import { Feather } from "@expo/vector-icons";
+import { useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
+import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
@@ -16,23 +17,22 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { Colors } from "@/constants/theme";
 
+SplashScreen.preventAutoHideAsync();
+
 export default function App() {
-  const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [fontsLoaded, fontError] = useFonts({
+    ...Feather.font,
+    ...MaterialIcons.font,
+    ...Ionicons.font,
+  });
 
   useEffect(() => {
-    async function loadFonts() {
-      try {
-        await Font.loadAsync(Feather.font);
-        setFontsLoaded(true);
-      } catch (error) {
-        console.log("Error loading fonts:", error);
-        setFontsLoaded(true);
-      }
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync();
     }
-    loadFonts();
-  }, []);
+  }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded && !fontError) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.dark.primary} />
