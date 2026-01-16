@@ -1,6 +1,6 @@
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Feather } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet } from "react-native";
 
@@ -57,7 +57,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="home" size={size} color={color} />
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
         }}
       />
@@ -67,7 +67,7 @@ export default function MainTabNavigator() {
         options={{
           title: "History",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="bar-chart-2" size={size} color={color} />
+            <Ionicons name="stats-chart-outline" size={size} color={color} />
           ),
         }}
       />
@@ -77,7 +77,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Events",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="calendar" size={size} color={color} />
+            <Ionicons name="calendar-outline" size={size} color={color} />
           ),
         }}
       />
@@ -87,7 +87,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Goals",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="target" size={size} color={color} />
+            <Ionicons name="flag-outline" size={size} color={color} />
           ),
         }}
       />
@@ -97,7 +97,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="user" size={size} color={color} />
+            <Ionicons name="person-outline" size={size} color={color} />
           ),
         }}
       />

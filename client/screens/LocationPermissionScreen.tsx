@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { StyleSheet, View, Platform, Linking, Alert, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -105,25 +105,25 @@ export default function LocationPermissionScreen() {
 
         <Card style={styles.featuresCard}>
           <View style={styles.featureRow}>
-            <Feather name="navigation" size={20} color={theme.primary} />
+            <Ionicons name="navigate-outline" size={20} color={theme.primary} />
             <ThemedText type="body" style={styles.featureText}>
               Real-time GPS tracking during runs
             </ThemedText>
           </View>
           <View style={styles.featureRow}>
-            <Feather name="activity" size={20} color={theme.primary} />
+            <Ionicons name="pulse-outline" size={20} color={theme.primary} />
             <ThemedText type="body" style={styles.featureText}>
               Accurate distance and pace calculation
             </ThemedText>
           </View>
           <View style={styles.featureRow}>
-            <Feather name="map" size={20} color={theme.primary} />
+            <Ionicons name="map-outline" size={20} color={theme.primary} />
             <ThemedText type="body" style={styles.featureText}>
               Route mapping and elevation data
             </ThemedText>
           </View>
           <View style={styles.featureRow}>
-            <Feather name="smartphone" size={20} color={theme.primary} />
+            <Ionicons name="phone-portrait-outline" size={20} color={theme.primary} />
             <ThemedText type="body" style={styles.featureText}>
               Background tracking (screen locked)
             </ThemedText>
@@ -131,7 +131,7 @@ export default function LocationPermissionScreen() {
         </Card>
 
         <View style={styles.privacyNote}>
-          <Feather name="shield" size={18} color={theme.textSecondary} />
+          <Ionicons name="shield-checkmark-outline" size={18} color={theme.textSecondary} />
           <ThemedText type="small" style={[styles.privacyText, { color: theme.textSecondary }]}>
             Your location data is only used during runs and is never shared with third parties.
           </ThemedText>
