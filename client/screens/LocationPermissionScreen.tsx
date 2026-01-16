@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { StyleSheet, View, Platform, Linking, Alert } from "react-native";
+import { StyleSheet, View, Platform, Linking, Alert, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Location from "expo-location";
@@ -89,9 +89,11 @@ export default function LocationPermissionScreen() {
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top + Spacing["3xl"], paddingBottom: insets.bottom + Spacing.xl }]}>
       <View style={styles.content}>
-        <View style={[styles.iconContainer, { backgroundColor: theme.primary + "20" }]}>
-          <Feather name="map-pin" size={64} color={theme.primary} />
-        </View>
+        <Image
+          source={require("../../assets/images/location-icon.png")}
+          style={styles.locationIcon}
+          resizeMode="contain"
+        />
 
         <ThemedText type="h1" style={styles.title}>
           Enable Location
@@ -166,12 +168,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  iconContainer: {
+  locationIcon: {
     width: 120,
     height: 120,
-    borderRadius: 60,
-    justifyContent: "center",
-    alignItems: "center",
     marginBottom: Spacing["2xl"],
   },
   title: {
