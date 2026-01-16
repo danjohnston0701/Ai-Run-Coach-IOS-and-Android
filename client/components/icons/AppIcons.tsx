@@ -428,3 +428,61 @@ export function IconWind({ size = 24, color = "#00D4FF" }: IconProps) {
     </Svg>
   );
 }
+
+export function IconCloud({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z" />
+    </Svg>
+  );
+}
+
+export function IconPlus({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Line x1="12" y1="5" x2="12" y2="19" />
+      <Line x1="5" y1="12" x2="19" y2="12" />
+    </Svg>
+  );
+}
+
+export function IconTrophy({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M6 9H4.5a2.5 2.5 0 010-5H6" />
+      <Path d="M18 9h1.5a2.5 2.5 0 000-5H18" />
+      <Path d="M4 22h16" />
+      <Path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+      <Path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+      <Path d="M18 2H6v7a6 6 0 0012 0V2z" />
+    </Svg>
+  );
+}
+
+export function IconRefresh({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Polyline points="23 4 23 10 17 10" />
+      <Path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+    </Svg>
+  );
+}
+
+export function IconSearch({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Circle cx="11" cy="11" r="8" />
+      <Line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </Svg>
+  );
+}
+
+export function IconMenu({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Line x1="3" y1="12" x2="21" y2="12" />
+      <Line x1="3" y1="6" x2="21" y2="6" />
+      <Line x1="3" y1="18" x2="21" y2="18" />
+    </Svg>
+  );
+}
