@@ -131,8 +131,8 @@ export default function LocationPermissionScreen() {
         </Card>
 
         <View style={styles.privacyNote}>
-          <Feather name="shield" size={16} color={theme.textMuted} />
-          <ThemedText type="small" style={[styles.privacyText, { color: theme.textMuted }]}>
+          <Feather name="shield" size={18} color={theme.textSecondary} />
+          <ThemedText type="small" style={[styles.privacyText, { color: theme.textSecondary }]}>
             Your location data is only used during runs and is never shared with third parties.
           </ThemedText>
         </View>
