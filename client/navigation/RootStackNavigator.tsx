@@ -5,6 +5,7 @@ import MainTabNavigator from "@/navigation/MainTabNavigator";
 import LoginScreen from "@/screens/LoginScreen";
 import LocationPermissionScreen from "@/screens/LocationPermissionScreen";
 import PreRunScreen from "@/screens/PreRunScreen";
+import RoutePreviewScreen from "@/screens/RoutePreviewScreen";
 import RunSessionScreen from "@/screens/RunSessionScreen";
 import RunInsightsScreen from "@/screens/RunInsightsScreen";
 import NotificationsScreen from "@/screens/NotificationsScreen";
@@ -24,6 +25,15 @@ export type RootStackParamList = {
     initialHours?: number;
     initialMinutes?: number;
     initialSeconds?: number;
+  };
+  RoutePreview: {
+    mode: 'route' | 'free';
+    activityType: 'run' | 'walk';
+    targetDistance: number;
+    targetTime: { hours: number; minutes: number; seconds: number } | null;
+    liveTracking: boolean;
+    aiCoach: boolean;
+    difficulty?: string;
   };
   RunSession: { 
     mode?: 'route' | 'free';
@@ -84,6 +94,14 @@ export default function RootStackNavigator() {
             component={PreRunScreen}
             options={{
               headerTitle: "Run Setup",
+              presentation: "modal",
+            }}
+          />
+          <Stack.Screen
+            name="RoutePreview"
+            component={RoutePreviewScreen}
+            options={{
+              headerTitle: "Choose Route",
               presentation: "modal",
             }}
           />
