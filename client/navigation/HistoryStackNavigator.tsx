@@ -1,25 +1,25 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
-import ProfileScreen from "@/screens/ProfileScreen";
+import RunHistoryScreen from "@/screens/RunHistoryScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
-export type ProfileStackParamList = {
-  Profile: undefined;
+export type HistoryStackParamList = {
+  RunHistory: undefined;
 };
 
-const Stack = createNativeStackNavigator<ProfileStackParamList>();
+const Stack = createNativeStackNavigator<HistoryStackParamList>();
 
-export default function ProfileStackNavigator() {
+export default function HistoryStackNavigator() {
   const screenOptions = useScreenOptions();
 
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen
-        name="Profile"
-        component={ProfileScreen}
+        name="RunHistory"
+        component={RunHistoryScreen}
         options={{
-          headerTitle: "Profile",
+          headerTitle: "Run History",
         }}
       />
     </Stack.Navigator>

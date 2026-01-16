@@ -1,30 +1,61 @@
 import { Platform } from "react-native";
 
-const tintColorLight = "#007AFF";
-const tintColorDark = "#0A84FF";
+// AI Run Coach brand colors - dark theme with energetic running aesthetic
+const primaryColor = "#00D4FF"; // Bright cyan/teal - energetic, modern
+const primaryDark = "#00B8E6";
+const accentColor = "#FF6B35"; // Warm orange for CTAs and highlights
+const successColor = "#00E676";
+const warningColor = "#FFB300";
+const errorColor = "#FF5252";
 
 export const Colors = {
   light: {
-    text: "#11181C",
-    buttonText: "#FFFFFF",
-    tabIconDefault: "#687076",
-    tabIconSelected: tintColorLight,
-    link: "#007AFF",
-    backgroundRoot: "#FFFFFF", // Elevation 0
-    backgroundDefault: "#F2F2F2", // Elevation 1
-    backgroundSecondary: "#E6E6E6", // Elevation 2
-    backgroundTertiary: "#D9D9D9", // Elevation 3
+    text: "#FFFFFF",
+    textSecondary: "#A0AEC0",
+    textMuted: "#718096",
+    buttonText: "#0A0F1A",
+    tabIconDefault: "#718096",
+    tabIconSelected: primaryColor,
+    link: primaryColor,
+    primary: primaryColor,
+    primaryDark: primaryDark,
+    accent: accentColor,
+    success: successColor,
+    warning: warningColor,
+    error: errorColor,
+    backgroundRoot: "#0A0F1A", // Deep dark blue-black
+    backgroundDefault: "#111827", // Slightly lighter
+    backgroundSecondary: "#1F2937", // Card backgrounds
+    backgroundTertiary: "#374151", // Elevated elements
+    border: "#2D3748",
+    borderLight: "#4A5568",
+    cardGradientStart: "#1A1F2E",
+    cardGradientEnd: "#0D1117",
+    overlay: "rgba(0, 0, 0, 0.7)",
   },
   dark: {
-    text: "#ECEDEE",
-    buttonText: "#FFFFFF",
-    tabIconDefault: "#9BA1A6",
-    tabIconSelected: tintColorDark,
-    link: "#0A84FF",
-    backgroundRoot: "#1F2123", // Elevation 0
-    backgroundDefault: "#2A2C2E", // Elevation 1
-    backgroundSecondary: "#353739", // Elevation 2
-    backgroundTertiary: "#404244", // Elevation 3
+    text: "#FFFFFF",
+    textSecondary: "#A0AEC0",
+    textMuted: "#718096",
+    buttonText: "#0A0F1A",
+    tabIconDefault: "#718096",
+    tabIconSelected: primaryColor,
+    link: primaryColor,
+    primary: primaryColor,
+    primaryDark: primaryDark,
+    accent: accentColor,
+    success: successColor,
+    warning: warningColor,
+    error: errorColor,
+    backgroundRoot: "#0A0F1A",
+    backgroundDefault: "#111827",
+    backgroundSecondary: "#1F2937",
+    backgroundTertiary: "#374151",
+    border: "#2D3748",
+    borderLight: "#4A5568",
+    cardGradientStart: "#1A1F2E",
+    cardGradientEnd: "#0D1117",
+    overlay: "rgba(0, 0, 0, 0.7)",
   },
 };
 
@@ -38,40 +69,43 @@ export const Spacing = {
   "3xl": 32,
   "4xl": 40,
   "5xl": 48,
-  inputHeight: 48,
-  buttonHeight: 52,
+  "6xl": 64,
+  inputHeight: 52,
+  buttonHeight: 56,
 };
 
 export const BorderRadius = {
   xs: 8,
   sm: 12,
-  md: 18,
-  lg: 24,
-  xl: 30,
-  "2xl": 40,
-  "3xl": 50,
+  md: 16,
+  lg: 20,
+  xl: 24,
+  "2xl": 32,
+  "3xl": 40,
   full: 9999,
 };
 
 export const Typography = {
   h1: {
-    fontSize: 32,
-    lineHeight: 40,
+    fontSize: 36,
+    lineHeight: 44,
     fontWeight: "700" as const,
+    letterSpacing: -0.5,
   },
   h2: {
     fontSize: 28,
     lineHeight: 36,
     fontWeight: "700" as const,
+    letterSpacing: -0.3,
   },
   h3: {
-    fontSize: 24,
-    lineHeight: 32,
+    fontSize: 22,
+    lineHeight: 30,
     fontWeight: "600" as const,
   },
   h4: {
-    fontSize: 20,
-    lineHeight: 28,
+    fontSize: 18,
+    lineHeight: 26,
     fontWeight: "600" as const,
   },
   body: {
@@ -79,27 +113,46 @@ export const Typography = {
     lineHeight: 24,
     fontWeight: "400" as const,
   },
+  bodyLarge: {
+    fontSize: 18,
+    lineHeight: 28,
+    fontWeight: "400" as const,
+  },
   small: {
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "400" as const,
   },
+  caption: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "500" as const,
+    letterSpacing: 0.5,
+  },
   link: {
     fontSize: 16,
     lineHeight: 24,
-    fontWeight: "400" as const,
+    fontWeight: "500" as const,
+  },
+  stat: {
+    fontSize: 32,
+    lineHeight: 40,
+    fontWeight: "700" as const,
+    letterSpacing: -1,
+  },
+  statLarge: {
+    fontSize: 48,
+    lineHeight: 56,
+    fontWeight: "700" as const,
+    letterSpacing: -2,
   },
 };
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: "system-ui",
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: "ui-serif",
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: "ui-rounded",
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: "ui-monospace",
   },
   default: {
@@ -109,10 +162,40 @@ export const Fonts = Platform.select({
     mono: "monospace",
   },
   web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+    sans: "Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
     serif: "Georgia, 'Times New Roman', serif",
-    rounded:
-      "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
+    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
     mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   },
 });
+
+export const Shadows = {
+  sm: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  md: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  lg: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  glow: {
+    shadowColor: primaryColor,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 0,
+  },
+};
