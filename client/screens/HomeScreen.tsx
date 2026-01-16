@@ -71,6 +71,7 @@ export default function HomeScreen({ navigation }: any) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [location, setLocation] = useState<LocationData | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
 
   // Route planning state
   const [targetDistance, setTargetDistance] = useState(5);
@@ -150,6 +151,7 @@ export default function HomeScreen({ navigation }: any) {
     try {
       setLoadingLocation(true);
       const { status } = await Location.getForegroundPermissionsAsync();
+      setLocationPermissionGranted(status === "granted");
       if (status !== "granted") {
         setLoadingLocation(false);
         return;
@@ -329,39 +331,41 @@ export default function HomeScreen({ navigation }: any) {
         </View>
       </View>
 
-      {/* Location Card */}
-      <Card style={[styles.locationCard, { borderColor: theme.primary }]}>
-        <View style={styles.locationHeader}>
-          <View style={styles.locationLabel}>
-            <IconMapPin size={16} color={theme.primary} />
-            <ThemedText type="body" style={{ marginLeft: Spacing.xs, color: theme.text }}>
-              Location
-            </ThemedText>
+      {/* Location Card - hidden on native when permission granted (device GPS is more accurate) */}
+      {(Platform.OS === "web" || !locationPermissionGranted) ? (
+        <Card style={[styles.locationCard, { borderColor: theme.primary }]}>
+          <View style={styles.locationHeader}>
+            <View style={styles.locationLabel}>
+              <IconMapPin size={16} color={theme.primary} />
+              <ThemedText type="body" style={{ marginLeft: Spacing.xs, color: theme.text }}>
+                Location
+              </ThemedText>
+            </View>
+            <View style={styles.locationActions}>
+              <Pressable onPress={handleRefreshLocation} style={styles.locationAction}>
+                <ThemedText type="link">Refresh</ThemedText>
+              </Pressable>
+              <Pressable style={styles.locationAction}>
+                <ThemedText type="link">Search</ThemedText>
+              </Pressable>
+            </View>
           </View>
-          <View style={styles.locationActions}>
-            <Pressable onPress={handleRefreshLocation} style={styles.locationAction}>
-              <ThemedText type="link">Refresh</ThemedText>
-            </Pressable>
-            <Pressable style={styles.locationAction}>
-              <ThemedText type="link">Search</ThemedText>
-            </Pressable>
-          </View>
-        </View>
-        {location ? (
-          <>
-            <ThemedText type="body" style={{ marginTop: Spacing.sm }}>
-              {location.address}
+          {location ? (
+            <>
+              <ThemedText type="body" style={{ marginTop: Spacing.sm }}>
+                {location.address}
+              </ThemedText>
+              <ThemedText type="small" style={{ color: theme.primary, marginTop: Spacing.xs }}>
+                {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+              </ThemedText>
+            </>
+          ) : (
+            <ThemedText type="body" style={{ color: theme.textMuted, marginTop: Spacing.sm }}>
+              {loadingLocation ? "Getting location..." : "Enable location access"}
             </ThemedText>
-            <ThemedText type="small" style={{ color: theme.primary, marginTop: Spacing.xs }}>
-              {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
-            </ThemedText>
-          </>
-        ) : (
-          <ThemedText type="body" style={{ color: theme.textMuted, marginTop: Spacing.sm }}>
-            {loadingLocation ? "Getting location..." : "Enable location access"}
-          </ThemedText>
-        )}
-      </Card>
+          )}
+        </Card>
+      ) : null}
 
       {/* Target Distance */}
       <View style={styles.section}>
