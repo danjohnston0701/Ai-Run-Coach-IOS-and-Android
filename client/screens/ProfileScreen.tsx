@@ -1,21 +1,31 @@
-import React, { useState } from "react";
+import React, { useState, ReactNode } from "react";
 import { StyleSheet, View, Pressable, Image, Alert, Platform, Linking } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import {
+  IconProfile,
+  IconMic,
+  IconVolume,
+  IconActivity,
+  IconTarget,
+  IconBell,
+  IconGlobe,
+  IconCreditCard,
+  IconChevronRight,
+} from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Spacing, BorderRadius } from "@/constants/theme";
 
 interface MenuItemProps {
-  icon: keyof typeof Feather.glyphMap;
+  icon: ReactNode;
   label: string;
   value?: string;
   onPress: () => void;
@@ -38,7 +48,7 @@ function MenuItem({ icon, label, value, onPress, color, showArrow = true }: Menu
       ]}
     >
       <View style={[styles.menuIconContainer, { backgroundColor: iconColor + "20" }]}>
-        <Feather name={icon} size={18} color={iconColor} />
+        {icon}
       </View>
       <View style={styles.menuContent}>
         <ThemedText type="body">{label}</ThemedText>
@@ -49,7 +59,7 @@ function MenuItem({ icon, label, value, onPress, color, showArrow = true }: Menu
         ) : null}
       </View>
       {showArrow ? (
-        <Feather name="chevron-right" size={20} color={theme.textMuted} />
+        <IconChevronRight size={20} color={theme.textMuted} />
       ) : null}
     </Pressable>
   );
@@ -125,7 +135,7 @@ export default function ProfileScreen({ navigation }: any) {
           {user?.profilePic ? (
             <Image source={{ uri: user.profilePic }} style={styles.avatar} />
           ) : (
-            <Feather name="user" size={40} color={theme.textMuted} />
+            <IconProfile size={40} color={theme.textMuted} />
           )}
         </View>
         <ThemedText type="h3" style={styles.userName}>
@@ -148,7 +158,7 @@ export default function ProfileScreen({ navigation }: any) {
         </ThemedText>
         <Card style={styles.menuCard}>
           <MenuItem
-            icon="mic"
+            icon={<IconMic size={18} color={theme.primary} />}
             label="Coach Voice"
             value={`${user?.coachGender || "Male"} - ${user?.coachAccent || "British"}`}
             onPress={() => navigation.navigate("CoachSettings")}
@@ -156,7 +166,7 @@ export default function ProfileScreen({ navigation }: any) {
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <MenuItem
-            icon="volume-2"
+            icon={<IconVolume size={18} color={theme.primary} />}
             label="Coach Tone"
             value={user?.coachTone || "Energetic"}
             onPress={() => navigation.navigate("CoachSettings")}
@@ -164,7 +174,7 @@ export default function ProfileScreen({ navigation }: any) {
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <MenuItem
-            icon="user"
+            icon={<IconProfile size={18} color={theme.primary} />}
             label="Coach Name"
             value={user?.coachName || "AI Coach"}
             onPress={() => navigation.navigate("CoachSettings")}
@@ -180,14 +190,14 @@ export default function ProfileScreen({ navigation }: any) {
         </ThemedText>
         <Card style={styles.menuCard}>
           <MenuItem
-            icon="user"
+            icon={<IconProfile size={18} color={theme.accent} />}
             label="Personal Details"
             onPress={() => navigation.navigate("PersonalDetails")}
             color={theme.accent}
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <MenuItem
-            icon="activity"
+            icon={<IconActivity size={18} color={theme.success} />}
             label="Fitness Level"
             value={user?.fitnessLevel || "Not set"}
             onPress={() => navigation.navigate("FitnessSettings")}
@@ -195,7 +205,7 @@ export default function ProfileScreen({ navigation }: any) {
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <MenuItem
-            icon="target"
+            icon={<IconTarget size={18} color={theme.warning} />}
             label="Goals"
             onPress={() => navigation.navigate("GoalsTab")}
             color={theme.warning}
@@ -210,21 +220,21 @@ export default function ProfileScreen({ navigation }: any) {
         </ThemedText>
         <Card style={styles.menuCard}>
           <MenuItem
-            icon="bell"
+            icon={<IconBell size={18} color={theme.primary} />}
             label="Notifications"
             onPress={() => navigation.navigate("NotificationSettings")}
             color={theme.primary}
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <MenuItem
-            icon="globe"
+            icon={<IconGlobe size={18} color={theme.textMuted} />}
             label="Open Web App"
             onPress={openWebApp}
             color={theme.textMuted}
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <MenuItem
-            icon="credit-card"
+            icon={<IconCreditCard size={18} color={theme.warning} />}
             label="Subscription"
             value={badge.label}
             onPress={openWebApp}

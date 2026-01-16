@@ -4,8 +4,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RouteProp } from "@react-navigation/native";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+
+import {
+  IconFlag,
+  IconCpu,
+  IconThermometer,
+  IconDroplet,
+  IconWind,
+  IconMic,
+  IconClock,
+  IconZap,
+  IconHeart,
+  IconActivity,
+  IconTrending,
+  IconRepeat,
+} from "@/components/icons/AppIcons";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
@@ -166,7 +180,7 @@ export default function RunInsightsScreen({
         <StatCard
           label="Duration"
           value={formatTime(run.duration)}
-          icon="clock"
+          icon={<IconClock size={24} color={theme.primary} />}
           color={theme.primary}
           style={styles.statCard}
         />
@@ -174,7 +188,7 @@ export default function RunInsightsScreen({
           label="Avg Pace"
           value={run.avgPace || "--:--"}
           unit="/km"
-          icon="zap"
+          icon={<IconZap size={24} color={theme.accent} />}
           color={theme.accent}
           style={styles.statCard}
         />
@@ -183,7 +197,7 @@ export default function RunInsightsScreen({
             label="Avg Heart Rate"
             value={run.avgHeartRate.toString()}
             unit="bpm"
-            icon="heart"
+            icon={<IconHeart size={24} color={theme.error} />}
             color={theme.error}
             style={styles.statCard}
           />
@@ -193,7 +207,7 @@ export default function RunInsightsScreen({
             label="Calories"
             value={run.calories.toString()}
             unit="kcal"
-            icon="activity"
+            icon={<IconActivity size={24} color={theme.warning} />}
             color={theme.warning}
             style={styles.statCard}
           />
@@ -203,7 +217,7 @@ export default function RunInsightsScreen({
             label="Elevation Gain"
             value={Math.round(run.elevationGain).toString()}
             unit="m"
-            icon="trending-up"
+            icon={<IconTrending size={24} color={theme.success} />}
             color={theme.success}
             style={styles.statCard}
           />
@@ -213,7 +227,7 @@ export default function RunInsightsScreen({
             label="Cadence"
             value={run.cadence.toString()}
             unit="spm"
-            icon="repeat"
+            icon={<IconRepeat size={24} color={theme.primary} />}
             color={theme.primary}
             style={styles.statCard}
           />
@@ -239,7 +253,7 @@ export default function RunInsightsScreen({
                 ]}
               >
                 <View style={styles.splitKm}>
-                  <Feather name="flag" size={14} color={theme.textMuted} />
+                  <IconFlag size={14} color={theme.textMuted} />
                   <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
                     Km {split.km}
                   </ThemedText>
@@ -262,7 +276,7 @@ export default function RunInsightsScreen({
           <Card gradient>
             <View style={styles.aiHeader}>
               <View style={[styles.aiIcon, { backgroundColor: theme.primary + "20" }]}>
-                <Feather name="cpu" size={20} color={theme.primary} />
+                <IconCpu size={20} color={theme.primary} />
               </View>
               <ThemedText type="small" style={{ color: theme.textSecondary }}>
                 Coach Insights
@@ -284,14 +298,14 @@ export default function RunInsightsScreen({
           <Card style={styles.weatherCard}>
             <View style={styles.weatherRow}>
               <View style={styles.weatherItem}>
-                <Feather name="thermometer" size={16} color={theme.textMuted} />
+                <IconThermometer size={16} color={theme.textMuted} />
                 <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
                   {run.weatherData.temperature}°C
                 </ThemedText>
               </View>
               {run.weatherData.humidity ? (
                 <View style={styles.weatherItem}>
-                  <Feather name="droplet" size={16} color={theme.textMuted} />
+                  <IconDroplet size={16} color={theme.textMuted} />
                   <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
                     {run.weatherData.humidity}%
                   </ThemedText>
@@ -299,7 +313,7 @@ export default function RunInsightsScreen({
               ) : null}
               {run.weatherData.windSpeed ? (
                 <View style={styles.weatherItem}>
-                  <Feather name="wind" size={16} color={theme.textMuted} />
+                  <IconWind size={16} color={theme.textMuted} />
                   <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
                     {run.weatherData.windSpeed} km/h
                   </ThemedText>
@@ -327,7 +341,7 @@ export default function RunInsightsScreen({
           {run.aiCoachingNotes.map((note: any, index: number) => (
             <Card key={index} style={styles.coachingNote}>
               <View style={styles.noteHeader}>
-                <Feather name="mic" size={14} color={theme.primary} />
+                <IconMic size={14} color={theme.primary} />
                 <ThemedText
                   type="caption"
                   style={{ color: theme.textMuted, marginLeft: Spacing.sm }}

@@ -6,8 +6,6 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
-import * as Font from "expo-font";
-import { Ionicons, Feather, MaterialIcons } from "@expo/vector-icons";
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
@@ -25,13 +23,9 @@ export default function App() {
   useEffect(() => {
     async function prepare() {
       try {
-        await Font.loadAsync({
-          ...Ionicons.font,
-          ...Feather.font,
-          ...MaterialIcons.font,
-        });
+        // SVG icons don't require font loading
       } catch (e) {
-        console.warn("Font loading error:", e);
+        console.warn("Initialization error:", e);
       } finally {
         setAppIsReady(true);
       }

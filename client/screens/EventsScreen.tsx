@@ -3,13 +3,22 @@ import { StyleSheet, View, FlatList, RefreshControl, Pressable } from "react-nat
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import {
+  IconUsers,
+  IconAward,
+  IconFlag,
+  IconCompass,
+  IconCalendar,
+  IconMapPin,
+  IconChevronRight,
+  IconRepeat,
+} from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
@@ -54,20 +63,21 @@ export default function EventsScreen({ navigation }: any) {
     setRefreshing(false);
   };
 
-  const getEventTypeIcon = (type?: string): keyof typeof Feather.glyphMap => {
+  const getEventTypeIcon = (type?: string, color?: string) => {
+    const iconColor = color || theme.textMuted;
     switch (type?.toLowerCase()) {
       case "parkrun":
-        return "users";
+        return <IconUsers size={20} color={iconColor} />;
       case "marathon":
       case "half_marathon":
-        return "award";
+        return <IconAward size={20} color={iconColor} />;
       case "10k":
       case "5k":
-        return "flag";
+        return <IconFlag size={20} color={iconColor} />;
       case "trail":
-        return "compass";
+        return <IconCompass size={20} color={iconColor} />;
       default:
-        return "calendar";
+        return <IconCalendar size={20} color={iconColor} />;
     }
   };
 
@@ -93,17 +103,14 @@ export default function EventsScreen({ navigation }: any) {
     return type.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
-  // Get unique countries
   const countries = [...new Set(events.map((e) => e.country))].sort();
 
-  // Filter events by country
   const filteredEvents = selectedCountry
     ? events.filter((e) => e.country === selectedCountry)
     : events;
 
   const renderEvent = ({ item }: { item: Event }) => {
     const typeColor = getEventTypeColor(item.eventType);
-    const typeIcon = getEventTypeIcon(item.eventType);
 
     return (
       <Pressable
@@ -122,20 +129,20 @@ export default function EventsScreen({ navigation }: any) {
       >
         <View style={styles.eventHeader}>
           <View style={[styles.eventTypeIcon, { backgroundColor: typeColor + "20" }]}>
-            <Feather name={typeIcon} size={20} color={typeColor} />
+            {getEventTypeIcon(item.eventType, typeColor)}
           </View>
           <View style={styles.eventHeaderText}>
             <ThemedText type="h4" numberOfLines={1}>
               {item.name}
             </ThemedText>
             <View style={styles.eventLocation}>
-              <Feather name="map-pin" size={12} color={theme.textMuted} />
+              <IconMapPin size={12} color={theme.textMuted} />
               <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                 {item.city ? `${item.city}, ` : ""}{item.country}
               </ThemedText>
             </View>
           </View>
-          <Feather name="chevron-right" size={20} color={theme.textMuted} />
+          <IconChevronRight size={20} color={theme.textMuted} />
         </View>
 
         <View style={styles.eventDetails}>
@@ -146,7 +153,7 @@ export default function EventsScreen({ navigation }: any) {
           </View>
           {item.scheduleType === "recurring" ? (
             <View style={styles.scheduleInfo}>
-              <Feather name="repeat" size={12} color={theme.textMuted} />
+              <IconRepeat size={12} color={theme.textMuted} />
               <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                 {item.recurrencePattern || "Recurring"}
               </ThemedText>
@@ -245,7 +252,7 @@ export default function EventsScreen({ navigation }: any) {
         }
         ListEmptyComponent={
           <EmptyState
-            icon="calendar"
+            icon={<IconCalendar size={48} color={theme.textMuted} />}
             title="No Events"
             description="Check back later for upcoming running events in your area"
           />

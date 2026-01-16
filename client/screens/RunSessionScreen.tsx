@@ -9,9 +9,16 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Feather } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
+
+import {
+  IconX,
+  IconFlag,
+  IconPlay,
+  IconPause,
+  IconSquare,
+} from "@/components/icons/AppIcons";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -321,7 +328,7 @@ export default function RunSessionScreen({
           },
         ]}
       >
-        <Feather name="x" size={24} color={theme.text} />
+        <IconX size={24} color={theme.text} />
       </Pressable>
 
       {/* Main Stats */}
@@ -366,7 +373,7 @@ export default function RunSessionScreen({
         {/* Last Split */}
         {kmSplits.length > 0 ? (
           <View style={[styles.splitCard, { backgroundColor: theme.backgroundSecondary }]}>
-            <Feather name="flag" size={16} color={theme.success} />
+            <IconFlag size={16} color={theme.success} />
             <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
               Km {kmSplits[kmSplits.length - 1].km}: {kmSplits[kmSplits.length - 1].pace}
             </ThemedText>
@@ -381,7 +388,7 @@ export default function RunSessionScreen({
             onPress={handleStart}
             style={[styles.startButton, { backgroundColor: theme.success }]}
           >
-            <Feather name="play" size={48} color={theme.buttonText} />
+            <IconPlay size={48} color={theme.buttonText} />
           </Pressable>
         ) : runState === "running" ? (
           <View style={styles.runningControls}>
@@ -389,7 +396,7 @@ export default function RunSessionScreen({
               onPress={handlePause}
               style={[styles.controlButton, { backgroundColor: theme.warning }]}
             >
-              <Feather name="pause" size={32} color={theme.buttonText} />
+              <IconPause size={32} color={theme.buttonText} />
             </Pressable>
             <Animated.View style={pulseStyle}>
               <View
@@ -405,7 +412,7 @@ export default function RunSessionScreen({
               onPress={handleStop}
               style={[styles.controlButton, { backgroundColor: theme.error }]}
             >
-              <Feather name="square" size={32} color={theme.buttonText} />
+              <IconSquare size={32} color={theme.buttonText} />
             </Pressable>
           </View>
         ) : runState === "paused" ? (
@@ -414,7 +421,7 @@ export default function RunSessionScreen({
               onPress={handleResume}
               style={[styles.controlButton, { backgroundColor: theme.success }]}
             >
-              <Feather name="play" size={32} color={theme.buttonText} />
+              <IconPlay size={32} color={theme.buttonText} />
             </Pressable>
             <ThemedText type="h4" style={{ color: theme.warning }}>
               PAUSED
@@ -423,7 +430,7 @@ export default function RunSessionScreen({
               onPress={handleStop}
               style={[styles.controlButton, { backgroundColor: theme.error }]}
             >
-              <Feather name="square" size={32} color={theme.buttonText} />
+              <IconSquare size={32} color={theme.buttonText} />
             </Pressable>
           </View>
         ) : null}

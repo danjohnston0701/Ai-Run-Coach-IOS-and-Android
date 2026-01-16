@@ -2,13 +2,13 @@ import React, { useState } from "react";
 import { StyleSheet, View, Image, Pressable, Platform, Linking, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
+import { IconProfile, IconMail, IconLock, IconAlertCircle } from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Spacing, BorderRadius } from "@/constants/theme";
@@ -57,7 +57,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     setLoading(true);
     try {
       if (isSignUp) {
-        // Handle registration - will need to use the auth context register method
         const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -70,7 +69,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           throw new Error(errorText || 'Registration failed');
         }
         
-        // After registration, log them in
         await login(email.trim(), password);
       } else {
         await login(email.trim(), password);
@@ -81,7 +79,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       console.log('[LoginScreen] Error:', errorMessage);
       setError(errorMessage);
       
-      // Also show an Alert on mobile for better visibility
       if (Platform.OS !== 'web') {
         Alert.alert('Login Failed', errorMessage);
       }
@@ -132,7 +129,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             placeholder="Your name"
             value={name}
             onChangeText={setName}
-            leftIcon="user"
+            leftIcon={<IconProfile size={20} color={theme.textMuted} />}
             autoCapitalize="words"
             autoComplete="name"
             testID="input-name"
@@ -144,7 +141,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           placeholder="you@example.com"
           value={email}
           onChangeText={setEmail}
-          leftIcon="mail"
+          leftIcon={<IconMail size={20} color={theme.textMuted} />}
           keyboardType="email-address"
           autoCapitalize="none"
           autoComplete="email"
@@ -156,7 +153,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           placeholder="Enter your password"
           value={password}
           onChangeText={setPassword}
-          leftIcon="lock"
+          leftIcon={<IconLock size={20} color={theme.textMuted} />}
           secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}
@@ -170,7 +167,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             placeholder="Confirm your password"
             value={confirmPassword}
             onChangeText={setConfirmPassword}
-            leftIcon="lock"
+            leftIcon={<IconLock size={20} color={theme.textMuted} />}
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
@@ -181,7 +178,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
         {error ? (
           <View style={[styles.errorContainer, { backgroundColor: theme.error + "20" }]}>
-            <Feather name="alert-circle" size={16} color={theme.error} />
+            <IconAlertCircle size={16} color={theme.error} />
             <ThemedText type="small" style={{ color: theme.error, marginLeft: Spacing.sm }}>
               {error}
             </ThemedText>

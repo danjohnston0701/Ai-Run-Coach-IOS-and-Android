@@ -3,13 +3,21 @@ import { StyleSheet, View, FlatList, RefreshControl, Pressable } from "react-nat
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import {
+  IconChevronRight,
+  IconClock,
+  IconZap,
+  IconHeart,
+  IconTrending,
+  IconMic,
+  IconMap,
+} from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
@@ -135,7 +143,7 @@ export default function RunHistoryScreen({ navigation }: any) {
             </View>
           ) : null}
         </View>
-        <Feather name="chevron-right" size={20} color={theme.textMuted} />
+        <IconChevronRight size={20} color={theme.textMuted} />
       </View>
 
       <View style={styles.runMainStats}>
@@ -148,20 +156,20 @@ export default function RunHistoryScreen({ navigation }: any) {
 
       <View style={styles.runStats}>
         <View style={styles.statItem}>
-          <Feather name="clock" size={14} color={theme.textMuted} />
+          <IconClock size={14} color={theme.textMuted} />
           <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 6 }}>
             {formatDuration(item.duration)}
           </ThemedText>
         </View>
         <View style={styles.statItem}>
-          <Feather name="zap" size={14} color={theme.textMuted} />
+          <IconZap size={14} color={theme.textMuted} />
           <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 6 }}>
             {item.avgPace || "--:--"}/km
           </ThemedText>
         </View>
         {item.avgHeartRate ? (
           <View style={styles.statItem}>
-            <Feather name="heart" size={14} color={theme.error} />
+            <IconHeart size={14} color={theme.error} />
             <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 6 }}>
               {item.avgHeartRate} bpm
             </ThemedText>
@@ -169,7 +177,7 @@ export default function RunHistoryScreen({ navigation }: any) {
         ) : null}
         {item.elevationGain ? (
           <View style={styles.statItem}>
-            <Feather name="trending-up" size={14} color={theme.success} />
+            <IconTrending size={14} color={theme.success} />
             <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 6 }}>
               {Math.round(item.elevationGain)}m
             </ThemedText>
@@ -179,7 +187,7 @@ export default function RunHistoryScreen({ navigation }: any) {
 
       {item.aiCoachEnabled ? (
         <View style={[styles.aiCoachBadge, { backgroundColor: theme.primary + "20" }]}>
-          <Feather name="mic" size={12} color={theme.primary} />
+          <IconMic size={12} color={theme.primary} />
           <ThemedText type="caption" style={{ color: theme.primary, marginLeft: 4 }}>
             AI Coached
           </ThemedText>
@@ -214,7 +222,7 @@ export default function RunHistoryScreen({ navigation }: any) {
       }
       ListEmptyComponent={
         <EmptyState
-          icon="map"
+          icon={<IconMap size={48} color={theme.textMuted} />}
           title="No Runs Yet"
           description="Start your first run and track your progress with AI coaching"
           actionLabel="Start Running"

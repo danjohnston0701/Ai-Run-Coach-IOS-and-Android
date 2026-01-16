@@ -3,13 +3,23 @@ import { StyleSheet, View, FlatList, RefreshControl, Pressable } from "react-nat
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import {
+  IconCalendar,
+  IconClock,
+  IconHeart,
+  IconRepeat,
+  IconTarget,
+  IconCheck,
+  IconChevronRight,
+  IconMap,
+  IconFlag,
+} from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
@@ -53,18 +63,18 @@ export default function GoalsScreen({ navigation }: any) {
     setRefreshing(false);
   };
 
-  const getGoalTypeIcon = (type: string): keyof typeof Feather.glyphMap => {
+  const getGoalTypeIcon = (type: string, color: string) => {
     switch (type) {
       case "event":
-        return "calendar";
+        return <IconCalendar size={20} color={color} />;
       case "distance_time":
-        return "clock";
+        return <IconClock size={20} color={color} />;
       case "health_wellbeing":
-        return "heart";
+        return <IconHeart size={20} color={color} />;
       case "consistency":
-        return "repeat";
+        return <IconRepeat size={20} color={color} />;
       default:
-        return "target";
+        return <IconTarget size={20} color={color} />;
     }
   };
 
@@ -106,7 +116,6 @@ export default function GoalsScreen({ navigation }: any) {
 
   const renderGoal = ({ item }: { item: Goal }) => {
     const typeColor = getGoalTypeColor(item.type);
-    const typeIcon = getGoalTypeIcon(item.type);
     const statusColor = getStatusColor(item.status);
     const progress = item.progressPercent || 0;
 
@@ -127,7 +136,7 @@ export default function GoalsScreen({ navigation }: any) {
       >
         <View style={styles.goalHeader}>
           <View style={[styles.goalTypeIcon, { backgroundColor: typeColor + "20" }]}>
-            <Feather name={typeIcon} size={20} color={typeColor} />
+            {getGoalTypeIcon(item.type, typeColor)}
           </View>
           <View style={styles.goalHeaderText}>
             <ThemedText type="h4" numberOfLines={1}>
@@ -135,7 +144,7 @@ export default function GoalsScreen({ navigation }: any) {
             </ThemedText>
             {item.targetDate ? (
               <View style={styles.targetDate}>
-                <Feather name="calendar" size={12} color={theme.textMuted} />
+                <IconCalendar size={12} color={theme.textMuted} />
                 <ThemedText type="small" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                   Target: {formatDate(item.targetDate)}
                 </ThemedText>
@@ -144,10 +153,10 @@ export default function GoalsScreen({ navigation }: any) {
           </View>
           {item.status === "completed" ? (
             <View style={[styles.statusBadge, { backgroundColor: theme.success + "20" }]}>
-              <Feather name="check" size={14} color={theme.success} />
+              <IconCheck size={14} color={theme.success} />
             </View>
           ) : (
-            <Feather name="chevron-right" size={20} color={theme.textMuted} />
+            <IconChevronRight size={20} color={theme.textMuted} />
           )}
         </View>
 
@@ -183,7 +192,7 @@ export default function GoalsScreen({ navigation }: any) {
         <View style={styles.goalDetails}>
           {item.distanceTarget ? (
             <View style={styles.detailItem}>
-              <Feather name="map" size={12} color={theme.textMuted} />
+              <IconMap size={12} color={theme.textMuted} />
               <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                 {item.distanceTarget.replace(/_/g, " ")}
               </ThemedText>
@@ -191,7 +200,7 @@ export default function GoalsScreen({ navigation }: any) {
           ) : null}
           {item.weeklyRunTarget ? (
             <View style={styles.detailItem}>
-              <Feather name="repeat" size={12} color={theme.textMuted} />
+              <IconRepeat size={12} color={theme.textMuted} />
               <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                 {item.weeklyRunTarget}x/week
               </ThemedText>
@@ -199,7 +208,7 @@ export default function GoalsScreen({ navigation }: any) {
           ) : null}
           {item.eventName ? (
             <View style={styles.detailItem}>
-              <Feather name="flag" size={12} color={theme.textMuted} />
+              <IconFlag size={12} color={theme.textMuted} />
               <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
                 {item.eventName}
               </ThemedText>
@@ -214,7 +223,6 @@ export default function GoalsScreen({ navigation }: any) {
     return <LoadingScreen message="Loading your goals..." />;
   }
 
-  // Separate active and completed goals
   const activeGoals = goals.filter((g) => g.status === "active");
   const completedGoals = goals.filter((g) => g.status === "completed");
 
@@ -247,7 +255,7 @@ export default function GoalsScreen({ navigation }: any) {
       }
       ListEmptyComponent={
         <EmptyState
-          icon="target"
+          icon={<IconTarget size={48} color={theme.textMuted} />}
           title="No Goals Yet"
           description="Set your first running goal and track your progress towards achieving it"
           actionLabel="Create Goal"

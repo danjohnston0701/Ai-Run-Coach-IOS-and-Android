@@ -1,14 +1,14 @@
-import React from "react";
+import React, { ReactNode } from "react";
 import { StyleSheet, View, ViewStyle } from "react-native";
-import { Feather } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
+import { IconInbox } from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 
 interface EmptyStateProps {
-  icon?: keyof typeof Feather.glyphMap;
+  icon?: ReactNode;
   title: string;
   description?: string;
   actionLabel?: string;
@@ -17,7 +17,7 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({
-  icon = "inbox",
+  icon,
   title,
   description,
   actionLabel,
@@ -29,7 +29,7 @@ export function EmptyState({
   return (
     <View style={[styles.container, style]}>
       <View style={[styles.iconContainer, { backgroundColor: theme.backgroundSecondary }]}>
-        <Feather name={icon} size={48} color={theme.textMuted} />
+        {icon ? icon : <IconInbox size={48} color={theme.textMuted} />}
       </View>
       <ThemedText type="h4" style={styles.title}>
         {title}

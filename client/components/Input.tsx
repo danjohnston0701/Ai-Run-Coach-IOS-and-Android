@@ -1,4 +1,4 @@
-import React, { forwardRef, useState } from "react";
+import React, { forwardRef, useState, ReactNode } from "react";
 import {
   StyleSheet,
   TextInput,
@@ -8,7 +8,6 @@ import {
   ViewStyle,
   StyleProp,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -16,14 +15,15 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
+import { IconEye, IconEyeOff } from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing, Colors } from "@/constants/theme";
 
 interface InputProps extends TextInputProps {
   label?: string;
   error?: string;
-  leftIcon?: keyof typeof Feather.glyphMap;
-  rightIcon?: keyof typeof Feather.glyphMap;
+  leftIcon?: ReactNode;
+  rightIcon?: ReactNode;
   onRightIconPress?: () => void;
   containerStyle?: StyleProp<ViewStyle>;
 }
@@ -86,12 +86,9 @@ export const Input = forwardRef<TextInput, InputProps>(
           ]}
         >
           {leftIcon ? (
-            <Feather
-              name={leftIcon}
-              size={20}
-              color={isFocused ? theme.primary : theme.textMuted}
-              style={styles.leftIcon}
-            />
+            <View style={styles.leftIcon}>
+              {leftIcon}
+            </View>
           ) : null}
           <TextInput
             ref={ref}
@@ -115,11 +112,11 @@ export const Input = forwardRef<TextInput, InputProps>(
               style={styles.rightIcon}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Feather
-                name={isPasswordVisible ? "eye-off" : "eye"}
-                size={22}
-                color={theme.textSecondary}
-              />
+              {isPasswordVisible ? (
+                <IconEyeOff size={22} color={theme.textSecondary} />
+              ) : (
+                <IconEye size={22} color={theme.textSecondary} />
+              )}
             </Pressable>
           ) : rightIcon ? (
             <Pressable
@@ -127,7 +124,7 @@ export const Input = forwardRef<TextInput, InputProps>(
               style={styles.rightIcon}
               disabled={!onRightIconPress}
             >
-              <Feather name={rightIcon} size={20} color={theme.textMuted} />
+              {rightIcon}
             </Pressable>
           ) : null}
         </AnimatedView>
