@@ -77,7 +77,7 @@ interface RouteData {
 interface CoachMessage {
   text: string;
   timestamp: number;
-  type: "encouragement" | "pace" | "navigation" | "milestone";
+  type: "encouragement" | "pace" | "navigation" | "milestone" | "terrain" | "weather" | string;
 }
 
 const theme = Colors.dark;
@@ -188,6 +188,13 @@ export default function RunSessionScreen({
   const [elevationGain, setElevationGain] = useState(0);
   const [sessionKey] = useState(`session-${Date.now()}`);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [currentGrade, setCurrentGrade] = useState<number>(0);
+  const [weatherData, setWeatherData] = useState<{
+    temperature?: number;
+    humidity?: number;
+    windSpeed?: number;
+    conditions?: string;
+  } | null>(null);
 
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -198,6 +205,9 @@ export default function RunSessionScreen({
   const lastElevationRef = useRef<number | null>(null);
   const lastCoachTimeRef = useRef<number>(0);
   const lastPhaseCoachTimeRef = useRef<number>(0);
+  const lastHillCoachTimeRef = useRef<number>(0);
+  const lastDistanceForGradeRef = useRef<number>(0);
+  const recentCoachingTopicsRef = useRef<string[]>([]);
   const completedInstructionsRef = useRef<Set<number>>(new Set());
 
   const pulseAnim = useSharedValue(1);
@@ -436,6 +446,60 @@ export default function RunSessionScreen({
     });
   }, [aiCoachEnabled, getRunPhase, getAvailableStatement, saveCoachingLog]);
 
+  const hillCoachingStatements = {
+    uphill: [
+      "Lean slightly into this hill, pump your arms.",
+      "Short, quick steps. Focus on effort, not pace.",
+      "You're climbing well. Power through this section.",
+      "Hill coming up! Get ready to adjust your stride.",
+    ],
+    downhill: [
+      "Control your descent. Quick, light steps.",
+      "Don't overstride downhill - it's hard on your knees.",
+      "Let gravity help but stay in control.",
+    ],
+    crest: [
+      "Great climb! You've conquered that hill. Now settle back into your rhythm.",
+      "Well done on that incline! Level ground ahead.",
+    ],
+  };
+
+  const triggerHillCoaching = useCallback(async (grade: number, previousGrade: number) => {
+    if (!aiCoachEnabled || Date.now() - lastHillCoachTimeRef.current < 60000) return;
+    
+    const HILL_THRESHOLD = 5;
+    let hillType: "uphill" | "downhill" | "crest" | null = null;
+    
+    if (grade >= HILL_THRESHOLD) {
+      hillType = "uphill";
+    } else if (grade <= -HILL_THRESHOLD) {
+      hillType = "downhill";
+    } else if (previousGrade >= HILL_THRESHOLD && grade < HILL_THRESHOLD) {
+      hillType = "crest";
+    }
+    
+    if (!hillType) return;
+    
+    lastHillCoachTimeRef.current = Date.now();
+    const statements = hillCoachingStatements[hillType];
+    const statement = statements[Math.floor(Math.random() * statements.length)];
+    
+    setCoachMessages((prev) => [
+      ...prev.slice(-4),
+      {
+        text: statement,
+        timestamp: Date.now(),
+        type: "terrain",
+      },
+    ]);
+    
+    await saveCoachingLog({
+      eventType: "hill_coaching",
+      topic: hillType,
+      responseText: statement,
+    });
+  }, [aiCoachEnabled, saveCoachingLog]);
+
   const getCoachMessage = useCallback(async () => {
     if (!aiCoachEnabled || Date.now() - lastCoachTimeRef.current < 60000) return;
     
@@ -449,29 +513,49 @@ export default function RunSessionScreen({
         credentials: "include",
         body: JSON.stringify({
           userId: user?.id,
-          distance,
-          elapsedTime,
+          distanceKm: distance,
+          totalDistanceKm: routeData?.actualDistance,
           currentPace,
-          targetDistance: routeData?.actualDistance,
-          difficulty: routeData?.difficulty,
+          elapsedSeconds: elapsedTime,
+          userFitnessLevel: user?.fitnessLevel || "intermediate",
+          userName: user?.name,
+          exerciseType: routeData?.difficulty?.includes("walk") ? "walking" : "running",
+          terrain: {
+            currentAltitude: lastElevationRef.current,
+            currentGrade: currentGrade,
+            totalElevationGain: elevationGain,
+          },
+          weather: weatherData,
+          recentCoachingTopics: recentCoachingTopicsRef.current.slice(-3),
+          kmSplits: kmSplits.map((split) => ({
+            km: split.km,
+            pace: split.pace,
+          })),
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
         if (data.message) {
+          if (data.topic) {
+            recentCoachingTopicsRef.current = [
+              ...recentCoachingTopicsRef.current.slice(-4),
+              data.topic,
+            ];
+          }
+          
           setCoachMessages((prev) => [
             ...prev.slice(-4),
             {
               text: data.message,
               timestamp: Date.now(),
-              type: "encouragement",
+              type: data.topic || "encouragement",
             },
           ]);
           
           await saveCoachingLog({
             eventType: "ai_coach",
-            topic: "real_time_coaching",
+            topic: data.topic || "real_time_coaching",
             responseText: data.message,
           });
         }
@@ -482,7 +566,7 @@ export default function RunSessionScreen({
       console.log("Coach message error:", error);
       showToast("Coach temporarily unavailable");
     }
-  }, [aiCoachEnabled, distance, elapsedTime, currentPace, routeData, user, saveCoachingLog, showToast]);
+  }, [aiCoachEnabled, distance, elapsedTime, currentPace, routeData, user, currentGrade, elevationGain, weatherData, kmSplits, saveCoachingLog, showToast]);
 
   const updateNavigationInstruction = useCallback((lat: number, lng: number) => {
     if (!routeData?.turnInstructions?.length) return;
@@ -533,6 +617,17 @@ export default function RunSessionScreen({
             const elevDiff = newPoint.elevation - lastElevationRef.current;
             if (elevDiff > 0) {
               setElevationGain((prev) => prev + elevDiff);
+            }
+            
+            const distanceSinceLastGrade = distance - lastDistanceForGradeRef.current;
+            if (distanceSinceLastGrade >= 0.05) {
+              const previousGrade = currentGrade;
+              const horizontalDist = distanceSinceLastGrade * 1000;
+              const newGrade = horizontalDist > 0 ? (elevDiff / horizontalDist) * 100 : 0;
+              setCurrentGrade(newGrade);
+              lastDistanceForGradeRef.current = distance;
+              
+              triggerHillCoaching(newGrade, previousGrade);
             }
           }
           if (newPoint.elevation) {
