@@ -1,25 +1,25 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 /**
- * Gets the base URL for the AI Run Coach API server
+ * Gets the base URL for the API server (local proxy to production)
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
-  // Use the external API URL for AI Run Coach backend
-  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-  
-  if (apiUrl) {
-    return apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
-  }
-  
-  // Fallback to domain if API_URL not set
+  // Use the local server which proxies to the production API
+  // This ensures proper handling of mobile app requests
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
-    throw new Error("EXPO_PUBLIC_API_URL or EXPO_PUBLIC_DOMAIN must be set");
+    // Fallback for development
+    host = 'localhost:5000';
   }
 
-  let url = new URL(`https://${host}`);
+  // Ensure we're using https for non-localhost
+  const protocol = host.includes('localhost') || host.includes('127.0.0.1') 
+    ? 'http' 
+    : 'https';
+    
+  let url = new URL(`${protocol}://${host}`);
   return url.href.slice(0, -1); // Remove trailing slash
 }
 
