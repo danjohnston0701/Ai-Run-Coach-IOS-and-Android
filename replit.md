@@ -127,8 +127,9 @@ Preferred communication style: Simple, everyday language.
 - `POST /api/runs/:id/ai-insights` - Generate AI analysis
 
 ### Coaching
-- `POST /api/ai/coach` - Get AI coaching message
+- `POST /api/ai/coach` - Get AI coaching message (enhanced with terrain/weather data)
 - `POST /api/ai/tts` - Convert text to speech
+- `POST /api/coaching-logs/:sessionKey` - Persist coaching log entries
 
 ### Events
 - `GET /api/events/grouped` - Events by country
@@ -213,6 +214,46 @@ Run data must never be lost. The app implements:
 - Offline-first with sync when online
 - `dbSynced` flag tracks cloud sync status
 - Manual sync option in Run History
+
+## AI Coaching System (Advanced)
+
+### Phase-Based Coaching
+The AI coach uses different statements based on run progress:
+- **Early phase** (<10% or <2km): Warm-up, posture, breathing tips. NEVER mention fatigue.
+- **Mid phase** (40-50% or 3-5km): Rhythm, core engagement, form tips.
+- **Late phase** (75-90%): Fatigue management, mental strength, pain acknowledgment.
+- **Final phase** (90%+): Sprint, finish strong, empty the tank messages.
+- **Generic**: Any time - general encouragement.
+
+### Statement Repetition Limit
+Each coaching statement can be used a maximum of 3 times per run to prevent repetitive advice.
+
+### Hill-Aware Coaching
+Triggers when grade >= 5% (uphill) or <= -5% (downhill):
+- **Uphill**: "Lean into the hill, pump your arms", "Short quick steps"
+- **Downhill**: "Control your descent", "Quick light steps"
+- **Crest**: "Great climb! Settle back into your rhythm"
+
+### Weather-Aware Coaching
+Provides advice based on current weather conditions:
+- Hot (>25°C): Hydration reminders, intensity reduction
+- Cold (<5°C): Warm-up tips, extremity protection
+- High humidity (>80%): Pace adjustment, cooling tips
+- Windy (>25km/h): Posture tips, wind strategy
+- Rain: Footing awareness, visibility tips
+
+### Storage Keys (AsyncStorage)
+```typescript
+STORAGE_KEYS = {
+  USER_ID: 'userId',
+  USER_PROFILE: 'userProfile',
+  ACTIVE_RUN_SESSION: 'activeRunSession',
+  ACTIVE_ROUTE: 'activeRoute',
+  RUN_HISTORY: 'runHistory',
+  COACH_SETTINGS: 'coachSettings',
+  LOCATION_PERMISSION: 'locationPermissionAsked'
+}
+```
 
 ## Environment Variables Required
 - `DATABASE_URL` - PostgreSQL connection string
