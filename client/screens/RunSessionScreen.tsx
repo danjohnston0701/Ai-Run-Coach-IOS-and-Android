@@ -186,6 +186,8 @@ export default function RunSessionScreen({
   const [coachMessages, setCoachMessages] = useState<CoachMessage[]>([]);
   const [showMap, setShowMap] = useState(true);
   const [elevationGain, setElevationGain] = useState(0);
+  const [sessionKey] = useState(`session-${Date.now()}`);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -195,6 +197,7 @@ export default function RunSessionScreen({
   const lastKmTimeRef = useRef<number>(0);
   const lastElevationRef = useRef<number | null>(null);
   const lastCoachTimeRef = useRef<number>(0);
+  const lastPhaseCoachTimeRef = useRef<number>(0);
   const completedInstructionsRef = useRef<Set<number>>(new Set());
 
   const pulseAnim = useSharedValue(1);
@@ -317,6 +320,94 @@ export default function RunSessionScreen({
       autoSaveRef.current = null;
     }
   }, []);
+
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
+  }, []);
+
+  const saveCoachingLog = useCallback(async (log: {
+    eventType: string;
+    topic: string;
+    responseText: string;
+  }) => {
+    try {
+      const baseUrl = getApiUrl();
+      await fetch(`${baseUrl}/api/coaching-logs/${sessionKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          ...log,
+          timestamp: Date.now(),
+          userId: user?.id,
+        }),
+      });
+    } catch (error) {
+      console.log("Save coaching log error:", error);
+    }
+  }, [sessionKey, user]);
+
+  const phaseCoachingStatements = {
+    early: [
+      "Start easy, let your body warm up gradually.",
+      "Find your rhythm, focus on relaxed breathing.",
+      "Good start! Keep a comfortable pace.",
+      "Let your muscles warm up before pushing harder.",
+    ],
+    mid: [
+      "You're in the zone! Maintain this steady effort.",
+      "Great progress! Keep pushing forward.",
+      "Strong running! Stay focused on your form.",
+      "You're doing amazing! Keep up the momentum.",
+    ],
+    late: [
+      "The finish is getting closer! Push through!",
+      "You've got this! Stay mentally strong.",
+      "Final stretch ahead - give it your all!",
+      "Almost there! Your hard work is paying off.",
+    ],
+    final: [
+      "Sprint to the finish!",
+      "Last push! Leave nothing behind!",
+      "You're crushing it! Almost done!",
+      "Finish strong - you've earned this!",
+    ],
+  };
+
+  const getRunPhase = useCallback(() => {
+    const targetDist = routeData?.actualDistance || 5;
+    const progress = distance / targetDist;
+    if (progress < 0.25) return "early";
+    if (progress < 0.6) return "mid";
+    if (progress < 0.9) return "late";
+    return "final";
+  }, [distance, routeData]);
+
+  const triggerPhaseCoaching = useCallback(async () => {
+    if (!aiCoachEnabled || Date.now() - lastPhaseCoachTimeRef.current < 180000) return;
+    
+    const phase = getRunPhase();
+    const statements = phaseCoachingStatements[phase];
+    const statement = statements[Math.floor(Math.random() * statements.length)];
+    
+    lastPhaseCoachTimeRef.current = Date.now();
+    
+    setCoachMessages((prev) => [
+      ...prev.slice(-4),
+      {
+        text: statement,
+        timestamp: Date.now(),
+        type: "encouragement",
+      },
+    ]);
+    
+    await saveCoachingLog({
+      eventType: "phase_coaching",
+      topic: phase,
+      responseText: statement,
+    });
+  }, [aiCoachEnabled, getRunPhase, saveCoachingLog]);
 
   const getCoachMessage = useCallback(async () => {
     if (!aiCoachEnabled || Date.now() - lastCoachTimeRef.current < 60000) return;
@@ -510,9 +601,13 @@ export default function RunSessionScreen({
   useEffect(() => {
     if (runState === "running" && aiCoachEnabled) {
       const coachInterval = setInterval(getCoachMessage, 120000);
-      return () => clearInterval(coachInterval);
+      const phaseInterval = setInterval(triggerPhaseCoaching, 180000);
+      return () => {
+        clearInterval(coachInterval);
+        clearInterval(phaseInterval);
+      };
     }
-  }, [runState, aiCoachEnabled, getCoachMessage]);
+  }, [runState, aiCoachEnabled, getCoachMessage, triggerPhaseCoaching]);
 
   const handleStart = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -819,6 +914,18 @@ export default function RunSessionScreen({
         </Animated.View>
       ) : null}
 
+      {toastMessage ? (
+        <Animated.View
+          entering={FadeIn}
+          exiting={FadeOut}
+          style={[styles.toast, { backgroundColor: theme.backgroundSecondary }]}
+        >
+          <ThemedText style={[Typography.bodySmall, { color: theme.text }]}>
+            {toastMessage}
+          </ThemedText>
+        </Animated.View>
+      ) : null}
+
       <View style={styles.mainStats}>
         <View style={styles.primaryStat}>
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
@@ -991,6 +1098,16 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
+  },
+  toast: {
+    position: "absolute",
+    top: 100,
+    left: Spacing.lg,
+    right: Spacing.lg,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    alignItems: "center",
+    zIndex: 100,
   },
   mainStats: {
     flex: 1,

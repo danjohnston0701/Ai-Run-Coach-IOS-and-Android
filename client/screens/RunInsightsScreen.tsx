@@ -623,7 +623,7 @@ export default function RunInsightsScreen({
         onRequestClose={() => setShowEventModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <ScrollView style={[styles.modalContent, { backgroundColor: theme.background }]}>
+          <ScrollView style={[styles.modalContent, { backgroundColor: theme.backgroundRoot }]}>
             <View style={styles.modalHeader}>
               <ThemedText type="h3">Create Event</ThemedText>
               <Pressable onPress={() => setShowEventModal(false)}>
