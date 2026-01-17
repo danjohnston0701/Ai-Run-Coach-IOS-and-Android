@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
+  Modal,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,7 +42,8 @@ import {
   IconTrending,
   IconBrain,
   IconSparkles,
-  IconLocation,
+  IconPlus,
+  IconX,
 } from '@/components/icons/AppIcons';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -154,6 +156,32 @@ function formatElevation(value: number | undefined | null): string {
   return Math.round(value).toString();
 }
 
+function calculateRegionForCoordinates(coordinates: Array<{ latitude: number; longitude: number }>) {
+  if (coordinates.length === 0) return null;
+  
+  let minLat = coordinates[0].latitude;
+  let maxLat = coordinates[0].latitude;
+  let minLng = coordinates[0].longitude;
+  let maxLng = coordinates[0].longitude;
+  
+  coordinates.forEach(coord => {
+    minLat = Math.min(minLat, coord.latitude);
+    maxLat = Math.max(maxLat, coord.latitude);
+    minLng = Math.min(minLng, coord.longitude);
+    maxLng = Math.max(maxLng, coord.longitude);
+  });
+  
+  const latDelta = (maxLat - minLat) * 1.4;
+  const lngDelta = (maxLng - minLng) * 1.4;
+  
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: Math.max(latDelta, 0.01),
+    longitudeDelta: Math.max(lngDelta, 0.01),
+  };
+}
+
 export default function RoutePreviewScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -170,6 +198,8 @@ export default function RoutePreviewScreen() {
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [generationProgress, setGenerationProgress] = useState(0);
+  const [fullscreenMapIndex, setFullscreenMapIndex] = useState<number | null>(null);
+  const [mapZoomLevels, setMapZoomLevels] = useState<{[key: number]: number}>({});
 
   useEffect(() => {
     getCurrentLocation();
@@ -408,12 +438,9 @@ export default function RoutePreviewScreen() {
           </Animated.View>
         </View>
         
-        <Text style={styles.thinkingTitle}>Coach {coachName} is thinking...</Text>
+        <Text style={styles.thinkingTitle}>{coachName} is thinking...</Text>
         
-        <View style={styles.analyzingRow}>
-          <IconLocation size={16} color={theme.primary} />
-          <Text style={styles.analyzingText}>Analyzing terrain and finding the best routes</Text>
-        </View>
+        <Text style={styles.analyzingText}>Analyzing terrain and finding the best routes</Text>
         
         <View style={styles.dotsContainer}>
           <Animated.View style={[styles.loadingDot, dot1Style]} />
@@ -564,6 +591,8 @@ export default function RoutePreviewScreen() {
           <Text style={styles.startButtonText}>SELECT A ROUTE</Text>
         </Pressable>
       </View>
+      
+      {renderFullscreenMap()}
     </View>
   );
 
@@ -571,6 +600,10 @@ export default function RoutePreviewScreen() {
     const isSelected = index === selectedRouteIndex;
     const difficultyColor = getDifficultyColor(routeData.difficulty);
     const cardCoordinates = decodePolylineCompat(routeData.polyline);
+    const calculatedRegion = calculateRegionForCoordinates(cardCoordinates);
+    
+    const elevGain = routeData.elevationGain ?? (routeData as any).elevation_gain;
+    const elevLoss = routeData.elevationLoss ?? (routeData as any).elevation_loss;
 
     return (
       <Pressable
@@ -591,19 +624,19 @@ export default function RoutePreviewScreen() {
           </View>
         )}
 
+        <View style={styles.mapControlsContainer}>
+          <Pressable 
+            style={styles.mapControlButton}
+            onPress={() => setFullscreenMapIndex(index)}
+          >
+            <IconMap size={16} color={theme.text} />
+          </Pressable>
+        </View>
+
         <View style={styles.cardMapContainer}>
           <MapViewCompat
             style={styles.cardMap}
-            initialRegion={
-              cardCoordinates.length > 0
-                ? {
-                    latitude: cardCoordinates[0].latitude,
-                    longitude: cardCoordinates[0].longitude,
-                    latitudeDelta: 0.015,
-                    longitudeDelta: 0.015,
-                  }
-                : undefined
-            }
+            initialRegion={calculatedRegion || undefined}
             scrollEnabled={false}
             zoomEnabled={false}
             rotateEnabled={false}
@@ -639,24 +672,130 @@ export default function RoutePreviewScreen() {
             </View>
             <View style={styles.cardStatLarge}>
               <IconMountain size={18} color={theme.textSecondary} />
-              <Text style={styles.cardStatValueLarge}>{formatElevation(routeData.elevationGain)}m</Text>
+              <Text style={styles.cardStatValueLarge}>{formatElevation(elevGain)}m</Text>
             </View>
           </View>
           
           <View style={styles.cardElevationStats}>
             <View style={styles.cardElevationItem}>
               <IconTrending size={14} color={theme.success} />
-              <Text style={styles.cardElevationText}>Climb: {formatElevation(routeData.elevationGain)}m</Text>
+              <Text style={styles.cardElevationText}>Climb: {formatElevation(elevGain)}m</Text>
             </View>
             <View style={styles.cardElevationItem}>
               <View style={{ transform: [{ rotate: '180deg' }] }}>
                 <IconTrending size={14} color={theme.error} />
               </View>
-              <Text style={styles.cardElevationText}>Descent: {formatElevation(routeData.elevationLoss)}m</Text>
+              <Text style={styles.cardElevationText}>Descent: {formatElevation(elevLoss)}m</Text>
             </View>
           </View>
         </View>
       </Pressable>
+    );
+  }
+
+  function renderFullscreenMap() {
+    if (fullscreenMapIndex === null) return null;
+    
+    const routeData = routes[fullscreenMapIndex];
+    if (!routeData) return null;
+    
+    const cardCoordinates = decodePolylineCompat(routeData.polyline);
+    const calculatedRegion = calculateRegionForCoordinates(cardCoordinates);
+    const zoomLevel = mapZoomLevels[fullscreenMapIndex] || 1;
+    
+    const zoomedRegion = calculatedRegion ? {
+      ...calculatedRegion,
+      latitudeDelta: calculatedRegion.latitudeDelta / zoomLevel,
+      longitudeDelta: calculatedRegion.longitudeDelta / zoomLevel,
+    } : undefined;
+    
+    const handleZoomIn = () => {
+      setMapZoomLevels(prev => ({
+        ...prev,
+        [fullscreenMapIndex]: Math.min((prev[fullscreenMapIndex] || 1) * 1.5, 10)
+      }));
+    };
+    
+    const handleZoomOut = () => {
+      setMapZoomLevels(prev => ({
+        ...prev,
+        [fullscreenMapIndex]: Math.max((prev[fullscreenMapIndex] || 1) / 1.5, 0.5)
+      }));
+    };
+
+    return (
+      <Modal
+        visible={true}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setFullscreenMapIndex(null)}
+      >
+        <View style={styles.fullscreenMapContainer}>
+          <MapViewCompat
+            style={styles.fullscreenMap}
+            initialRegion={zoomedRegion}
+            scrollEnabled={true}
+            zoomEnabled={true}
+            rotateEnabled={true}
+            pitchEnabled={true}
+          >
+            {cardCoordinates.length > 0 && (
+              <>
+                <PolylineCompat
+                  coordinates={cardCoordinates}
+                  strokeColor={theme.success}
+                  strokeWidth={4}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+                <MarkerCompat
+                  coordinate={cardCoordinates[0]}
+                  pinColor={theme.primary}
+                />
+                <MarkerCompat
+                  coordinate={cardCoordinates[cardCoordinates.length - 1]}
+                  pinColor={theme.success}
+                />
+              </>
+            )}
+          </MapViewCompat>
+          
+          <View style={[styles.fullscreenHeader, { paddingTop: insets.top + Spacing.md }]}>
+            <Pressable 
+              style={styles.fullscreenCloseButton}
+              onPress={() => setFullscreenMapIndex(null)}
+            >
+              <IconX size={24} color={theme.text} />
+            </Pressable>
+            <Text style={styles.fullscreenTitle}>{routeData.routeName}</Text>
+          </View>
+          
+          <View style={[styles.fullscreenZoomControls, { bottom: insets.bottom + 100 }]}>
+            <Pressable style={styles.zoomButton} onPress={handleZoomIn}>
+              <IconPlus size={20} color={theme.text} />
+            </Pressable>
+            <View style={styles.zoomDivider} />
+            <Pressable style={styles.zoomButton} onPress={handleZoomOut}>
+              <Text style={styles.zoomMinusText}>-</Text>
+            </Pressable>
+          </View>
+          
+          <View style={[styles.fullscreenStats, { bottom: insets.bottom + Spacing.lg }]}>
+            <View style={styles.fullscreenStatItem}>
+              <Text style={styles.fullscreenStatLabel}>Distance</Text>
+              <Text style={styles.fullscreenStatValue}>{routeData.actualDistance?.toFixed(1)} km</Text>
+            </View>
+            <View style={styles.fullscreenStatItem}>
+              <Text style={styles.fullscreenStatLabel}>Climb</Text>
+              <Text style={styles.fullscreenStatValue}>{formatElevation(routeData.elevationGain)}m</Text>
+            </View>
+            <View style={styles.fullscreenStatItem}>
+              <Text style={styles.fullscreenStatLabel}>Descent</Text>
+              <Text style={styles.fullscreenStatValue}>{formatElevation(routeData.elevationLoss)}m</Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
     );
   }
 }
@@ -1132,5 +1271,99 @@ const styles = StyleSheet.create({
     backgroundColor: theme.backgroundRoot,
     borderTopWidth: 1,
     borderTopColor: theme.backgroundSecondary,
+  },
+  mapControlsContainer: {
+    position: 'absolute',
+    top: Spacing.md,
+    right: Spacing.md + 40,
+    zIndex: 10,
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  mapControlButton: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: theme.backgroundRoot + 'CC',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenMapContainer: {
+    flex: 1,
+    backgroundColor: theme.backgroundRoot,
+  },
+  fullscreenMap: {
+    flex: 1,
+  },
+  fullscreenHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+    backgroundColor: theme.backgroundRoot + 'DD',
+    gap: Spacing.md,
+  },
+  fullscreenCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.backgroundSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenTitle: {
+    flex: 1,
+    fontSize: Typography.h4.fontSize,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  fullscreenZoomControls: {
+    position: 'absolute',
+    right: Spacing.lg,
+    backgroundColor: theme.backgroundSecondary,
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+  },
+  zoomButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomDivider: {
+    height: 1,
+    backgroundColor: theme.backgroundRoot,
+  },
+  zoomMinusText: {
+    fontSize: 24,
+    color: theme.text,
+    fontWeight: '300',
+  },
+  fullscreenStats: {
+    position: 'absolute',
+    left: Spacing.lg,
+    right: Spacing.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: theme.backgroundSecondary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.lg,
+  },
+  fullscreenStatItem: {
+    alignItems: 'center',
+  },
+  fullscreenStatLabel: {
+    fontSize: Typography.caption.fontSize,
+    color: theme.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  fullscreenStatValue: {
+    fontSize: Typography.h4.fontSize,
+    fontWeight: '700',
+    color: theme.text,
   },
 });
