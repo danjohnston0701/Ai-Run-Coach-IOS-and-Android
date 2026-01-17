@@ -18,23 +18,28 @@ async function proxyRequest(req: Request, res: Response, endpoint: string) {
 
     if (req.method !== "GET" && req.method !== "HEAD" && req.body) {
       fetchOptions.body = JSON.stringify(req.body);
+      console.log(`Request body:`, JSON.stringify(req.body).slice(0, 200));
     }
 
     console.log(`Proxying ${req.method} request to: ${url}`);
 
     const response = await fetch(url, fetchOptions);
     
+    console.log(`Response status: ${response.status}`);
+    
     const contentType = response.headers.get("content-type");
     
     if (contentType?.includes("application/json")) {
       const data = await response.json();
+      console.log(`Response data:`, JSON.stringify(data).slice(0, 200));
       res.status(response.status).json(data);
     } else {
       const text = await response.text();
+      console.log(`Response text:`, text.slice(0, 200));
       res.status(response.status).send(text);
     }
   } catch (error: any) {
-    console.error("Proxy error:", error);
+    console.error("Proxy error:", error.message);
     res.status(500).json({ 
       message: "Failed to connect to API server",
       error: error.message 

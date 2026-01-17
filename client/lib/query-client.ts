@@ -14,6 +14,12 @@ export function getApiUrl(): string {
     host = 'localhost:5000';
   }
 
+  // Strip port from host if present (Replit routes port 5000 to base HTTPS URL)
+  // EXPO_PUBLIC_DOMAIN is set as "domain:5000" but we need just "domain"
+  if (host.includes(':5000')) {
+    host = host.replace(':5000', '');
+  }
+
   // Ensure we're using https for non-localhost
   const protocol = host.includes('localhost') || host.includes('127.0.0.1') 
     ? 'http' 
