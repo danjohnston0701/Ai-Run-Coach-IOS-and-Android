@@ -514,6 +514,25 @@ export default function RunInsightsScreen({
         )}
       </View>
 
+      {/* Target Time Analysis */}
+      {run.targetTimeAnalysis ? (
+        <View style={styles.section}>
+          <Card style={[styles.targetTimeCard, { borderColor: theme.warning }]}>
+            <View style={styles.aiHeader}>
+              <View style={[styles.aiIcon, { backgroundColor: theme.warning + "20" }]}>
+                <IconClock size={20} color={theme.warning} />
+              </View>
+              <ThemedText type="small" style={{ color: theme.warning }}>
+                Target Time Analysis
+              </ThemedText>
+            </View>
+            <ThemedText type="body" style={{ lineHeight: 24 }}>
+              {run.targetTimeAnalysis}
+            </ThemedText>
+          </Card>
+        </View>
+      ) : null}
+
       {/* Weather Data */}
       {run.weatherData ? (
         <View style={styles.section}>
@@ -891,6 +910,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: Spacing.sm,
+  },
+  targetTimeCard: {
+    borderWidth: 1,
   },
   weatherCard: {},
   weatherRow: {

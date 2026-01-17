@@ -195,6 +195,7 @@ export default function RunSessionScreen({
     windSpeed?: number;
     conditions?: string;
   } | null>(null);
+  const [targetTimeSeconds, setTargetTimeSeconds] = useState<number | null>(null);
 
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -234,6 +235,14 @@ export default function RunSessionScreen({
         }
         if (route.params?.aiCoach !== undefined) {
           setAiCoachEnabled(route.params.aiCoach);
+        }
+        // Extract target time from params
+        if (route.params?.targetTime) {
+          const tt = route.params.targetTime;
+          const seconds = (tt.hours || 0) * 3600 + (tt.minutes || 0) * 60 + (tt.seconds || 0);
+          if (seconds > 0) {
+            setTargetTimeSeconds(seconds);
+          }
         }
       }
     } catch (error) {
@@ -820,6 +829,7 @@ export default function RunSessionScreen({
           difficulty: routeData?.difficulty,
           runDate: new Date().toISOString().split("T")[0],
           runTime: new Date().toISOString().split("T")[1].split(".")[0],
+          targetTime: targetTimeSeconds && targetTimeSeconds > 0 ? targetTimeSeconds : undefined,
         }),
       });
 

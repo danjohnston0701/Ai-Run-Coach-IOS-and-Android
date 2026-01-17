@@ -95,6 +95,8 @@ export interface Run {
   aiCoachingNotes?: Array<{ time: number; message: string }>;
   aiCoachEnabled?: boolean;
   completedAt?: string;
+  targetTime?: number; // Target time in seconds
+  targetTimeAnalysis?: string; // AI analysis of target time achievement
 }
 
 export interface Event {
