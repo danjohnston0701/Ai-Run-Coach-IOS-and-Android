@@ -17,6 +17,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withDelay,
+  Easing,
+} from 'react-native-reanimated';
 
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
@@ -30,6 +39,9 @@ import {
   IconAlertCircle,
   IconCheck,
   IconTrending,
+  IconBrain,
+  IconSparkles,
+  IconLocation,
 } from '@/components/icons/AppIcons';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -319,25 +331,95 @@ export default function RoutePreviewScreen() {
   const selectedRoute = routes[selectedRouteIndex];
   const routeCoordinates = selectedRoute ? decodePolylineCompat(selectedRoute.polyline) : [];
 
+  const coachName = user?.coachName || 'Coach';
+  
+  const sparkleRotation = useSharedValue(0);
+  const sparkleScale = useSharedValue(1);
+  const dot1Opacity = useSharedValue(0.3);
+  const dot2Opacity = useSharedValue(0.3);
+  const dot3Opacity = useSharedValue(0.3);
+
+  useEffect(() => {
+    if (loading) {
+      sparkleRotation.value = withRepeat(
+        withSequence(
+          withTiming(-15, { duration: 400, easing: Easing.inOut(Easing.ease) }),
+          withTiming(15, { duration: 400, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0, { duration: 300, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
+      );
+      sparkleScale.value = withRepeat(
+        withSequence(
+          withTiming(1.2, { duration: 500, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0.9, { duration: 500, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
+      );
+      dot1Opacity.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 300 }),
+          withTiming(0.3, { duration: 300 })
+        ),
+        -1,
+        true
+      );
+      dot2Opacity.value = withRepeat(
+        withDelay(200, withSequence(
+          withTiming(1, { duration: 300 }),
+          withTiming(0.3, { duration: 300 })
+        )),
+        -1,
+        true
+      );
+      dot3Opacity.value = withRepeat(
+        withDelay(400, withSequence(
+          withTiming(1, { duration: 300 }),
+          withTiming(0.3, { duration: 300 })
+        )),
+        -1,
+        true
+      );
+    }
+  }, [loading]);
+
+  const sparkleAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { rotate: `${sparkleRotation.value}deg` },
+      { scale: sparkleScale.value }
+    ],
+  }));
+
+  const dot1Style = useAnimatedStyle(() => ({ opacity: dot1Opacity.value }));
+  const dot2Style = useAnimatedStyle(() => ({ opacity: dot2Opacity.value }));
+  const dot3Style = useAnimatedStyle(() => ({ opacity: dot3Opacity.value }));
+
   const renderLoading = () => (
     <View style={styles.centerContainer}>
-      <View style={styles.loadingCard}>
-        <View style={styles.loadingIconContainer}>
-          <IconMap size={48} color={theme.primary} />
-        </View>
-        <Text style={styles.loadingTitle}>Generating Routes</Text>
-        <Text style={styles.loadingSubtitle}>
-          AI is finding the best routes for your {params.targetDistance.toFixed(1)}km run...
-        </Text>
-        
-        <View style={styles.progressContainer}>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${generationProgress}%` }]} />
+      <View style={styles.thinkingContainer}>
+        <View style={styles.brainContainer}>
+          <View style={styles.brainCircle}>
+            <IconBrain size={56} color={theme.primary} />
           </View>
-          <Text style={styles.progressText}>{Math.round(generationProgress)}%</Text>
+          <Animated.View style={[styles.sparkleContainer, sparkleAnimatedStyle]}>
+            <IconSparkles size={28} color="#FFD700" />
+          </Animated.View>
         </View>
         
-        <Text style={styles.loadingHint}>This may take 10-20 seconds</Text>
+        <Text style={styles.thinkingTitle}>Coach {coachName} is thinking...</Text>
+        
+        <View style={styles.analyzingRow}>
+          <IconLocation size={16} color={theme.primary} />
+          <Text style={styles.analyzingText}>Analyzing terrain and finding the best routes</Text>
+        </View>
+        
+        <View style={styles.dotsContainer}>
+          <Animated.View style={[styles.loadingDot, dot1Style]} />
+          <Animated.View style={[styles.loadingDot, dot2Style]} />
+          <Animated.View style={[styles.loadingDot, dot3Style]} />
+        </View>
       </View>
     </View>
   );
@@ -671,6 +753,57 @@ const styles = StyleSheet.create({
     fontSize: Typography.caption.fontSize,
     color: theme.textMuted,
     marginTop: Spacing.sm,
+  },
+  thinkingContainer: {
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  brainContainer: {
+    position: 'relative',
+    marginBottom: Spacing.xl,
+  },
+  brainCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: theme.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.backgroundSecondary,
+  },
+  sparkleContainer: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+  },
+  thinkingTitle: {
+    fontSize: Typography.h3.fontSize,
+    fontWeight: '700',
+    color: theme.text,
+    marginBottom: Spacing.lg,
+    textAlign: 'center',
+  },
+  analyzingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xl,
+  },
+  analyzingText: {
+    fontSize: Typography.body.fontSize,
+    color: theme.textSecondary,
+    textAlign: 'center',
+  },
+  dotsContainer: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  loadingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.primary,
   },
   errorCard: {
     backgroundColor: theme.backgroundSecondary,
