@@ -32,8 +32,8 @@ import {
   IconTrending,
 } from '@/components/icons/AppIcons';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH - 48;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const CARD_WIDTH = SCREEN_WIDTH - 32;
 
 interface TurnInstruction {
   instruction: string;
@@ -432,78 +432,151 @@ export default function RoutePreviewScreen() {
 
   return (
     <View style={styles.container}>
-      <MapViewCompat
-        mapRef={mapRef}
-        style={styles.map}
-        initialRegion={
-          currentLocation
-            ? {
-                latitude: currentLocation.lat,
-                longitude: currentLocation.lng,
-                latitudeDelta: 0.02,
-                longitudeDelta: 0.02,
-              }
-            : undefined
-        }
-        showsUserLocation
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: headerHeight + Spacing.md, paddingBottom: insets.bottom + 100 }
+        ]}
+        showsVerticalScrollIndicator={false}
       >
-        {routeCoordinates.length > 0 && (
-          <>
-            <PolylineCompat
-              coordinates={routeCoordinates}
-              strokeColor={theme.primary}
-              strokeWidth={4}
-              lineCap="round"
-              lineJoin="round"
-            />
-            <MarkerCompat
-              coordinate={routeCoordinates[0]}
-              title="Start"
-              pinColor={theme.success}
-            />
-            <MarkerCompat
-              coordinate={routeCoordinates[routeCoordinates.length - 1]}
-              title="Finish"
-              pinColor={theme.error}
-            />
-          </>
-        )}
-      </MapViewCompat>
-
-      <LinearGradient
-        colors={['transparent', theme.backgroundRoot]}
-        style={styles.gradient}
-      />
-
-      <View style={[styles.bottomContainer, { paddingBottom: insets.bottom + Spacing.md }]}>
-        <View style={styles.routesHeader}>
-          <Text style={styles.routesTitle}>Select Your Route</Text>
-          <Text style={styles.routesSubtitle}>
-            {routes.length} route{routes.length !== 1 ? 's' : ''} found
+        <View style={styles.headerSection}>
+          <Text style={styles.pageTitle}>CHOOSE YOUR ROUTE</Text>
+          <Text style={styles.pageSubtitle}>
+            Select from {routes.length} route options for your {params.targetDistance.toFixed(1)}km run
           </Text>
+          
+          <View style={styles.legendContainer}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: theme.primary }]} />
+              <Text style={styles.legendText}>Start</Text>
+            </View>
+            <LinearGradient
+              colors={[theme.primary, theme.success]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.legendLine}
+            />
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: theme.success }]} />
+              <Text style={styles.legendText}>Finish</Text>
+            </View>
+          </View>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.routeCardsContainer}
-          snapToInterval={CARD_WIDTH + Spacing.md}
-          decelerationRate="fast"
-        >
-          {routes.map((routeData, index) => renderRouteCard(routeData, index))}
-        </ScrollView>
+        {routes.map((routeData, index) => renderVerticalRouteCard(routeData, index))}
+        
+        <Pressable style={styles.regenerateButton} onPress={handleRetry}>
+          <IconRefresh size={18} color={theme.text} />
+          <Text style={styles.regenerateText}>Generate New Routes</Text>
+        </Pressable>
+      </ScrollView>
 
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + Spacing.md }]}>
         <Pressable
-          style={styles.startButton}
+          style={[styles.startButton, !selectedRoute && styles.startButtonDisabled]}
           onPress={handleStartRun}
           disabled={!selectedRoute}
         >
           <IconPlay size={24} color={theme.backgroundRoot} />
-          <Text style={styles.startButtonText}>START RUN</Text>
+          <Text style={styles.startButtonText}>SELECT A ROUTE</Text>
         </Pressable>
       </View>
     </View>
   );
+
+  function renderVerticalRouteCard(routeData: RouteCandidate, index: number) {
+    const isSelected = index === selectedRouteIndex;
+    const difficultyColor = getDifficultyColor(routeData.difficulty);
+    const cardCoordinates = decodePolylineCompat(routeData.polyline);
+
+    return (
+      <Pressable
+        key={routeData.id}
+        style={[styles.verticalCard, isSelected && styles.verticalCardSelected]}
+        onPress={() => handleRouteSelect(index)}
+      >
+        <View style={styles.cardDifficultyBadge}>
+          <View style={[styles.difficultyDot, { backgroundColor: difficultyColor }]} />
+          <Text style={[styles.difficultyLabel, { color: difficultyColor }]}>
+            {routeData.difficulty?.toUpperCase() || 'MODERATE'}
+          </Text>
+        </View>
+
+        {isSelected && (
+          <View style={styles.selectedCheckmark}>
+            <IconCheck size={16} color={theme.backgroundRoot} />
+          </View>
+        )}
+
+        <View style={styles.cardMapContainer}>
+          <MapViewCompat
+            style={styles.cardMap}
+            initialRegion={
+              cardCoordinates.length > 0
+                ? {
+                    latitude: cardCoordinates[0].latitude,
+                    longitude: cardCoordinates[0].longitude,
+                    latitudeDelta: 0.015,
+                    longitudeDelta: 0.015,
+                  }
+                : undefined
+            }
+            scrollEnabled={false}
+            zoomEnabled={false}
+            rotateEnabled={false}
+            pitchEnabled={false}
+          >
+            {cardCoordinates.length > 0 && (
+              <>
+                <PolylineCompat
+                  coordinates={cardCoordinates}
+                  strokeColor={theme.success}
+                  strokeWidth={3}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+                <MarkerCompat
+                  coordinate={cardCoordinates[0]}
+                  pinColor={theme.primary}
+                />
+                <MarkerCompat
+                  coordinate={cardCoordinates[cardCoordinates.length - 1]}
+                  pinColor={theme.success}
+                />
+              </>
+            )}
+          </MapViewCompat>
+        </View>
+
+        <View style={styles.cardContent}>
+          <View style={styles.cardMainStats}>
+            <View style={styles.cardStatLarge}>
+              <IconMap size={18} color={theme.primary} />
+              <Text style={styles.cardStatValueLarge}>{routeData.actualDistance?.toFixed(1) || '--'} km</Text>
+            </View>
+            <View style={styles.cardStatLarge}>
+              <IconMountain size={18} color={theme.textSecondary} />
+              <Text style={styles.cardStatValueLarge}>{formatElevation(routeData.elevationGain)}m</Text>
+            </View>
+          </View>
+          
+          <View style={styles.cardElevationStats}>
+            <View style={styles.cardElevationItem}>
+              <IconTrending size={14} color={theme.success} />
+              <Text style={styles.cardElevationText}>Climb: {formatElevation(routeData.elevationGain)}m</Text>
+            </View>
+            <View style={styles.cardElevationItem}>
+              <View style={{ transform: [{ rotate: '180deg' }] }}>
+                <IconTrending size={14} color={theme.error} />
+              </View>
+              <Text style={styles.cardElevationText}>Descent: {formatElevation(routeData.elevationLoss)}m</Text>
+            </View>
+          </View>
+        </View>
+      </Pressable>
+    );
+  }
 }
 
 const mapStyle = [
@@ -758,12 +831,173 @@ const styles = StyleSheet.create({
     backgroundColor: theme.primary,
     paddingVertical: Spacing.lg,
     borderRadius: BorderRadius.md,
-    marginTop: Spacing.lg,
     gap: Spacing.sm,
+    flex: 1,
+  },
+  startButtonDisabled: {
+    opacity: 0.6,
   },
   startButtonText: {
     fontSize: Typography.h4.fontSize,
     fontWeight: '700',
     color: theme.backgroundRoot,
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.lg,
+  },
+  headerSection: {
+    marginBottom: Spacing.xl,
+  },
+  pageTitle: {
+    fontSize: Typography.h2.fontSize,
+    fontWeight: '700',
+    color: theme.text,
+    marginBottom: Spacing.xs,
+  },
+  pageSubtitle: {
+    fontSize: Typography.body.fontSize,
+    color: theme.textSecondary,
+    marginBottom: Spacing.lg,
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.backgroundSecondary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendText: {
+    fontSize: Typography.body.fontSize,
+    color: theme.text,
+    fontWeight: '500',
+  },
+  legendLine: {
+    flex: 1,
+    height: 3,
+    marginHorizontal: Spacing.lg,
+    borderRadius: 2,
+  },
+  verticalCard: {
+    backgroundColor: theme.backgroundSecondary,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.lg,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  verticalCardSelected: {
+    borderColor: theme.primary,
+  },
+  cardDifficultyBadge: {
+    position: 'absolute',
+    top: Spacing.md,
+    left: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.backgroundRoot + 'CC',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    gap: Spacing.xs,
+    zIndex: 10,
+  },
+  difficultyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  difficultyLabel: {
+    fontSize: Typography.caption.fontSize,
+    fontWeight: '700',
+  },
+  selectedCheckmark: {
+    position: 'absolute',
+    top: Spacing.md,
+    right: Spacing.md,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: theme.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  cardMapContainer: {
+    height: 180,
+    width: '100%',
+  },
+  cardMap: {
+    flex: 1,
+  },
+  cardContent: {
+    padding: Spacing.lg,
+  },
+  cardMainStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  cardStatLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  cardStatValueLarge: {
+    fontSize: Typography.h3.fontSize,
+    fontWeight: '700',
+    color: theme.text,
+  },
+  cardElevationStats: {
+    flexDirection: 'row',
+    gap: Spacing.xl,
+  },
+  cardElevationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  cardElevationText: {
+    fontSize: Typography.small.fontSize,
+    color: theme.success,
+  },
+  regenerateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.backgroundSecondary,
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  regenerateText: {
+    fontSize: Typography.body.fontSize,
+    color: theme.text,
+    fontWeight: '500',
+  },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    backgroundColor: theme.backgroundRoot,
+    borderTopWidth: 1,
+    borderTopColor: theme.backgroundSecondary,
   },
 });
