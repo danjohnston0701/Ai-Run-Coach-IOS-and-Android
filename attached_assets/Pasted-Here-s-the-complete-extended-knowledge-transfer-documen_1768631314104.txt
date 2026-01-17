@@ -1,0 +1,475 @@
+Here's the complete extended knowledge transfer document. This adds all the technical details, rules, and coaching logic the mobile app AI needs:
+
+AI Run Coach - Complete Technical Knowledge Transfer (Extended)
+Give this ENTIRE document to the mobile app AI project
+
+PART 1: PROJECT VISION & CORE USER JOURNEY
+(Same as previous document - included for completeness)
+
+AI Run Coach is a mobile-first running and walking application providing personalized AI-powered coaching, intelligent route planning, and comprehensive performance tracking.
+
+Complete User Flow
+Onboarding → Profile setup (age, gender, weight, fitness level, goals)
+Pre-Run → Select distance, difficulty, target time, enable AI coach
+Route Generation → AI generates 2-3 route options with maps (CRITICAL - DO NOT SKIP)
+Route Selection → User picks preferred route
+Active Run → GPS tracking, live stats, turn-by-turn nav, AI voice coaching
+Post-Run → Summary, insights, AI analysis, social sharing
+PART 2: DATA PRESERVATION (CRITICAL)
+Run data must NEVER be lost. Implement these safeguards:
+
+Auto-Save System
+// Save active session every 5 seconds
+const AUTO_SAVE_INTERVAL = 5000; // 5 seconds
+// In RunSession component:
+useEffect(() => {
+  const interval = setInterval(() => {
+    saveActiveRunSession(currentSession);
+  }, AUTO_SAVE_INTERVAL);
+  return () => clearInterval(interval);
+}, [currentSession]);
+Session Recovery (12-hour window)
+// On app launch, check for interrupted sessions
+const recoveredSession = loadActiveRunSession();
+if (recoveredSession && recoveredSession.status !== 'completed') {
+  // Ask user: "You have an unfinished run. Resume or discard?"
+}
+// Sessions expire after 12 hours
+const MAX_AGE_HOURS = 12;
+ActiveRunSession Model (Store in AsyncStorage)
+interface ActiveRunSession {
+  id: string;
+  startTimestamp: number;
+  elapsedSeconds: number;
+  pausedDurationMs?: number;
+  distanceKm: number;
+  cadence: number;
+  routeId: string;
+  routeName: string;
+  routePolyline: string;
+  routeWaypoints: Array<{ lat: number; lng: number }>;
+  startLat: number;
+  startLng: number;
+  targetDistance: string;
+  levelId: string;
+  targetTimeSeconds: number;
+  exerciseType: 'running' | 'walking';
+  eventId?: string;
+  audioEnabled: boolean;
+  aiCoachEnabled: boolean;
+  kmSplits: number[];
+  lastKmAnnounced: number;
+  status: 'active' | 'paused' | 'completed';
+  gpsTrackBackup?: Array<{ lat: number; lng: number; timestamp?: number }>;
+  weatherData?: any;
+  paceData?: Array<{ km: number; pace: string; paceSeconds: number; cumulativeTime: number }>;
+  lastDbSyncAt?: number;
+  failedSyncAttempts?: number;
+}
+Offline-First + Sync Pattern
+// When saving a completed run locally:
+const localRun = {
+  ...runData,
+  dbSynced: false,  // Mark as not yet synced
+  localId: generateUUID()
+};
+// Try to sync to backend:
+try {
+  const response = await fetch('https://airuncoach.live/api/runs', {
+    method: 'POST',
+    body: JSON.stringify(runData)
+  });
+  if (response.ok) {
+    localRun.dbSynced = true;
+    localRun.id = (await response.json()).id;
+  }
+} catch (e) {
+  // Keep local, will retry later
+}
+PART 3: AI COACHING SYSTEM (ADVANCED)
+Phase-Based Coaching - CRITICAL RULES
+The AI coach MUST use different statements based on where the runner is in their run:
+
+type CoachingPhase = 'early' | 'mid' | 'late' | 'final' | 'generic';
+// Phase thresholds
+const PHASE_THRESHOLDS = {
+  early: { maxKm: 2, maxPercent: 10 },      // First 2km OR first 10%
+  mid: { minKm: 3, maxKm: 5, minPercent: 40, maxPercent: 50 },  // 3-5km OR 40-50%
+  late: { minKm: 7, minPercent: 75, maxPercent: 90 },           // 7km+ OR 75-90%
+  final: { minPercent: 90 }                  // Last 10% of run
+};
+function determinePhase(distanceKm: number, totalDistanceKm: number | null): CoachingPhase {
+  if (totalDistanceKm) {
+    const percent = (distanceKm / totalDistanceKm) * 100;
+    if (percent >= 90) return 'final';
+    if (percent >= 75) return 'late';
+    if (percent >= 40 && percent <= 50) return 'mid';
+    if (percent <= 10) return 'early';
+    return 'generic';
+  }
+  
+  // Free run (no target distance) - use absolute thresholds conservatively
+  if (distanceKm <= 2) return 'early';
+  if (distanceKm >= 3 && distanceKm <= 5) return 'mid';
+  return 'generic';  // Never use late/final for free runs
+}
+Phase-Specific Coaching Content
+EARLY PHASE (warm-up):
+
+"Keep your posture tall, imagine a string lifting the top of your head"
+"Settle into a steady, rhythmic breathing pattern"
+"Start easy and let your body warm up naturally"
+NEVER mention fatigue, pushing through pain, or finishing
+MID PHASE (cruise):
+
+"You're in the groove now. Stay relaxed and maintain your rhythm"
+"Lightly engage your core to keep your torso stable"
+"Think quick and elastic, lifting the foot up and through"
+AVOID warm-up advice or final push messages
+LATE PHASE (fatigue management):
+
+"If you're starting to tire, take a deep breath and reset"
+"Pain fades, pride lasts. Push through this stretch"
+"When it gets tough, focus on the next 100 meters"
+THIS IS THE ONLY PHASE for fatigue-related advice
+FINAL PHASE (finish strong):
+
+"You're almost there! Give it everything you have left"
+"The finish line is calling. Dig deep and finish strong!"
+"Empty the tank. Leave nothing behind!"
+GENERIC (any time):
+
+"Remember to smile! It helps you relax"
+"One step at a time. That's how every journey is conquered"
+Statement Repetition Rule
+const MAX_STATEMENT_USES = 3;
+// Track usage per statement per run
+const usageCounts: Record<string, number> = {};
+// Before using a statement:
+if ((usageCounts[statement.id] || 0) >= MAX_STATEMENT_USES) {
+  // Pick a different statement
+}
+Elite Technique Cues (30 Professional Tips)
+Include ONE elite technique cue per coaching message:
+
+Breathing:
+
+"Exhale across two or three foot strikes to lock down your core"
+"Breathe 'low and slow' - belly rises first, shoulders stay quiet"
+Core & Hips:
+
+"Pretend your hips are headlights pointing straight ahead"
+"Keep your trunk stacked over your pelvis; no sway side-to-side"
+Arm Mechanics:
+
+"Elbows drive back, not out. Hands swing past hip pockets"
+"Keep your shoulders low, away from your ears. Relaxed power"
+Foot Strike:
+
+"Land with your foot under your center of mass, not in front"
+"Quick ground contact - imagine the pavement is hot"
+Hill Technique:
+
+"On uphills: shorten stride, pump arms, stay tall"
+"On descents: lean slightly forward, quick light steps"
+PART 4: HILL-AWARE COACHING
+The app tracks elevation in real-time and provides terrain-specific advice.
+
+Terrain Data Structure
+interface TerrainData {
+  currentAltitude?: number;      // Current elevation in meters
+  currentGrade?: number;         // Current incline/decline percentage
+  previousGrade?: number;        // Previous grade (for crest detection)
+  upcomingTerrain?: {
+    description: string;         // e.g., "steep uphill"
+    distanceAhead: number;       // meters until terrain change
+    grade: number;               // percentage grade
+    elevationChange: number;     // elevation delta in meters
+  };
+  totalElevationGain?: number;
+}
+Hill Detection Thresholds
+// Grade classifications
+const GRADE_THRESHOLDS = {
+  flat: { min: -2, max: 2 },
+  gentleUphill: { min: 2, max: 5 },
+  steepUphill: { min: 5 },         // > 5% = steep
+  gentleDownhill: { min: -5, max: -2 },
+  steepDownhill: { max: -5 }       // < -5% = steep downhill
+};
+// Trigger coaching when:
+const HILL_COACHING_TRIGGER = 5; // 5% grade or steeper
+Hill Coaching Rules
+Approaching a hill (200m ahead):
+
+"Hill coming up in about 200 meters. Get ready to adjust your stride"
+"Uphill section ahead. Shorten your stride, keep your cadence"
+Currently on steep uphill (>5%):
+
+"Lean slightly into this hill, pump your arms"
+"Short, quick steps. Focus on effort, not pace"
+"You're climbing well. Power through this section"
+Currently on steep downhill (<-5%):
+
+"Control your descent. Quick, light steps"
+"Don't overstride downhill - it's hard on your knees"
+"Let gravity help but stay in control"
+Just crested a hill:
+
+"Great climb! You've conquered that hill. Now settle back into your rhythm"
+PART 5: WEATHER-AWARE COACHING
+Fetch weather at run start and provide relevant advice.
+
+Weather Data Structure
+interface WeatherData {
+  temperature: number;        // Celsius
+  feelsLike: number;          // Wind chill / heat index
+  humidity: number;           // Percentage
+  windSpeed: number;          // km/h
+  conditions: string;         // "sunny", "cloudy", "rain", etc.
+  uvIndex?: number;
+}
+Weather-Based Coaching Rules
+Hot conditions (>25°C):
+
+"Stay hydrated - take water at every opportunity"
+"It's warm out. Listen to your body and reduce intensity if needed"
+Cold conditions (<5°C):
+
+"Keep your extremities warm. The first kilometer may feel tough"
+"Take a longer warm-up in this cold weather"
+High humidity (>80%):
+
+"High humidity today - your body can't cool as efficiently"
+"Slow down a bit. Sweat evaporation is reduced in this humidity"
+Windy conditions (>25 km/h):
+
+"Strong wind today. Tuck in when running into it"
+"Use the tailwind sections to recover"
+Rain:
+
+"Wet conditions - watch your footing on slippery surfaces"
+PART 6: AI COACH API INTEGRATION
+Request AI Coaching Message
+POST https://airuncoach.live/api/ai/coach
+Body:
+{
+  "userId": "user-uuid",
+  "distanceKm": 3.5,
+  "totalDistanceKm": 10.0,
+  "currentPace": "5:30",
+  "targetPace": "5:15",
+  "elapsedSeconds": 1200,
+  "cadence": 172,
+  "heartRate": 155,
+  "userFitnessLevel": "intermediate",
+  "userName": "Sarah",
+  "coachName": "Alex",
+  "exerciseType": "running",
+  "terrain": {
+    "currentAltitude": 45,
+    "currentGrade": 6.2,
+    "upcomingTerrain": {
+      "description": "steep downhill",
+      "distanceAhead": 150,
+      "grade": -8.5,
+      "elevationChange": -12
+    }
+  },
+  "weather": {
+    "temperature": 28,
+    "feelsLike": 31,
+    "humidity": 75,
+    "windSpeed": 12,
+    "conditions": "sunny"
+  },
+  "recentCoachingTopics": ["pace", "form"],  // Avoid repetition
+  "kmSplits": [
+    { "km": 1, "pace": "5:45" },
+    { "km": 2, "pace": "5:30" },
+    { "km": 3, "pace": "5:25" }
+  ]
+}
+Response:
+{
+  "message": "Great pacing! Keep those short quick steps on this climb.",
+  "topic": "uphill",
+  "priority": "high"
+}
+Request Text-to-Speech
+POST https://airuncoach.live/api/ai/tts
+Body:
+{
+  "text": "You're doing great! Keep it up!",
+  "voice": "alloy"  // OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
+}
+Response: Audio file (MP3) stream
+AI Coach Toggle
+When AI Coach is disabled:
+
+Do NOT send data to OpenAI
+Use device's built-in TTS for navigation ("Turn left in 50 meters")
+Skip all coaching messages
+PART 7: ROUTE GENERATION SYSTEM
+Generate Route Options
+POST https://airuncoach.live/api/routes/generate-options
+Body:
+{
+  "userId": "user-uuid",
+  "startLat": -37.9013,
+  "startLng": 175.4888,
+  "targetDistance": 5.0,
+  "difficulty": "moderate",
+  "terrainPreference": "mixed"  // "flat", "hilly", or "mixed"
+}
+Response:
+{
+  "routes": [
+    {
+      "id": "route-uuid-1",
+      "routeName": "Riverside Trail Loop",
+      "actualDistance": 5.2,
+      "difficulty": "moderate",
+      "elevationGain": 45,
+      "elevationLoss": 45,
+      "estimatedTime": 28,
+      "polyline": "encoded_polyline_string",
+      "waypoints": [
+        { "lat": -37.9013, "lng": 175.4888 },
+        { "lat": -37.9025, "lng": 175.4901 },
+        ...
+      ],
+      "turnInstructions": [
+        {
+          "instruction": "Head north on Main Street",
+          "distance": 150,
+          "maneuver": "straight",
+          "startLat": -37.9013,
+          "startLng": 175.4888
+        },
+        {
+          "instruction": "Turn left onto Park Avenue",
+          "distance": 300,
+          "maneuver": "turn-left",
+          "startLat": -37.9025,
+          "startLng": 175.4901
+        }
+      ],
+      "elevationProfile": [
+        { "lat": -37.9013, "lng": 175.4888, "elevation": 35, "distance": 0 },
+        { "lat": -37.9015, "lng": 175.4890, "elevation": 37, "distance": 50 },
+        ...
+      ]
+    },
+    // ... 2 more route options
+  ]
+}
+Route Preview Screen Requirements
+Show loading state (route generation takes 10-20 seconds)
+Display map with route polyline for each option
+Show summary card: name, distance, elevation, time
+Horizontal scroll or swipe between options
+"Select Route" button per option
+Store selected route in AsyncStorage before navigating
+PART 8: STORAGE KEYS (AsyncStorage)
+Use these exact keys for consistency with web app:
+
+const STORAGE_KEYS = {
+  USER_ID: 'userId',
+  USER_PROFILE: 'userProfile',
+  ACTIVE_RUN_SESSION: 'activeRunSession',
+  ACTIVE_ROUTE: 'activeRoute',
+  RUN_HISTORY: 'runHistory',
+  COACH_SETTINGS: 'coachSettings',
+  MIGRATION_KEY: 'dataMigrationCompleted_v1_${userId}',
+  LOCATION_PERMISSION: 'locationPermissionAsked'
+};
+PART 9: PERMISSIONS & NATIVE FEATURES
+Required Permissions
+// app.json / app.config.js
+{
+  "expo": {
+    "ios": {
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "AI Run Coach needs your location to track your run and provide turn-by-turn navigation",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "AI Run Coach needs background location to track your run even when the app is in the background",
+        "UIBackgroundModes": ["location", "audio"]
+      }
+    },
+    "android": {
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "WAKE_LOCK"
+      ]
+    }
+  }
+}
+Background GPS Tracking
+Must continue tracking when screen is off
+Use foreground service notification on Android
+Keep CPU awake during run
+Keep Screen Awake
+import { activateKeepAwake, deactivateKeepAwake } from 'expo-keep-awake';
+// When run starts:
+activateKeepAwake();
+// When run ends:
+deactivateKeepAwake();
+PART 10: ERROR HANDLING & EDGE CASES
+GPS Issues
+If GPS accuracy > 50m: Show warning, continue tracking
+If GPS lost for > 30 seconds: Auto-pause run, notify user
+Store last known good position
+Network Issues
+Queue failed API calls for retry
+Save runs locally first, sync when online
+Show sync status in Run History
+Battery Optimization
+Downsample GPS track for storage (every 10th point)
+Batch API calls where possible
+Reduce polling frequency when paused
+PART 11: UI/UX SPECIFICATIONS
+Color Scheme (Dark Theme)
+const COLORS = {
+  background: '#0a0a0a',
+  surface: '#1a1a1a',
+  primary: '#F97316',      // Orange
+  primaryDark: '#EA580C',
+  text: '#FFFFFF',
+  textSecondary: '#9CA3AF',
+  success: '#22C55E',
+  error: '#EF4444',
+  warning: '#F59E0B'
+};
+Typography
+Large stats during run (48-72px)
+Clear, readable at a glance
+High contrast for outdoor visibility
+Run Session Layout
+┌─────────────────────────────┐
+│         MAP (50%)           │
+│    (shows route + position) │
+├─────────────────────────────┤
+│  DISTANCE     TIME     PACE │
+│    5.2km    28:45    5:32/km│
+├─────────────────────────────┤
+│  Next: Turn left in 150m    │
+├─────────────────────────────┤
+│ [PAUSE]              [STOP] │
+└─────────────────────────────┘
+SUMMARY CHECKLIST FOR MOBILE APP
+ Route generation + selection screen (DO NOT SKIP)
+ Auto-save every 5 seconds
+ 12-hour session recovery
+ Phase-based coaching logic
+ Hill-aware coaching (5%+ grade triggers)
+ Weather-aware coaching
+ Statement repetition limit (max 3x per run)
+ Offline-first with dbSynced flag
+ Background GPS tracking
+ Keep screen awake during run
+ AsyncStorage with correct keys
+ Connect to https://airuncoach.live backend
+Copy this entire document into your Expo project. The AI will have complete context to build the app correctly.

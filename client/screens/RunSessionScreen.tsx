@@ -348,48 +348,75 @@ export default function RunSessionScreen({
     }
   }, [sessionKey, user]);
 
-  const phaseCoachingStatements = {
+  const phaseCoachingStatements: Record<string, string[]> = {
     early: [
-      "Start easy, let your body warm up gradually.",
+      "Keep your posture tall, imagine a string lifting the top of your head.",
+      "Settle into a steady, rhythmic breathing pattern.",
+      "Start easy and let your body warm up naturally.",
       "Find your rhythm, focus on relaxed breathing.",
-      "Good start! Keep a comfortable pace.",
-      "Let your muscles warm up before pushing harder.",
     ],
     mid: [
-      "You're in the zone! Maintain this steady effort.",
-      "Great progress! Keep pushing forward.",
-      "Strong running! Stay focused on your form.",
-      "You're doing amazing! Keep up the momentum.",
+      "You're in the groove now. Stay relaxed and maintain your rhythm.",
+      "Lightly engage your core to keep your torso stable.",
+      "Think quick and elastic, lifting the foot up and through.",
+      "Great form! Keep those shoulders low and relaxed.",
     ],
     late: [
-      "The finish is getting closer! Push through!",
+      "If you're starting to tire, take a deep breath and reset.",
+      "Pain fades, pride lasts. Push through this stretch.",
+      "When it gets tough, focus on the next 100 meters.",
       "You've got this! Stay mentally strong.",
-      "Final stretch ahead - give it your all!",
-      "Almost there! Your hard work is paying off.",
     ],
     final: [
-      "Sprint to the finish!",
-      "Last push! Leave nothing behind!",
-      "You're crushing it! Almost done!",
-      "Finish strong - you've earned this!",
+      "You're almost there! Give it everything you have left.",
+      "The finish line is calling. Dig deep and finish strong!",
+      "Empty the tank. Leave nothing behind!",
+      "Sprint to the finish! You've earned this!",
+    ],
+    generic: [
+      "Remember to smile! It helps you relax.",
+      "One step at a time. That's how every journey is conquered.",
+      "Great running! Keep up the momentum.",
+      "Stay focused on your form and breathing.",
     ],
   };
 
-  const getRunPhase = useCallback(() => {
-    const targetDist = routeData?.actualDistance || 5;
-    const progress = distance / targetDist;
-    if (progress < 0.25) return "early";
-    if (progress < 0.6) return "mid";
-    if (progress < 0.9) return "late";
-    return "final";
+  const statementUsageRef = useRef<Record<string, number>>({});
+  const MAX_STATEMENT_USES = 3;
+
+  const getRunPhase = useCallback((): string => {
+    const targetDist = routeData?.actualDistance;
+    if (targetDist) {
+      const percent = (distance / targetDist) * 100;
+      if (percent >= 90) return "final";
+      if (percent >= 75) return "late";
+      if (percent >= 40 && percent <= 50) return "mid";
+      if (percent <= 10) return "early";
+      return "generic";
+    }
+    if (distance <= 2) return "early";
+    if (distance >= 3 && distance <= 5) return "mid";
+    return "generic";
   }, [distance, routeData]);
+
+  const getAvailableStatement = useCallback((phase: string): string => {
+    const statements = phaseCoachingStatements[phase] || phaseCoachingStatements.generic;
+    const available = statements.filter(
+      (s) => (statementUsageRef.current[s] || 0) < MAX_STATEMENT_USES
+    );
+    if (available.length === 0) {
+      return statements[Math.floor(Math.random() * statements.length)];
+    }
+    const selected = available[Math.floor(Math.random() * available.length)];
+    statementUsageRef.current[selected] = (statementUsageRef.current[selected] || 0) + 1;
+    return selected;
+  }, []);
 
   const triggerPhaseCoaching = useCallback(async () => {
     if (!aiCoachEnabled || Date.now() - lastPhaseCoachTimeRef.current < 180000) return;
     
     const phase = getRunPhase();
-    const statements = phaseCoachingStatements[phase];
-    const statement = statements[Math.floor(Math.random() * statements.length)];
+    const statement = getAvailableStatement(phase);
     
     lastPhaseCoachTimeRef.current = Date.now();
     
@@ -407,7 +434,7 @@ export default function RunSessionScreen({
       topic: phase,
       responseText: statement,
     });
-  }, [aiCoachEnabled, getRunPhase, saveCoachingLog]);
+  }, [aiCoachEnabled, getRunPhase, getAvailableStatement, saveCoachingLog]);
 
   const getCoachMessage = useCallback(async () => {
     if (!aiCoachEnabled || Date.now() - lastCoachTimeRef.current < 60000) return;
