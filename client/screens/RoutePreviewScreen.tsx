@@ -123,13 +123,23 @@ function getDifficultyColor(difficulty: string): string {
   }
 }
 
-function formatTime(minutes: number): string {
+function formatTime(minutes: number | undefined | null): string {
+  if (minutes === undefined || minutes === null || isNaN(minutes)) {
+    return '--';
+  }
   const hours = Math.floor(minutes / 60);
   const mins = Math.floor(minutes % 60);
   if (hours > 0) {
     return `${hours}h ${mins}m`;
   }
   return `${mins} min`;
+}
+
+function formatElevation(value: number | undefined | null): string {
+  if (value === undefined || value === null || isNaN(value)) {
+    return '--';
+  }
+  return Math.round(value).toString();
 }
 
 export default function RoutePreviewScreen() {
@@ -391,13 +401,13 @@ export default function RoutePreviewScreen() {
         <View style={styles.elevationRow}>
           <View style={styles.elevationStat}>
             <IconTrending size={14} color={theme.success} />
-            <Text style={styles.elevationText}>+{Math.round(routeData.elevationGain)}m</Text>
+            <Text style={styles.elevationText}>+{formatElevation(routeData.elevationGain)}m</Text>
           </View>
           <View style={styles.elevationStat}>
             <View style={{ transform: [{ rotate: '180deg' }] }}>
               <IconTrending size={14} color={theme.error} />
             </View>
-            <Text style={styles.elevationText}>-{Math.round(routeData.elevationLoss)}m</Text>
+            <Text style={styles.elevationText}>-{formatElevation(routeData.elevationLoss)}m</Text>
           </View>
         </View>
       </Pressable>
