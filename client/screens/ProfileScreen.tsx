@@ -45,6 +45,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
+import { getStoredToken } from "@/lib/auth";
 
 interface Friend {
   id: string;
@@ -124,6 +125,8 @@ export default function ProfileScreen({ navigation }: any) {
   const [searchResults, setSearchResults] = useState<Friend[]>([]);
   const [searching, setSearching] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null);
+  const [showPhotoConfirmModal, setShowPhotoConfirmModal] = useState(false);
 
   const fetchFriends = useCallback(async () => {
     try {
@@ -196,8 +199,7 @@ export default function ProfileScreen({ navigation }: any) {
         return;
       }
       result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
+        allowsEditing: false,
         quality: 0.8,
       });
     } else {
@@ -208,66 +210,103 @@ export default function ProfileScreen({ navigation }: any) {
       }
       result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
+        allowsEditing: false,
         quality: 0.8,
       });
     }
 
     if (!result.canceled && result.assets[0]) {
-      await uploadProfilePhoto(result.assets[0].uri);
+      // Show custom confirmation modal with "Confirm" button
+      setPendingPhotoUri(result.assets[0].uri);
+      setShowPhotoConfirmModal(true);
     }
+  };
+
+  const confirmPhotoUpload = async () => {
+    if (pendingPhotoUri) {
+      setShowPhotoConfirmModal(false);
+      await uploadProfilePhoto(pendingPhotoUri);
+      setPendingPhotoUri(null);
+    }
+  };
+
+  const cancelPhotoUpload = () => {
+    setShowPhotoConfirmModal(false);
+    setPendingPhotoUri(null);
   };
 
   const uploadProfilePhoto = async (uri: string) => {
     setUploadingPhoto(true);
     try {
       const baseUrl = getApiUrl();
+      const token = await getStoredToken();
       
-      if (Platform.OS === "web") {
-        // Web: Fetch the blob and upload
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        const formData = new FormData();
-        formData.append("photo", blob, "photo.jpg");
+      // Build headers with authorization if available
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
+      // Try uploading to different possible endpoints
+      const possibleEndpoints = [
+        "/api/user/profile-photo",
+        "/api/users/profile-photo", 
+        "/api/profile/photo",
+        `/api/users/${user?.id}/profile-photo`,
+      ];
+      
+      let uploadSuccess = false;
+      
+      for (const endpoint of possibleEndpoints) {
+        if (uploadSuccess) break;
         
-        const uploadResponse = await fetch(`${baseUrl}/api/user/profile-photo`, {
-          method: "POST",
-          credentials: "include",
-          body: formData,
-        });
-        
-        if (uploadResponse.ok) {
-          await refreshUser?.();
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else {
-          throw new Error("Upload failed");
+        try {
+          const formData = new FormData();
+          
+          if (Platform.OS === "web") {
+            const response = await fetch(uri);
+            const blob = await response.blob();
+            formData.append("photo", blob, "photo.jpg");
+            formData.append("image", blob, "photo.jpg");
+          } else {
+            const filename = uri.split("/").pop() || "photo.jpg";
+            const fileObj = {
+              uri,
+              name: filename,
+              type: "image/jpeg",
+            };
+            formData.append("photo", fileObj as any);
+            formData.append("image", fileObj as any);
+          }
+          
+          console.log("Trying endpoint:", `${baseUrl}${endpoint}`);
+          
+          const uploadResponse = await fetch(`${baseUrl}${endpoint}`, {
+            method: "POST",
+            headers,
+            credentials: "include",
+            body: formData,
+          });
+          
+          console.log("Response status:", uploadResponse.status);
+          
+          if (uploadResponse.ok) {
+            uploadSuccess = true;
+            await refreshUser?.();
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            console.log("Upload succeeded at:", endpoint);
+            break;
+          } else {
+            const errorText = await uploadResponse.text();
+            console.log(`Endpoint ${endpoint} failed:`, uploadResponse.status, errorText);
+          }
+        } catch (endpointError) {
+          console.log(`Endpoint ${endpoint} error:`, endpointError);
         }
-      } else {
-        // Native: Use FormData with proper React Native file object
-        const filename = uri.split("/").pop() || "photo.jpg";
-        const formData = new FormData();
-        formData.append("photo", {
-          uri,
-          name: filename,
-          type: "image/jpeg",
-        } as any);
-        
-        const uploadResponse = await fetch(`${baseUrl}/api/user/profile-photo`, {
-          method: "POST",
-          credentials: "include",
-          body: formData,
-        });
-        
-        if (uploadResponse.ok) {
-          const data = await uploadResponse.json();
-          await refreshUser?.();
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else {
-          const errorData = await uploadResponse.text();
-          console.log("Upload error response:", errorData);
-          throw new Error(`Upload failed with status ${uploadResponse.status}`);
-        }
+      }
+      
+      if (!uploadSuccess) {
+        throw new Error("All upload endpoints failed");
       }
     } catch (error) {
       console.log("Failed to upload photo:", error);
@@ -664,6 +703,45 @@ export default function ProfileScreen({ navigation }: any) {
       </ThemedText>
 
       <Modal
+        visible={showPhotoConfirmModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={cancelPhotoUpload}
+      >
+        <View style={styles.photoConfirmOverlay}>
+          <View style={[styles.photoConfirmModal, { backgroundColor: theme.backgroundSecondary }]}>
+            <ThemedText type="h4" style={{ textAlign: "center", marginBottom: Spacing.lg }}>
+              Use this photo?
+            </ThemedText>
+            {pendingPhotoUri ? (
+              <Image 
+                source={{ uri: pendingPhotoUri }} 
+                style={styles.photoPreview} 
+              />
+            ) : null}
+            <View style={styles.photoConfirmButtons}>
+              <Pressable
+                onPress={cancelPhotoUpload}
+                style={[styles.photoConfirmButton, { backgroundColor: theme.backgroundTertiary }]}
+              >
+                <ThemedText type="body" style={{ color: theme.textSecondary }}>
+                  Cancel
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={confirmPhotoUpload}
+                style={[styles.photoConfirmButton, { backgroundColor: theme.primary }]}
+              >
+                <ThemedText type="body" style={{ color: "#fff", fontWeight: "600" }}>
+                  Confirm
+                </ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={showFriendsModal}
         animationType="slide"
         presentationStyle="pageSheet"
@@ -956,5 +1034,37 @@ const styles = StyleSheet.create({
   emptySearch: {
     alignItems: "center",
     padding: Spacing.xl,
+  },
+  photoConfirmOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Spacing.xl,
+  },
+  photoConfirmModal: {
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    alignItems: "center",
+  },
+  photoPreview: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    marginBottom: Spacing.xl,
+  },
+  photoConfirmButtons: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    width: "100%",
+  },
+  photoConfirmButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
