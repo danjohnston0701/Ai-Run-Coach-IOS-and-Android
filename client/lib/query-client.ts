@@ -1,35 +1,14 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 /**
- * Gets the base URL for the API server (local proxy to production)
+ * Gets the base URL for the production API
+ * Mobile app connects directly to production backend
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
-  // Use the local server which proxies to the production API
-  // This ensures proper handling of mobile app requests
-  let host = process.env.EXPO_PUBLIC_DOMAIN;
-
-  console.log('[API] EXPO_PUBLIC_DOMAIN:', host);
-
-  if (!host) {
-    // Fallback for development
-    host = 'localhost:5000';
-  }
-
-  // Strip port from host if present (Replit routes port 5000 to base HTTPS URL)
-  // EXPO_PUBLIC_DOMAIN is set as "domain:5000" but we need just "domain"
-  if (host.includes(':5000')) {
-    host = host.replace(':5000', '');
-  }
-
-  // Ensure we're using https for non-localhost
-  const protocol = host.includes('localhost') || host.includes('127.0.0.1') 
-    ? 'http' 
-    : 'https';
-    
-  let url = new URL(`${protocol}://${host}`);
-  console.log('[API] Final URL:', url.href.slice(0, -1));
-  return url.href.slice(0, -1); // Remove trailing slash
+  // Connect directly to the production API
+  // This is more reliable than proxying through the local server
+  return 'https://airuncoach.live';
 }
 
 async function throwIfResNotOk(res: Response) {
