@@ -225,12 +225,16 @@ export default function RoutePreviewScreen() {
       }
 
       const data = await response.json();
+      console.log('Route generation response:', JSON.stringify(data));
       
-      if (!data || !Array.isArray(data) || data.length === 0) {
+      // Handle different response formats - API might return { routes: [...] } or just [...]
+      const routesArray = Array.isArray(data) ? data : (data.routes || data.options || data.candidates || []);
+      
+      if (!routesArray || routesArray.length === 0) {
         throw new Error('No routes were generated. Please try again.');
       }
 
-      setRoutes(data);
+      setRoutes(routesArray);
       setSelectedRouteIndex(0);
       setGenerationProgress(100);
       
