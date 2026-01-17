@@ -9,6 +9,8 @@ export function getApiUrl(): string {
   // This ensures proper handling of mobile app requests
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
+  console.log('[API] EXPO_PUBLIC_DOMAIN:', host);
+
   if (!host) {
     // Fallback for development
     host = 'localhost:5000';
@@ -26,6 +28,7 @@ export function getApiUrl(): string {
     : 'https';
     
   let url = new URL(`${protocol}://${host}`);
+  console.log('[API] Final URL:', url.href.slice(0, -1));
   return url.href.slice(0, -1); // Remove trailing slash
 }
 
