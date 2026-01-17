@@ -441,12 +441,21 @@ export default function RunSessionScreen({
               type: "encouragement",
             },
           ]);
+          
+          await saveCoachingLog({
+            eventType: "ai_coach",
+            topic: "real_time_coaching",
+            responseText: data.message,
+          });
         }
+      } else {
+        console.log("Coach API error:", response.status);
       }
     } catch (error) {
       console.log("Coach message error:", error);
+      showToast("Coach temporarily unavailable");
     }
-  }, [aiCoachEnabled, distance, elapsedTime, currentPace, routeData, user]);
+  }, [aiCoachEnabled, distance, elapsedTime, currentPace, routeData, user, saveCoachingLog, showToast]);
 
   const updateNavigationInstruction = useCallback((lat: number, lng: number) => {
     if (!routeData?.turnInstructions?.length) return;
