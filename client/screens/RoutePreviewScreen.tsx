@@ -12,7 +12,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHeaderHeight } from '@react-navigation/elements';
-import MapView, { Polyline, Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import { MapViewCompat, PolylineCompat, MarkerCompat } from '@/components/MapViewCompat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
@@ -68,7 +68,7 @@ interface RoutePreviewParams {
 
 const theme = Colors.dark;
 
-function decodePolyline(encoded: string): Array<{ latitude: number; longitude: number }> {
+function decodePolylineCompat(encoded: string): Array<{ latitude: number; longitude: number }> {
   const points: Array<{ latitude: number; longitude: number }> = [];
   let index = 0;
   let lat = 0;
@@ -138,7 +138,7 @@ export default function RoutePreviewScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { user } = useAuth();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
 
   const params = route.params as RoutePreviewParams;
   
@@ -248,7 +248,7 @@ export default function RoutePreviewScreen() {
   const fitMapToRoute = (routeData: RouteCandidate) => {
     if (!mapRef.current || !routeData) return;
 
-    const coordinates = decodePolyline(routeData.polyline);
+    const coordinates = decodePolylineCompat(routeData.polyline);
     if (coordinates.length > 0) {
       mapRef.current.fitToCoordinates(coordinates, {
         edgePadding: { top: 60, right: 40, bottom: 200, left: 40 },
@@ -303,7 +303,7 @@ export default function RoutePreviewScreen() {
   };
 
   const selectedRoute = routes[selectedRouteIndex];
-  const routeCoordinates = selectedRoute ? decodePolyline(selectedRoute.polyline) : [];
+  const routeCoordinates = selectedRoute ? decodePolylineCompat(selectedRoute.polyline) : [];
 
   const renderLoading = () => (
     <View style={styles.centerContainer}>
@@ -418,10 +418,9 @@ export default function RoutePreviewScreen() {
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
+      <MapViewCompat
+        mapRef={mapRef}
         style={styles.map}
-        provider={PROVIDER_DEFAULT}
         initialRegion={
           currentLocation
             ? {
@@ -432,32 +431,30 @@ export default function RoutePreviewScreen() {
               }
             : undefined
         }
-        customMapStyle={mapStyle}
         showsUserLocation
-        showsMyLocationButton={false}
       >
         {routeCoordinates.length > 0 && (
           <>
-            <Polyline
+            <PolylineCompat
               coordinates={routeCoordinates}
               strokeColor={theme.primary}
               strokeWidth={4}
               lineCap="round"
               lineJoin="round"
             />
-            <Marker
+            <MarkerCompat
               coordinate={routeCoordinates[0]}
               title="Start"
               pinColor={theme.success}
             />
-            <Marker
+            <MarkerCompat
               coordinate={routeCoordinates[routeCoordinates.length - 1]}
               title="Finish"
               pinColor={theme.error}
             />
           </>
         )}
-      </MapView>
+      </MapViewCompat>
 
       <LinearGradient
         colors={['transparent', theme.backgroundRoot]}

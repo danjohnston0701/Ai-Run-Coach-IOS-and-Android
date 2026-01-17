@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RouteProp } from "@react-navigation/native";
-import MapView, { Polyline, Marker, PROVIDER_DEFAULT } from "react-native-maps";
+import { MapViewCompat, PolylineCompat, MarkerCompat } from "@/components/MapViewCompat";
 import * as Haptics from "expo-haptics";
 
 import {
@@ -62,7 +62,7 @@ export default function RunInsightsScreen({
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
 
   const { user } = useAuth();
   const isAdmin = user?.isAdmin === true;
@@ -327,35 +327,33 @@ export default function RunInsightsScreen({
       {/* GPS Track Map */}
       {gpsTrackCoordinates.length > 0 ? (
         <View style={styles.mapContainer}>
-          <MapView
-            ref={mapRef}
+          <MapViewCompat
+            mapRef={mapRef}
             style={styles.map}
-            provider={PROVIDER_DEFAULT}
             initialRegion={getMapRegion() || undefined}
-            customMapStyle={mapStyle}
             scrollEnabled={false}
             zoomEnabled={false}
           >
-            <Polyline
+            <PolylineCompat
               coordinates={gpsTrackCoordinates}
               strokeColor={theme.primary}
               strokeWidth={4}
             />
             {gpsTrackCoordinates.length > 0 ? (
               <>
-                <Marker
+                <MarkerCompat
                   coordinate={gpsTrackCoordinates[0]}
                   title="Start"
                   pinColor={theme.success}
                 />
-                <Marker
+                <MarkerCompat
                   coordinate={gpsTrackCoordinates[gpsTrackCoordinates.length - 1]}
                   title="Finish"
                   pinColor={theme.error}
                 />
               </>
             ) : null}
-          </MapView>
+          </MapViewCompat>
         </View>
       ) : null}
 

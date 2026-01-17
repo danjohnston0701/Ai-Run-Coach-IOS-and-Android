@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import MapView, { Polyline, Marker, PROVIDER_DEFAULT } from "react-native-maps";
+import { MapViewCompat, PolylineCompat, MarkerCompat } from "@/components/MapViewCompat";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
@@ -169,7 +169,7 @@ export default function RunSessionScreen({
 }: RunSessionScreenProps) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
 
   const [runState, setRunState] = useState<RunState>("ready");
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -950,26 +950,24 @@ export default function RunSessionScreen({
 
       {showMap && routeCoordinates.length > 0 ? (
         <View style={styles.mapContainer}>
-          <MapView
-            ref={mapRef}
+          <MapViewCompat
+            mapRef={mapRef}
             style={styles.map}
-            provider={PROVIDER_DEFAULT}
             initialRegion={{
               latitude: routeCoordinates[0]?.latitude || 0,
               longitude: routeCoordinates[0]?.longitude || 0,
               latitudeDelta: 0.01,
               longitudeDelta: 0.01,
             }}
-            customMapStyle={mapStyle}
           >
-            <Polyline
+            <PolylineCompat
               coordinates={routeCoordinates}
               strokeColor={theme.textMuted}
               strokeWidth={4}
               lineDashPattern={[10, 5]}
             />
             {gpsTrackCoordinates.length > 1 ? (
-              <Polyline
+              <PolylineCompat
                 coordinates={gpsTrackCoordinates}
                 strokeColor={theme.primary}
                 strokeWidth={5}
@@ -977,12 +975,12 @@ export default function RunSessionScreen({
             ) : null}
             {routeCoordinates.length > 0 ? (
               <>
-                <Marker
+                <MarkerCompat
                   coordinate={routeCoordinates[0]}
                   title="Start"
                   pinColor={theme.success}
                 />
-                <Marker
+                <MarkerCompat
                   coordinate={routeCoordinates[routeCoordinates.length - 1]}
                   title="Finish"
                   pinColor={theme.error}
@@ -990,7 +988,7 @@ export default function RunSessionScreen({
               </>
             ) : null}
             {currentLocation ? (
-              <Marker
+              <MarkerCompat
                 coordinate={{
                   latitude: currentLocation.lat,
                   longitude: currentLocation.lng,
@@ -999,9 +997,9 @@ export default function RunSessionScreen({
                 <View style={styles.currentLocationMarker}>
                   <View style={[styles.currentLocationDot, { backgroundColor: theme.primary }]} />
                 </View>
-              </Marker>
+              </MarkerCompat>
             ) : null}
-          </MapView>
+          </MapViewCompat>
 
           {currentInstruction ? (
             <Animated.View
