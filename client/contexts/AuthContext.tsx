@@ -83,11 +83,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const { user } = await authLogin(email, password);
       console.log('[AuthContext] Login successful, setting user:', user?.email);
-      setState({
+      setState(prev => ({
+        ...prev,
         user,
         isLoading: false,
         isAuthenticated: true,
-      });
+      }));
     } catch (error) {
       setState(prev => ({ ...prev, isLoading: false }));
       throw error;
@@ -98,11 +99,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setState(prev => ({ ...prev, isLoading: true }));
     try {
       const { user } = await authRegister(name, email, password);
-      setState({
+      setState(prev => ({
+        ...prev,
         user,
         isLoading: false,
         isAuthenticated: true,
-      });
+      }));
     } catch (error) {
       setState(prev => ({ ...prev, isLoading: false }));
       throw error;
@@ -112,11 +114,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }));
     await authLogout();
-    setState({
+    setState(prev => ({
+      ...prev,
       user: null,
       isLoading: false,
       isAuthenticated: false,
-    });
+    }));
   }, []);
 
   return (
