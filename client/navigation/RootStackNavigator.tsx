@@ -44,7 +44,7 @@ export type RootStackParamList = {
     aiCoach?: boolean;
     routeId?: string;
   } | undefined;
-  RunInsights: { runId: string };
+  RunInsights: { runId: string; isFriendView?: boolean };
   EventDetails: { eventId: string };
   GoalDetails: { goalId: string };
   CreateGoal: undefined;

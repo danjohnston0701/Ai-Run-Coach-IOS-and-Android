@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { StyleSheet, View, ScrollView, RefreshControl, Dimensions, Pressable, Share, Platform } from "react-native";
+import { StyleSheet, View, ScrollView, RefreshControl, Dimensions, Pressable, Share, Platform, Modal, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -29,11 +29,14 @@ import { Card } from "@/components/Card";
 import { StatCard } from "@/components/StatCard";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { Button } from "@/components/Button";
+import { Input } from "@/components/Input";
 import { useTheme } from "@/hooks/useTheme";
+import { useAuth } from "@/hooks/useAuth";
 import { Colors, Spacing, BorderRadius, Typography } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { Run } from "@/lib/types";
+import { IconCalendar, IconPlus, IconX } from "@/components/icons/AppIcons";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -61,10 +64,27 @@ export default function RunInsightsScreen({
   const headerHeight = useHeaderHeight();
   const mapRef = useRef<MapView>(null);
 
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin === true;
+  const isFriendView = route.params?.isFriendView === true;
+
   const [run, setRun] = useState<Run | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [generatingInsights, setGeneratingInsights] = useState(false);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [creatingEvent, setCreatingEvent] = useState(false);
+  const [eventForm, setEventForm] = useState({
+    eventName: "",
+    country: "",
+    city: "",
+    eventType: "5k",
+    description: "",
+    scheduleType: "one-time",
+    recurringDay: "saturday",
+    recurringFrequency: "weekly",
+    oneTimeDate: "",
+  });
 
   const fetchRun = async () => {
     try {
@@ -172,10 +192,72 @@ export default function RunInsightsScreen({
     }
   };
 
+  const handleCreateEvent = async () => {
+    if (!eventForm.eventName.trim() || !eventForm.country.trim()) {
+      Alert.alert("Required Fields", "Please enter event name and country.");
+      return;
+    }
+    
+    if (eventForm.scheduleType === "one-time" && !eventForm.oneTimeDate) {
+      Alert.alert("Date Required", "Please select a date for the one-time event.");
+      return;
+    }
+    
+    setCreatingEvent(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/events/from-run/${runId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          eventName: eventForm.eventName,
+          country: eventForm.country,
+          city: eventForm.city || undefined,
+          eventType: eventForm.eventType,
+          description: eventForm.description || undefined,
+          scheduleType: eventForm.scheduleType,
+          recurringDay: eventForm.scheduleType === "recurring" ? eventForm.recurringDay : undefined,
+          recurringFrequency: eventForm.scheduleType === "recurring" ? eventForm.recurringFrequency : undefined,
+          oneTimeDate: eventForm.scheduleType === "one-time" ? eventForm.oneTimeDate : undefined,
+        }),
+      });
+      
+      if (response.ok) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setShowEventModal(false);
+        Alert.alert("Success", "Event created successfully!");
+        setEventForm({
+          eventName: "",
+          country: "",
+          city: "",
+          eventType: "5k",
+          description: "",
+          scheduleType: "one-time",
+          recurringDay: "saturday",
+          recurringFrequency: "weekly",
+          oneTimeDate: "",
+        });
+      } else {
+        const error = await response.json();
+        Alert.alert("Error", error.message || "Failed to create event");
+      }
+    } catch (error) {
+      console.log("Create event error:", error);
+      Alert.alert("Error", "Failed to create event. Please try again.");
+    } finally {
+      setCreatingEvent(false);
+    }
+  };
+
   const gpsTrackCoordinates = run?.gpsTrack?.map((point: any) => ({
     latitude: point.lat,
     longitude: point.lng,
   })) || [];
+
+  const shouldShowCoachingLogs = (isAdmin || run?.aiCoachEnabled !== false) && !isFriendView;
 
   const getMapRegion = () => {
     if (gpsTrackCoordinates.length === 0) return null;
@@ -478,7 +560,7 @@ export default function RunInsightsScreen({
       ) : null}
 
       {/* AI Coaching Notes */}
-      {run.aiCoachingNotes && run.aiCoachingNotes.length > 0 ? (
+      {shouldShowCoachingLogs && run.aiCoachingNotes && run.aiCoachingNotes.length > 0 ? (
         <View style={styles.section}>
           <ThemedText type="h4" style={styles.sectionTitle}>
             Coaching Notes
@@ -500,6 +582,19 @@ export default function RunInsightsScreen({
         </View>
       ) : null}
 
+      {/* Create Event Button (Admin Only) */}
+      {isAdmin ? (
+        <Pressable
+          onPress={() => setShowEventModal(true)}
+          style={[styles.createEventButton, { backgroundColor: theme.accent + "20", borderColor: theme.accent }]}
+        >
+          <IconCalendar size={20} color={theme.accent} />
+          <ThemedText type="body" style={{ color: theme.accent, marginLeft: Spacing.sm, fontWeight: "600" }}>
+            Create Event from Run
+          </ThemedText>
+        </Pressable>
+      ) : null}
+
       {/* Share Button */}
       <Pressable
         onPress={handleShare}
@@ -519,6 +614,220 @@ export default function RunInsightsScreen({
       >
         Done
       </Button>
+
+      {/* Create Event Modal */}
+      <Modal
+        visible={showEventModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEventModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <ScrollView style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="h3">Create Event</ThemedText>
+              <Pressable onPress={() => setShowEventModal(false)}>
+                <IconX size={24} color={theme.textSecondary} />
+              </Pressable>
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" style={[styles.formLabel, { color: theme.textSecondary }]}>
+                Event Name *
+              </ThemedText>
+              <Input
+                value={eventForm.eventName}
+                onChangeText={(text) => setEventForm({ ...eventForm, eventName: text })}
+                placeholder="e.g., Saturday Morning Parkrun"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" style={[styles.formLabel, { color: theme.textSecondary }]}>
+                Country *
+              </ThemedText>
+              <Input
+                value={eventForm.country}
+                onChangeText={(text) => setEventForm({ ...eventForm, country: text })}
+                placeholder="e.g., United States"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" style={[styles.formLabel, { color: theme.textSecondary }]}>
+                City (Optional)
+              </ThemedText>
+              <Input
+                value={eventForm.city}
+                onChangeText={(text) => setEventForm({ ...eventForm, city: text })}
+                placeholder="e.g., New York"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" style={[styles.formLabel, { color: theme.textSecondary }]}>
+                Event Type
+              </ThemedText>
+              <View style={styles.scheduleRow}>
+                {["parkrun", "5k", "10k", "half_marathon", "marathon", "trail", "other"].map((type) => (
+                  <Pressable
+                    key={type}
+                    onPress={() => setEventForm({ ...eventForm, eventType: type })}
+                    style={[
+                      styles.typeOption,
+                      {
+                        backgroundColor: eventForm.eventType === type ? theme.primary + "20" : "transparent",
+                        borderColor: eventForm.eventType === type ? theme.primary : theme.border,
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      type="small"
+                      style={{ color: eventForm.eventType === type ? theme.primary : theme.text }}
+                    >
+                      {type.replace("_", " ")}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" style={[styles.formLabel, { color: theme.textSecondary }]}>
+                Description (Optional)
+              </ThemedText>
+              <Input
+                value={eventForm.description}
+                onChangeText={(text) => setEventForm({ ...eventForm, description: text })}
+                placeholder="Brief description of the event"
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <ThemedText type="small" style={[styles.formLabel, { color: theme.textSecondary }]}>
+                Schedule Type
+              </ThemedText>
+              <View style={styles.scheduleRow}>
+                <Pressable
+                  onPress={() => setEventForm({ ...eventForm, scheduleType: "one-time" })}
+                  style={[
+                    styles.scheduleOption,
+                    {
+                      backgroundColor: eventForm.scheduleType === "one-time" ? theme.primary + "20" : "transparent",
+                      borderColor: eventForm.scheduleType === "one-time" ? theme.primary : theme.border,
+                    },
+                  ]}
+                >
+                  <ThemedText
+                    type="small"
+                    style={{ color: eventForm.scheduleType === "one-time" ? theme.primary : theme.text }}
+                  >
+                    One-Time
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => setEventForm({ ...eventForm, scheduleType: "recurring" })}
+                  style={[
+                    styles.scheduleOption,
+                    {
+                      backgroundColor: eventForm.scheduleType === "recurring" ? theme.primary + "20" : "transparent",
+                      borderColor: eventForm.scheduleType === "recurring" ? theme.primary : theme.border,
+                    },
+                  ]}
+                >
+                  <ThemedText
+                    type="small"
+                    style={{ color: eventForm.scheduleType === "recurring" ? theme.primary : theme.text }}
+                  >
+                    Recurring
+                  </ThemedText>
+                </Pressable>
+              </View>
+            </View>
+
+            {eventForm.scheduleType === "one-time" ? (
+              <View style={styles.formGroup}>
+                <ThemedText type="small" style={[styles.formLabel, { color: theme.textSecondary }]}>
+                  Event Date *
+                </ThemedText>
+                <Input
+                  value={eventForm.oneTimeDate}
+                  onChangeText={(text) => setEventForm({ ...eventForm, oneTimeDate: text })}
+                  placeholder="YYYY-MM-DD"
+                />
+              </View>
+            ) : (
+              <>
+                <View style={styles.formGroup}>
+                  <ThemedText type="small" style={[styles.formLabel, { color: theme.textSecondary }]}>
+                    Frequency
+                  </ThemedText>
+                  <View style={styles.scheduleRow}>
+                    {["daily", "weekly", "fortnightly", "monthly"].map((freq) => (
+                      <Pressable
+                        key={freq}
+                        onPress={() => setEventForm({ ...eventForm, recurringFrequency: freq })}
+                        style={[
+                          styles.scheduleOption,
+                          {
+                            backgroundColor: eventForm.recurringFrequency === freq ? theme.primary + "20" : "transparent",
+                            borderColor: eventForm.recurringFrequency === freq ? theme.primary : theme.border,
+                          },
+                        ]}
+                      >
+                        <ThemedText
+                          type="small"
+                          style={{ color: eventForm.recurringFrequency === freq ? theme.primary : theme.text }}
+                        >
+                          {freq}
+                        </ThemedText>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <ThemedText type="small" style={[styles.formLabel, { color: theme.textSecondary }]}>
+                    Day
+                  </ThemedText>
+                  <View style={styles.scheduleRow}>
+                    {["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].map((day) => (
+                      <Pressable
+                        key={day}
+                        onPress={() => setEventForm({ ...eventForm, recurringDay: day })}
+                        style={[
+                          styles.scheduleOption,
+                          {
+                            backgroundColor: eventForm.recurringDay === day ? theme.primary + "20" : "transparent",
+                            borderColor: eventForm.recurringDay === day ? theme.primary : theme.border,
+                          },
+                        ]}
+                      >
+                        <ThemedText
+                          type="small"
+                          style={{ color: eventForm.recurringDay === day ? theme.primary : theme.text }}
+                        >
+                          {day.slice(0, 3)}
+                        </ThemedText>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </>
+            )}
+
+            <Button
+              onPress={handleCreateEvent}
+              loading={creatingEvent}
+              style={{ marginTop: Spacing.lg }}
+            >
+              Create Event
+            </Button>
+          </ScrollView>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -627,5 +936,56 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
     borderRadius: BorderRadius.lg,
     marginTop: Spacing.md,
+  },
+  createEventButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    marginTop: Spacing.xl,
+    borderWidth: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Spacing.lg,
+  },
+  modalContent: {
+    width: "100%",
+    maxHeight: "85%",
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.xl,
+  },
+  formGroup: {
+    marginBottom: Spacing.lg,
+  },
+  formLabel: {
+    marginBottom: Spacing.sm,
+  },
+  scheduleRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+  },
+  scheduleOption: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+  },
+  typeOption: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
   },
 });
