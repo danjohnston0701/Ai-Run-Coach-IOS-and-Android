@@ -223,27 +223,51 @@ export default function ProfileScreen({ navigation }: any) {
     setUploadingPhoto(true);
     try {
       const baseUrl = getApiUrl();
-      const formData = new FormData();
       
-      const filename = uri.split("/").pop() || "photo.jpg";
-      const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1]}` : "image/jpeg";
-      
-      formData.append("photo", {
-        uri,
-        name: filename,
-        type,
-      } as any);
-
-      const response = await fetch(`${baseUrl}/api/user/profile-photo`, {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
-
-      if (response.ok) {
-        await refreshUser?.();
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (Platform.OS === "web") {
+        // Web: Fetch the blob and upload
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const formData = new FormData();
+        formData.append("photo", blob, "photo.jpg");
+        
+        const uploadResponse = await fetch(`${baseUrl}/api/user/profile-photo`, {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        });
+        
+        if (uploadResponse.ok) {
+          await refreshUser?.();
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          throw new Error("Upload failed");
+        }
+      } else {
+        // Native: Use FormData with proper React Native file object
+        const filename = uri.split("/").pop() || "photo.jpg";
+        const formData = new FormData();
+        formData.append("photo", {
+          uri,
+          name: filename,
+          type: "image/jpeg",
+        } as any);
+        
+        const uploadResponse = await fetch(`${baseUrl}/api/user/profile-photo`, {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        });
+        
+        if (uploadResponse.ok) {
+          const data = await uploadResponse.json();
+          await refreshUser?.();
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          const errorData = await uploadResponse.text();
+          console.log("Upload error response:", errorData);
+          throw new Error(`Upload failed with status ${uploadResponse.status}`);
+        }
       }
     } catch (error) {
       console.log("Failed to upload photo:", error);
@@ -500,7 +524,9 @@ export default function ProfileScreen({ navigation }: any) {
             <ThemedText type="small" style={{ color: theme.primary }}>
               User Code: #{user.userCode}
             </ThemedText>
-            <IconCopy size={14} color={theme.primary} style={{ marginLeft: 6 }} />
+            <View style={{ marginLeft: 6 }}>
+              <IconCopy size={14} color={theme.primary} />
+            </View>
           </Pressable>
         ) : null}
 
