@@ -129,9 +129,10 @@ export default function ProfileScreen({ navigation }: any) {
   const [showPhotoConfirmModal, setShowPhotoConfirmModal] = useState(false);
 
   const fetchFriends = useCallback(async () => {
+    if (!user?.id) return;
     try {
       const baseUrl = getApiUrl();
-      const response = await fetch(`${baseUrl}/api/friends`, {
+      const response = await fetch(`${baseUrl}/api/friends?userId=${user.id}`, {
         credentials: "include",
       });
       if (response.ok) {
@@ -142,7 +143,7 @@ export default function ProfileScreen({ navigation }: any) {
     } catch (error) {
       console.log("Failed to fetch friends:", error);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchFriends();

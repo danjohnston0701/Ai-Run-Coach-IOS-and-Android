@@ -32,6 +32,7 @@ interface SearchUser {
   name: string;
   email?: string;
   referralCode?: string;
+  userCode?: string;
   totalRuns?: number;
   totalDistance?: number;
   friendStatus?: 'none' | 'pending' | 'accepted' | 'sent';
@@ -120,11 +121,9 @@ export default function UserSearchScreen({ navigation }: any) {
         <ThemedText type="body" style={{ fontWeight: '600' }}>
           {item.name}
         </ThemedText>
-        {item.referralCode ? (
-          <ThemedText type="small" style={{ color: theme.textMuted }}>
-            Code: {item.referralCode}
-          </ThemedText>
-        ) : null}
+        <ThemedText type="small" style={{ color: theme.primary }}>
+          ID: {item.userCode || item.referralCode || item.id.slice(0, 8)}
+        </ThemedText>
         {item.totalRuns !== undefined ? (
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
             {item.totalRuns} runs · {(item.totalDistance || 0).toFixed(1)} km
