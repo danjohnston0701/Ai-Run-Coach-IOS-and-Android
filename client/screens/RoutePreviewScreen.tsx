@@ -200,6 +200,15 @@ export default function RoutePreviewScreen() {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [fullscreenMapIndex, setFullscreenMapIndex] = useState<number | null>(null);
   const [mapZoomLevels, setMapZoomLevels] = useState<{[key: number]: number}>({});
+  const [showPreRunSummary, setShowPreRunSummary] = useState(false);
+  const [preRunSummary, setPreRunSummary] = useState<{
+    weatherSummary: string;
+    terrainSummary: string;
+    coachAdvice: string;
+    temperature?: number;
+    conditions?: string;
+  } | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
 
   useEffect(() => {
     getCurrentLocation();
@@ -319,8 +328,66 @@ export default function RoutePreviewScreen() {
     fitMapToRoute(routes[index]);
   };
 
+  const fetchPreRunSummary = async () => {
+    const selectedRoute = routes[selectedRouteIndex];
+    if (!selectedRoute || !currentLocation) return;
+
+    setLoadingSummary(true);
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/ai/run-summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          lat: currentLocation.lat,
+          lng: currentLocation.lng,
+          distance: selectedRoute.actualDistance,
+          elevationGain: selectedRoute.elevationGain,
+          elevationLoss: selectedRoute.elevationLoss,
+          difficulty: selectedRoute.difficulty,
+          activityType: params.activityType,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPreRunSummary({
+          weatherSummary: data.weatherSummary || "Weather data unavailable",
+          terrainSummary: data.terrainSummary || `This ${selectedRoute.actualDistance.toFixed(1)}km route has ${Math.round(selectedRoute.elevationGain)}m elevation gain.`,
+          coachAdvice: data.coachAdvice || "Take it easy at the start and find your rhythm. Good luck!",
+          temperature: data.temperature,
+          conditions: data.conditions,
+        });
+      } else {
+        setPreRunSummary({
+          weatherSummary: "Weather data unavailable",
+          terrainSummary: `This ${selectedRoute.actualDistance.toFixed(1)}km ${selectedRoute.difficulty} route has ${Math.round(selectedRoute.elevationGain)}m elevation gain and ${Math.round(selectedRoute.elevationLoss)}m loss.`,
+          coachAdvice: "Focus on maintaining a steady pace and stay hydrated. You've got this!",
+        });
+      }
+    } catch (error) {
+      console.error('Pre-run summary error:', error);
+      const selectedRoute = routes[selectedRouteIndex];
+      setPreRunSummary({
+        weatherSummary: "Weather data unavailable",
+        terrainSummary: `This ${selectedRoute?.actualDistance?.toFixed(1) || '?'}km route awaits you.`,
+        coachAdvice: "Remember to warm up and start at a comfortable pace!",
+      });
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
+
   const handleStartRun = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowPreRunSummary(true);
+    await fetchPreRunSummary();
+  };
+
+  const confirmStartRun = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setShowPreRunSummary(false);
     
     const selectedRoute = routes[selectedRouteIndex];
     if (!selectedRoute) return;
@@ -596,8 +663,119 @@ export default function RoutePreviewScreen() {
       </View>
       
       {renderFullscreenMap()}
+      {renderPreRunSummaryModal()}
     </View>
   );
+
+  function renderPreRunSummaryModal() {
+    if (!showPreRunSummary) return null;
+    const selectedRoute = routes[selectedRouteIndex];
+
+    return (
+      <Modal
+        visible={showPreRunSummary}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowPreRunSummary(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.preRunModal}>
+            <View style={styles.preRunModalHeader}>
+              <Text style={styles.preRunModalTitle}>Pre-Run Briefing</Text>
+              <Pressable
+                style={styles.preRunCloseButton}
+                onPress={() => setShowPreRunSummary(false)}
+              >
+                <IconX size={24} color={theme.text} />
+              </Pressable>
+            </View>
+
+            {loadingSummary ? (
+              <View style={styles.preRunLoading}>
+                <ActivityIndicator size="large" color={theme.primary} />
+                <Text style={styles.preRunLoadingText}>Preparing your briefing...</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.preRunScrollContent} showsVerticalScrollIndicator={false}>
+                <View style={styles.preRunSection}>
+                  <View style={styles.preRunSectionHeader}>
+                    <View style={[styles.preRunSectionIcon, { backgroundColor: theme.primary + '20' }]}>
+                      <IconMap size={20} color={theme.primary} />
+                    </View>
+                    <Text style={styles.preRunSectionTitle}>Route Overview</Text>
+                  </View>
+                  <Text style={styles.preRunSectionText}>
+                    {selectedRoute?.actualDistance?.toFixed(1) || '--'}km {selectedRoute?.difficulty || 'moderate'} route with {Math.round(selectedRoute?.elevationGain || 0)}m elevation gain
+                  </Text>
+                </View>
+
+                {preRunSummary?.temperature !== undefined && (
+                  <View style={styles.preRunSection}>
+                    <View style={styles.preRunSectionHeader}>
+                      <View style={[styles.preRunSectionIcon, { backgroundColor: theme.warning + '20' }]}>
+                        <IconAlertCircle size={20} color={theme.warning} />
+                      </View>
+                      <Text style={styles.preRunSectionTitle}>Weather Conditions</Text>
+                    </View>
+                    <Text style={styles.preRunSectionText}>
+                      {preRunSummary.weatherSummary}
+                    </Text>
+                    <View style={styles.weatherStats}>
+                      <Text style={styles.weatherStatText}>{preRunSummary.temperature}°C</Text>
+                      {preRunSummary.conditions && (
+                        <Text style={styles.weatherStatText}>{preRunSummary.conditions}</Text>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                <View style={styles.preRunSection}>
+                  <View style={styles.preRunSectionHeader}>
+                    <View style={[styles.preRunSectionIcon, { backgroundColor: theme.success + '20' }]}>
+                      <IconMountain size={20} color={theme.success} />
+                    </View>
+                    <Text style={styles.preRunSectionTitle}>Terrain Analysis</Text>
+                  </View>
+                  <Text style={styles.preRunSectionText}>
+                    {preRunSummary?.terrainSummary || 'Loading terrain data...'}
+                  </Text>
+                </View>
+
+                <View style={styles.preRunSection}>
+                  <View style={styles.preRunSectionHeader}>
+                    <View style={[styles.preRunSectionIcon, { backgroundColor: '#9C27B0' + '20' }]}>
+                      <IconBrain size={20} color="#9C27B0" />
+                    </View>
+                    <Text style={styles.preRunSectionTitle}>Coach Advice</Text>
+                  </View>
+                  <Text style={styles.preRunCoachAdvice}>
+                    "{preRunSummary?.coachAdvice || 'Focus on your breathing and enjoy the run!'}"
+                  </Text>
+                </View>
+              </ScrollView>
+            )}
+
+            <View style={styles.preRunModalFooter}>
+              <Pressable
+                style={styles.preRunCancelButton}
+                onPress={() => setShowPreRunSummary(false)}
+              >
+                <Text style={styles.preRunCancelText}>Back</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.preRunStartButton, loadingSummary && styles.preRunStartButtonDisabled]}
+                onPress={confirmStartRun}
+                disabled={loadingSummary}
+              >
+                <IconPlay size={20} color={theme.backgroundRoot} />
+                <Text style={styles.preRunStartText}>Start Run</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   function renderVerticalRouteCard(routeData: RouteCandidate, index: number) {
     const isSelected = index === selectedRouteIndex;
@@ -1379,5 +1557,135 @@ const styles = StyleSheet.create({
     fontSize: Typography.h4.fontSize,
     fontWeight: '700',
     color: theme.text,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'flex-end',
+  },
+  preRunModal: {
+    backgroundColor: theme.backgroundSecondary,
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    maxHeight: '85%',
+  },
+  preRunModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  preRunModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.text,
+  },
+  preRunCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.backgroundRoot,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  preRunLoading: {
+    padding: Spacing['2xl'],
+    alignItems: 'center',
+    gap: Spacing.lg,
+  },
+  preRunLoadingText: {
+    fontSize: 16,
+    color: theme.textMuted,
+  },
+  preRunScrollContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  preRunSection: {
+    marginBottom: Spacing.xl,
+  },
+  preRunSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  preRunSectionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  preRunSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  preRunSectionText: {
+    fontSize: 15,
+    color: theme.textSecondary,
+    lineHeight: 22,
+    marginLeft: 48,
+  },
+  preRunCoachAdvice: {
+    fontSize: 15,
+    color: theme.textSecondary,
+    lineHeight: 24,
+    marginLeft: 48,
+    fontStyle: 'italic',
+  },
+  weatherStats: {
+    flexDirection: 'row',
+    gap: Spacing.lg,
+    marginLeft: 48,
+    marginTop: Spacing.sm,
+  },
+  weatherStatText: {
+    fontSize: 14,
+    color: theme.text,
+    fontWeight: '600',
+  },
+  preRunModalFooter: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+  },
+  preRunCancelButton: {
+    flex: 1,
+    height: 52,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: theme.backgroundRoot,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  preRunCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  preRunStartButton: {
+    flex: 2,
+    flexDirection: 'row',
+    height: 52,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: theme.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  preRunStartButtonDisabled: {
+    opacity: 0.6,
+  },
+  preRunStartText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.backgroundRoot,
   },
 });
