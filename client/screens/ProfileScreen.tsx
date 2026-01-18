@@ -292,9 +292,10 @@ export default function ProfileScreen({ navigation }: any) {
           
           if (uploadResponse.ok) {
             uploadSuccess = true;
-            await refreshUser?.();
-            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             console.log("Upload succeeded at:", endpoint);
+            await refreshUser?.(true); // Fetch fresh data from server
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Alert.alert("Success", "Profile photo updated successfully!");
             break;
           } else {
             const errorText = await uploadResponse.text();

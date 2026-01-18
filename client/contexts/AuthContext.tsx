@@ -22,7 +22,7 @@ interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: (fetchFromServer?: boolean) => Promise<void>;
   setLocationPermission: (granted: boolean) => void;
 }
 
@@ -40,14 +40,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     locationPermissionGranted: false,
   });
 
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async (fetchFromServer: boolean = false) => {
     try {
-      const storedUser = await getStoredUser();
       const locationPermission = await AsyncStorage.getItem(LOCATION_PERMISSION_KEY);
       
-      if (storedUser) {
+      // If fetchFromServer is true, get fresh data from the API
+      let user: User | null = null;
+      if (fetchFromServer) {
+        user = await fetchCurrentUser();
+      } else {
+        user = await getStoredUser();
+      }
+      
+      if (user) {
         setState({
-          user: storedUser,
+          user,
           isLoading: false,
           isAuthenticated: true,
           locationPermissionGranted: locationPermission === "true",
