@@ -290,3 +290,29 @@ STORAGE_KEYS = {
 - Invite notifications sent to selected friends via POST /api/live-sessions/:sessionId/invite-observer
 - LiveRunViewerScreen for observers with 3-second polling, live map, and real-time stats
 - Session ends automatically when run stops
+
+### Advanced Coaching Features
+- **Weakness Detection**: Monitors pace drops (75% slower than baseline) and provides encouraging coaching
+- **Off-Route Detection**: Alerts when user deviates more than 50m from planned route with guidance to return
+- **Weather-Aware Coaching**: Fetches current weather at run start and triggers coaching based on conditions (hot, cold, humid, windy, rain)
+- **Pre-Run Summary**: Modal before starting run showing weather, terrain analysis, and personalized coach advice
+
+### Coach Settings Screen
+- CoachSettingsScreen for customizing AI coach voice preferences
+- Configurable voice gender (Male/Female)
+- Accent options: British, American, Australian, Irish, Scottish, New Zealand
+- Tone settings: Energetic, Motivational, Instructive, Factual, Abrupt
+- Settings saved to both AsyncStorage and server for offline/online support
+
+### Run History Cloud Sync
+- Cloud sync button in RunHistoryScreen header with badge showing unsynced run count
+- Uploads local runs from AsyncStorage to server via POST /api/runs
+- Marks runs as dbSynced after successful upload
+- Success/error feedback with haptics
+
+### API Routes Added
+- GET/POST /api/weather/current and /api/weather/full - Weather data
+- GET /api/geocode/reverse - Reverse geocoding
+- POST /api/ai/run-summary - Pre-run briefing with weather and terrain
+- GET/POST /api/runs/:id/analysis - Post-run AI analysis
+- CRUD endpoints for group runs, friend requests, subscriptions, coupons, and push notifications

@@ -69,8 +69,8 @@ function getCountryFlag(country: string): string {
 }
 
 function getNextEventDate(event: Event): Date | null {
-  if (event.scheduleType === "one_time" && event.eventDate) {
-    return new Date(event.eventDate);
+  if (event.scheduleType === "one_time" && event.specificDate) {
+    return new Date(event.specificDate);
   }
   if (event.scheduleType === "recurring" && event.recurrencePattern) {
     const today = new Date();
