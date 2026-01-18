@@ -40,6 +40,11 @@ The project is organized into `/client` (React Native frontend), `/server` (Expr
 - Added navigation links to Profile screen for Subscription, NotificationCenter, GroupRuns, and UserSearch screens
 - Implemented timestamp-based timer for accurate elapsed time tracking during runs
 - Added proper cleanup of all run utilities on session stop/pause/close operations
+- Fixed friends syncing by passing userId to the /api/friends endpoint
+- Updated UserSearchScreen to display full name and user ID in search results
+- Created NotificationSettingsScreen with granular push notification controls (all on/off, individual event toggles)
+- Added Distance Scale settings in ProfileScreen (min/max km, decimals toggle with 30km max range limit)
+- Added Push Notifications toggle with MANAGE button in ProfileScreen
 
 ## External Dependencies
 - **Google Maps**: Used for route generation and mapping.
