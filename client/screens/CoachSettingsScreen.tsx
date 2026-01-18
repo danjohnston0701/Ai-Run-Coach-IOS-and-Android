@@ -6,8 +6,10 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
@@ -59,6 +61,7 @@ const toneOptions: { value: CoachTone; label: string; description: string }[] = 
 
 export default function CoachSettingsScreen({ navigation }: CoachSettingsScreenProps) {
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
   const { user, refreshUser } = useAuth();
   
   const [settings, setSettings] = useState<CoachSettings>({
@@ -126,9 +129,31 @@ export default function CoachSettingsScreen({ navigation }: CoachSettingsScreenP
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[styles.content, { paddingTop: headerHeight + Spacing.lg, paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Coach Name</Text>
+          <Text style={[styles.sectionDescription, { color: theme.textMuted }]}>
+            Give your AI coach a personalized name
+          </Text>
+          <TextInput
+            style={[
+              styles.nameInput,
+              {
+                backgroundColor: theme.backgroundSecondary,
+                borderColor: theme.border,
+                color: theme.text,
+              },
+            ]}
+            value={settings.name}
+            onChangeText={(text) => updateSetting("name", text)}
+            placeholder="Enter coach name"
+            placeholderTextColor={theme.textMuted}
+            maxLength={20}
+          />
+        </View>
+
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Voice Gender</Text>
           <Text style={[styles.sectionDescription, { color: theme.textMuted }]}>
@@ -275,7 +300,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
   },
   section: {
     marginBottom: Spacing["2xl"],
@@ -288,6 +312,13 @@ const styles = StyleSheet.create({
   sectionDescription: {
     fontSize: 14,
     marginBottom: Spacing.md,
+  },
+  nameInput: {
+    height: 52,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 2,
+    fontSize: 16,
   },
   optionGrid: {
     flexDirection: "row",
