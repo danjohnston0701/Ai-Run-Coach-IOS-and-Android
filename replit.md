@@ -26,6 +26,20 @@ The project is organized into `/client` (React Native frontend), `/server` (Expr
 - **Advanced Coaching**: Features include user-initiated "Talk to Coach" for questions, share live run functionality for real-time tracking by friends, and a pre-run summary modal with weather and terrain analysis.
 - **Customizable Coach Settings**: Users can customize AI coach voice preferences (gender, accent, tone) via a dedicated settings screen.
 - **Real-time Database Sync**: Run progress is synced to the database every 30 seconds during active runs, with a final save on completion.
+- **Cadence Detection**: Real-time steps-per-minute (SPM) tracking using device motion sensors (DeviceMotion from expo-sensors).
+- **GPS Watchdog**: Monitors GPS signal health every 10 seconds with automatic recovery attempts (max 5 attempts).
+- **Speech Queue**: Manages TTS messages with priority levels and duplicate prevention for smooth AI coach audio.
+- **Navigation Engine**: Provides turn-by-turn navigation with waypoint protection and intelligent turn grouping.
+- **Route Rating**: Users can rate routes (1-5 stars) after completing runs, with optional comments.
+- **Post-Run AI Analysis**: Comprehensive run analysis including highlights, struggles, personal bests, improvement tips, and overall performance scores.
+
+## Recent Changes (January 2026)
+- Integrated core run utilities (speechQueue, cadenceDetector, gpsWatchdog, navigationEngine) into RunSessionScreen
+- Added RouteRatingModal component that triggers after completing route-based runs
+- Enhanced RunInsightsScreen with structured AI analysis display (highlights, struggles, PBs, improvement tips)
+- Added navigation links to Profile screen for Subscription, NotificationCenter, GroupRuns, and UserSearch screens
+- Implemented timestamp-based timer for accurate elapsed time tracking during runs
+- Added proper cleanup of all run utilities on session stop/pause/close operations
 
 ## External Dependencies
 - **Google Maps**: Used for route generation and mapping.
