@@ -227,13 +227,51 @@ export default function RunSessionScreen({
   const lastDistanceForGradeRef = useRef<number>(0);
   const recentCoachingTopicsRef = useRef<string[]>([]);
   const completedInstructionsRef = useRef<Set<number>>(new Set());
+  const lastWeatherCoachTimeRef = useRef<number>(0);
+  const lastWeaknessCoachTimeRef = useRef<number>(0);
+  const lastOffRouteTimeRef = useRef<number>(0);
+  const recentPacesRef = useRef<number[]>([]);
+  const baselinePaceRef = useRef<number>(0);
 
   const pulseAnim = useSharedValue(1);
+
+  const fetchWeather = async (lat: number, lng: number) => {
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/weather/current?lat=${lat}&lng=${lng}`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWeatherData({
+          temperature: data.temperature,
+          humidity: data.humidity,
+          windSpeed: data.windSpeed,
+          conditions: data.conditions || data.description,
+        });
+      }
+    } catch (error) {
+      console.log("Weather fetch error:", error);
+    }
+  };
 
   useEffect(() => {
     loadRouteData();
     activateKeepAwakeAsync();
     checkForRecoverySession();
+    
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const location = await Location.getCurrentPositionAsync({});
+          setCurrentLocation({ lat: location.coords.latitude, lng: location.coords.longitude });
+          fetchWeather(location.coords.latitude, location.coords.longitude);
+        }
+      } catch (error) {
+        console.log("Initial location error:", error);
+      }
+    })();
 
     return () => {
       deactivateKeepAwake();
@@ -526,6 +564,172 @@ export default function RunSessionScreen({
     });
   }, [aiCoachEnabled, saveCoachingLog]);
 
+  const weatherCoachingStatements: Record<string, string[]> = {
+    hot: [
+      "It's warm out there! Remember to stay hydrated.",
+      "Take shorter sips of water more frequently in this heat.",
+      "Listen to your body in this heat. Slow down if needed.",
+    ],
+    cold: [
+      "Keep your extremities covered in this cold weather.",
+      "Your muscles need more warm-up time in cold conditions.",
+      "Breathe through your nose to warm the air before it hits your lungs.",
+    ],
+    humid: [
+      "High humidity today. Your body will work harder to cool down.",
+      "Sweat won't evaporate as easily. Pace yourself accordingly.",
+    ],
+    windy: [
+      "Use the wind to your advantage. Lean slightly into headwinds.",
+      "When running with the wind, don't let it push you too fast.",
+    ],
+    rain: [
+      "Watch your footing on wet surfaces.",
+      "Shorten your stride slightly for better traction.",
+    ],
+  };
+
+  const triggerWeatherCoaching = useCallback(async () => {
+    if (!aiCoachEnabled || !weatherData || Date.now() - lastWeatherCoachTimeRef.current < 300000) return;
+    
+    let weatherType: string | null = null;
+    
+    if (weatherData.temperature && weatherData.temperature > 25) {
+      weatherType = 'hot';
+    } else if (weatherData.temperature && weatherData.temperature < 5) {
+      weatherType = 'cold';
+    } else if (weatherData.humidity && weatherData.humidity > 80) {
+      weatherType = 'humid';
+    } else if (weatherData.windSpeed && weatherData.windSpeed > 25) {
+      weatherType = 'windy';
+    } else if (weatherData.conditions?.toLowerCase().includes('rain')) {
+      weatherType = 'rain';
+    }
+    
+    if (!weatherType) return;
+    
+    lastWeatherCoachTimeRef.current = Date.now();
+    const statements = weatherCoachingStatements[weatherType];
+    const statement = statements[Math.floor(Math.random() * statements.length)];
+    
+    setCoachMessages((prev) => [
+      ...prev.slice(-4),
+      {
+        text: statement,
+        timestamp: Date.now(),
+        type: "weather",
+      },
+    ]);
+    
+    await saveCoachingLog({
+      eventType: "weather_coaching",
+      topic: weatherType,
+      responseText: statement,
+    });
+  }, [aiCoachEnabled, weatherData, saveCoachingLog]);
+
+  const weaknessCoachingStatements = [
+    "I noticed your pace dropped. Take a breath and find your rhythm again.",
+    "You're slowing down. Focus on the next 100 meters, not the whole distance.",
+    "Pace drop detected. Relax your shoulders and breathe deeply.",
+    "Your body is working hard. Shorten your stride and find a comfortable rhythm.",
+    "I see you're struggling. That's okay! Slow down if needed, just keep moving.",
+    "When it gets tough, remember why you started. You've got this!",
+  ];
+
+  const detectWeakness = useCallback(async (currentPaceSeconds: number) => {
+    if (!aiCoachEnabled || Date.now() - lastWeaknessCoachTimeRef.current < 120000) return;
+    if (distance < 1) return;
+    
+    recentPacesRef.current.push(currentPaceSeconds);
+    if (recentPacesRef.current.length > 10) {
+      recentPacesRef.current = recentPacesRef.current.slice(-10);
+    }
+    
+    if (baselinePaceRef.current === 0 && kmSplits.length >= 2) {
+      const firstTwoSplits = kmSplits.slice(0, 2);
+      const avgTime = firstTwoSplits.reduce((sum, s) => sum + s.time, 0) / 2;
+      baselinePaceRef.current = avgTime;
+    }
+    
+    if (baselinePaceRef.current === 0 || recentPacesRef.current.length < 5) return;
+    
+    const recentMedian = [...recentPacesRef.current].sort((a, b) => a - b)[Math.floor(recentPacesRef.current.length / 2)];
+    const PACE_DROP_THRESHOLD = 1.75;
+    
+    if (recentMedian > baselinePaceRef.current * PACE_DROP_THRESHOLD) {
+      lastWeaknessCoachTimeRef.current = Date.now();
+      const statement = weaknessCoachingStatements[Math.floor(Math.random() * weaknessCoachingStatements.length)];
+      
+      setCoachMessages((prev) => [
+        ...prev.slice(-4),
+        {
+          text: statement,
+          timestamp: Date.now(),
+          type: "weakness",
+        },
+      ]);
+      
+      Speech.stop();
+      Speech.speak(statement, { language: 'en-US', pitch: 1.0, rate: 0.9 });
+      
+      await saveCoachingLog({
+        eventType: "weakness_detection",
+        topic: "pace_drop",
+        responseText: statement,
+      });
+    }
+  }, [aiCoachEnabled, distance, kmSplits, saveCoachingLog]);
+
+  const findNearestRoutePoint = useCallback((lat: number, lng: number): { point: { latitude: number; longitude: number } | null; distance: number } => {
+    if (routeCoordinates.length === 0) return { point: null, distance: Infinity };
+    
+    let nearestPoint = routeCoordinates[0];
+    let minDist = calculateDistance(lat, lng, nearestPoint.latitude, nearestPoint.longitude) * 1000;
+    
+    for (const point of routeCoordinates) {
+      const dist = calculateDistance(lat, lng, point.latitude, point.longitude) * 1000;
+      if (dist < minDist) {
+        minDist = dist;
+        nearestPoint = point;
+      }
+    }
+    
+    return { point: nearestPoint, distance: minDist };
+  }, [routeCoordinates]);
+
+  const checkOffRoute = useCallback(async (lat: number, lng: number) => {
+    if (!aiCoachEnabled || routeCoordinates.length === 0) return;
+    if (Date.now() - lastOffRouteTimeRef.current < 60000) return;
+    
+    const OFF_ROUTE_THRESHOLD = 50;
+    const { distance: distToRoute } = findNearestRoutePoint(lat, lng);
+    
+    if (distToRoute > OFF_ROUTE_THRESHOLD) {
+      lastOffRouteTimeRef.current = Date.now();
+      const distMeters = Math.round(distToRoute);
+      const message = `You're ${distMeters} meters off route. Check your map to get back on track.`;
+      
+      setCoachMessages((prev) => [
+        ...prev.slice(-4),
+        {
+          text: message,
+          timestamp: Date.now(),
+          type: "navigation",
+        },
+      ]);
+      
+      Speech.stop();
+      Speech.speak(message, { language: 'en-US', pitch: 1.0, rate: 0.9 });
+      
+      await saveCoachingLog({
+        eventType: "off_route",
+        topic: "navigation",
+        responseText: message,
+      });
+    }
+  }, [aiCoachEnabled, routeCoordinates, findNearestRoutePoint, saveCoachingLog]);
+
   const getCoachMessage = useCallback(async () => {
     if (!aiCoachEnabled || Date.now() - lastCoachTimeRef.current < 60000) return;
     
@@ -638,6 +842,7 @@ export default function RunSessionScreen({
 
           setCurrentLocation({ lat: newPoint.lat, lng: newPoint.lng });
           updateNavigationInstruction(newPoint.lat, newPoint.lng);
+          checkOffRoute(newPoint.lat, newPoint.lng);
 
           if (newPoint.elevation && lastElevationRef.current !== null) {
             const elevDiff = newPoint.elevation - lastElevationRef.current;
@@ -717,6 +922,7 @@ export default function RunSessionScreen({
             const paceMin = Math.floor(paceSeconds / 60);
             const paceSec = Math.floor(paceSeconds % 60);
             setCurrentPace(`${paceMin}:${paceSec.toString().padStart(2, "0")}`);
+            detectWeakness(paceSeconds);
           }
 
           if (mapRef.current) {
@@ -732,7 +938,7 @@ export default function RunSessionScreen({
     } catch (error) {
       console.log("Location tracking error:", error);
     }
-  }, [distance, elapsedTime, updateNavigationInstruction]);
+  }, [distance, elapsedTime, updateNavigationInstruction, checkOffRoute, detectWeakness]);
 
   const stopLocationTracking = useCallback(() => {
     if (locationSubscription.current) {
@@ -759,12 +965,14 @@ export default function RunSessionScreen({
     if (runState === "running" && aiCoachEnabled) {
       const coachInterval = setInterval(getCoachMessage, 120000);
       const phaseInterval = setInterval(triggerPhaseCoaching, 180000);
+      const weatherInterval = setInterval(triggerWeatherCoaching, 300000);
       return () => {
         clearInterval(coachInterval);
         clearInterval(phaseInterval);
+        clearInterval(weatherInterval);
       };
     }
-  }, [runState, aiCoachEnabled, getCoachMessage, triggerPhaseCoaching]);
+  }, [runState, aiCoachEnabled, getCoachMessage, triggerPhaseCoaching, triggerWeatherCoaching]);
 
   const handleStart = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);

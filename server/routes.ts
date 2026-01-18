@@ -191,6 +191,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await proxyRequest(req, res, `/api/notification-preferences/${req.params.userId}`);
   });
 
+  // Weather
+  app.get("/api/weather/current", async (req, res) => {
+    const { lat, lng } = req.query;
+    await proxyRequest(req, res, `/api/weather/current?lat=${lat}&lng=${lng}`);
+  });
+
+  app.get("/api/weather/full", async (req, res) => {
+    const { lat, lng } = req.query;
+    await proxyRequest(req, res, `/api/weather/full?lat=${lat}&lng=${lng}`);
+  });
+
+  // Geocoding
+  app.get("/api/geocode/reverse", async (req, res) => {
+    const { lat, lng } = req.query;
+    await proxyRequest(req, res, `/api/geocode/reverse?lat=${lat}&lng=${lng}`);
+  });
+
+  // Pre-run summary
+  app.post("/api/ai/run-summary", async (req, res) => {
+    await proxyRequest(req, res, "/api/ai/run-summary");
+  });
+
+  // Run analysis
+  app.get("/api/runs/:id/analysis", async (req, res) => {
+    await proxyRequest(req, res, `/api/runs/${req.params.id}/analysis`);
+  });
+
+  app.post("/api/runs/:id/analysis", async (req, res) => {
+    await proxyRequest(req, res, `/api/runs/${req.params.id}/analysis`);
+  });
+
+  // Group Runs
+  app.get("/api/group-runs", async (req, res) => {
+    await proxyRequest(req, res, "/api/group-runs");
+  });
+
+  app.post("/api/group-runs", async (req, res) => {
+    await proxyRequest(req, res, "/api/group-runs");
+  });
+
+  app.get("/api/group-runs/:id", async (req, res) => {
+    await proxyRequest(req, res, `/api/group-runs/${req.params.id}`);
+  });
+
+  app.post("/api/group-runs/:id/join", async (req, res) => {
+    await proxyRequest(req, res, `/api/group-runs/${req.params.id}/join`);
+  });
+
+  app.post("/api/group-runs/:id/start", async (req, res) => {
+    await proxyRequest(req, res, `/api/group-runs/${req.params.id}/start`);
+  });
+
+  // Friend Requests
+  app.post("/api/friend-requests", async (req, res) => {
+    await proxyRequest(req, res, "/api/friend-requests");
+  });
+
+  app.post("/api/friend-requests/:id/accept", async (req, res) => {
+    await proxyRequest(req, res, `/api/friend-requests/${req.params.id}/accept`);
+  });
+
+  app.post("/api/friend-requests/:id/decline", async (req, res) => {
+    await proxyRequest(req, res, `/api/friend-requests/${req.params.id}/decline`);
+  });
+
+  // User Search
+  app.get("/api/users/search", async (req, res) => {
+    const { q } = req.query;
+    await proxyRequest(req, res, `/api/users/search?q=${encodeURIComponent(String(q || ''))}`);
+  });
+
+  // Subscriptions
+  app.get("/api/subscriptions/status", async (req, res) => {
+    await proxyRequest(req, res, "/api/subscriptions/status");
+  });
+
+  app.post("/api/subscriptions/create-checkout", async (req, res) => {
+    await proxyRequest(req, res, "/api/subscriptions/create-checkout");
+  });
+
+  // Coupons
+  app.post("/api/coupons/redeem", async (req, res) => {
+    await proxyRequest(req, res, "/api/coupons/redeem");
+  });
+
+  // Push Subscriptions
+  app.post("/api/push-subscriptions", async (req, res) => {
+    await proxyRequest(req, res, "/api/push-subscriptions");
+  });
+
+  app.delete("/api/push-subscriptions", async (req, res) => {
+    await proxyRequest(req, res, "/api/push-subscriptions");
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

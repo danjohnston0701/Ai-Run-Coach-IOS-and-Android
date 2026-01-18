@@ -11,6 +11,7 @@ import RunInsightsScreen from "@/screens/RunInsightsScreen";
 import NotificationsScreen from "@/screens/NotificationsScreen";
 import FriendProfileScreen from "@/screens/FriendProfileScreen";
 import LiveRunViewerScreen from "@/screens/LiveRunViewerScreen";
+import CoachSettingsScreen from "@/screens/CoachSettingsScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingScreen } from "@/components/LoadingScreen";
@@ -144,6 +145,13 @@ export default function RootStackNavigator() {
               headerTitle: "Live Run",
               headerShown: false,
               presentation: "fullScreenModal",
+            }}
+          />
+          <Stack.Screen
+            name="CoachSettings"
+            component={CoachSettingsScreen}
+            options={{
+              headerTitle: "AI Coach Settings",
             }}
           />
         </>
