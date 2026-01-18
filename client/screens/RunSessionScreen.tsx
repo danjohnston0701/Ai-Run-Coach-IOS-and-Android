@@ -9,6 +9,8 @@ import {
   ScrollView,
   Image,
   Text,
+  Modal,
+  FlatList,
 } from "react-native";
 import aiCoachAvatar from "../../assets/images/ai-coach-avatar.png";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,7 +32,12 @@ import {
   IconVolumeX,
   IconChevronUp,
   IconChevronDown,
+  IconMessageCircle,
+  IconShare2,
+  IconMic,
+  IconCheck,
 } from "@/components/icons/AppIcons";
+import * as Speech from "expo-speech";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -199,6 +206,13 @@ export default function RunSessionScreen({
     conditions?: string;
   } | null>(null);
   const [targetTimeSeconds, setTargetTimeSeconds] = useState<number | null>(null);
+  
+  const [isListening, setIsListening] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [sharedWithFriends, setSharedWithFriends] = useState<Array<{id: string; name: string}>>([]);
+  const [isLiveSyncing, setIsLiveSyncing] = useState(false);
+  const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
+  const [friends, setFriends] = useState<Array<{id: string; friendId: string; name: string; profilePhoto?: string}>>([]);
 
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -343,9 +357,9 @@ export default function RunSessionScreen({
     }
   }, []);
 
-  const showToast = useCallback((message: string) => {
+  const showToast = useCallback((message: string, duration = 3000) => {
     setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), duration);
   }, []);
 
   const saveCoachingLog = useCallback(async (log: {
@@ -777,6 +791,266 @@ export default function RunSessionScreen({
     startLocationTracking();
   };
 
+  const speakCoachMessage = useCallback((text: string) => {
+    if (!aiCoachEnabled) return;
+    Speech.stop();
+    Speech.speak(text, {
+      language: 'en-US',
+      pitch: 1.0,
+      rate: 0.9,
+    });
+  }, [aiCoachEnabled]);
+
+  const sendToCoach = useCallback(async (userMessage: string) => {
+    try {
+      const baseUrl = getApiUrl();
+      const progressPercent = routeData?.actualDistance 
+        ? (distance / routeData.actualDistance) * 100 
+        : 0;
+
+      const response = await fetch(`${baseUrl}/api/ai/coaching`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          userMessage,
+          currentPace,
+          targetPace: routeData?.difficulty === 'easy' ? '7:00' : routeData?.difficulty === 'hard' ? '5:30' : '6:00',
+          elapsedTime,
+          distanceCovered: distance,
+          totalDistance: routeData?.actualDistance || 5,
+          difficulty: routeData?.difficulty || 'moderate',
+          userFitnessLevel: user?.fitnessLevel || 'intermediate',
+          userName: user?.name,
+          coachName: user?.coachName,
+          coachTone: user?.coachTone || 'motivating',
+          terrain: {
+            currentGrade,
+            elevation: elevationGain,
+          },
+          recentCoachingTopics: recentCoachingTopicsRef.current.slice(-5),
+          currentKm: Math.floor(distance) + 1,
+          progressPercent,
+          kmSplitTimes: kmSplits,
+          weather: weatherData,
+          exerciseType: route.params?.activityType || 'running',
+          sessionKey,
+          userId: user?.id,
+        }),
+      });
+
+      if (!response.ok) {
+        showToast("Coach unavailable - try again shortly");
+        speakCoachMessage("I'm having trouble connecting. Keep running, you're doing great!");
+        return;
+      }
+
+      const data = await response.json();
+      let coachMessage = data.message || '';
+      
+      if (data.paceAdvice && data.paceAdvice !== data.message) {
+        coachMessage += ' ' + data.paceAdvice;
+      }
+      if (data.breathingTip) {
+        coachMessage += ' ' + data.breathingTip;
+      }
+      if (data.encouragement && data.encouragement !== data.message) {
+        coachMessage += ' ' + data.encouragement;
+      }
+
+      if (coachMessage.trim()) {
+        setCoachMessages((prev) => [
+          ...prev.slice(-4),
+          {
+            text: coachMessage.trim(),
+            timestamp: Date.now(),
+            type: "user_question",
+          },
+        ]);
+        speakCoachMessage(coachMessage.trim());
+
+        await saveCoachingLog({
+          eventType: 'user_question',
+          topic: data.topic || 'user_query',
+          responseText: coachMessage.trim(),
+        });
+      } else {
+        speakCoachMessage("I heard you. Let me think about that as we run.");
+      }
+    } catch (error) {
+      console.error("Talk to coach error:", error);
+      showToast("Coach unavailable - try again shortly");
+      speakCoachMessage("I'm having trouble connecting. Keep running, you're doing great!");
+    }
+  }, [currentPace, elapsedTime, distance, routeData, user, currentGrade, elevationGain, kmSplits, weatherData, route.params, sessionKey, saveCoachingLog, showToast, speakCoachMessage, aiCoachEnabled]);
+
+  const handleTalkToCoach = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        showToast("Voice input not supported on this browser");
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        Speech.stop();
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript.trim()) {
+          showToast(`Asking coach: "${transcript.substring(0, 40)}..."`);
+          sendToCoach(transcript);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        setIsListening(false);
+        if (event.error === 'not-allowed') {
+          showToast("Microphone access denied");
+        } else {
+          showToast("Voice input error - please try again");
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      if (isListening) {
+        recognition.stop();
+        setIsListening(false);
+      } else {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        recognition.start();
+      }
+    } else {
+      showToast("Voice input requires browser. Try typing your question!");
+    }
+  }, [isListening, sendToCoach, showToast]);
+
+  const loadFriends = useCallback(async () => {
+    try {
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/friends?userId=${user?.id}`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setFriends(data.filter((f: any) => f.status === 'accepted'));
+      }
+    } catch (error) {
+      console.error("Load friends error:", error);
+    }
+  }, [user?.id]);
+
+  const syncLiveSession = useCallback(async () => {
+    if (!isLiveSyncing || sharedWithFriends.length === 0) return;
+
+    try {
+      const baseUrl = getApiUrl();
+      await fetch(`${baseUrl}/api/live-sessions/sync`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          sessionKey,
+          userId: user?.id,
+          distanceKm: distance,
+          elapsedSeconds: elapsedTime,
+          currentPace,
+          difficulty: routeData?.difficulty || 'moderate',
+          gpsTrack: gpsTrack.slice(-100),
+          kmSplits,
+          routeId: routeData?.id,
+        }),
+      });
+    } catch (error) {
+      console.error("Live sync error:", error);
+    }
+  }, [isLiveSyncing, sharedWithFriends, sessionKey, user?.id, distance, elapsedTime, currentPace, routeData, gpsTrack, kmSplits]);
+
+  useEffect(() => {
+    if (runState === 'running' && isLiveSyncing) {
+      const syncInterval = setInterval(syncLiveSession, 5000);
+      return () => clearInterval(syncInterval);
+    }
+  }, [runState, isLiveSyncing, syncLiveSession]);
+
+  const toggleShareWithFriend = useCallback(async (friend: {id: string; friendId: string; name: string}) => {
+    const isSharing = sharedWithFriends.some(f => f.id === friend.friendId);
+    
+    if (isSharing) {
+      setSharedWithFriends(prev => prev.filter(f => f.id !== friend.friendId));
+      showToast(`Stopped sharing with ${friend.name}`);
+      if (sharedWithFriends.length <= 1) {
+        setIsLiveSyncing(false);
+      }
+    } else {
+      if (!friend.friendId) {
+        showToast(`Unable to share with ${friend.name}`);
+        return;
+      }
+
+      try {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/live-sessions/${sessionKey}/invite-observer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            runnerId: user?.id,
+            friendId: friend.friendId,
+            friendName: friend.name,
+          }),
+        });
+
+        if (response.ok) {
+          setSharedWithFriends(prev => [...prev, { id: friend.friendId, name: friend.name }]);
+          setIsLiveSyncing(true);
+          showToast(`Now sharing with ${friend.name}!`);
+        } else {
+          showToast(`Failed to invite ${friend.name}`);
+        }
+      } catch (error) {
+        showToast(`Failed to invite ${friend.name}`);
+      }
+    }
+  }, [sharedWithFriends, sessionKey, user?.id, showToast]);
+
+  const handleOpenShareModal = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await loadFriends();
+    setShowShareModal(true);
+  }, [loadFriends]);
+
+  const endLiveSession = useCallback(async () => {
+    if (!isLiveSyncing) return;
+    
+    try {
+      const baseUrl = getApiUrl();
+      await fetch(`${baseUrl}/api/live-sessions/end-by-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          sessionKey,
+          userId: user?.id,
+        }),
+      });
+      setIsLiveSyncing(false);
+      setSharedWithFriends([]);
+    } catch (error) {
+      console.error("End live session error:", error);
+    }
+  }, [isLiveSyncing, sessionKey, user?.id]);
+
   const handleStop = async () => {
     const confirmStop = async () => {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -784,6 +1058,7 @@ export default function RunSessionScreen({
       stopTimer();
       stopLocationTracking();
       stopAutoSave();
+      await endLiveSession();
       await AsyncStorage.removeItem("runSession");
       await saveRun();
     };
@@ -970,6 +1245,32 @@ export default function RunSessionScreen({
             </Pressable>
           </View>
           <View style={styles.topActions}>
+            <Pressable 
+              testID="button-talk-to-coach"
+              onPress={handleTalkToCoach}
+              style={[
+                styles.topActionButton, 
+                { backgroundColor: isListening ? '#EF4444' : '#8B5CF6' + '30' }
+              ]}
+            >
+              {isListening ? (
+                <Animated.View style={styles.pulsingMic}>
+                  <IconMic size={18} color="#FFFFFF" />
+                </Animated.View>
+              ) : (
+                <IconMessageCircle size={18} color="#8B5CF6" />
+              )}
+            </Pressable>
+            <Pressable 
+              testID="button-share-live"
+              onPress={handleOpenShareModal}
+              style={[
+                styles.topActionButton,
+                { backgroundColor: sharedWithFriends.length > 0 ? theme.success + '30' : 'rgba(255,255,255,0.1)' }
+              ]}
+            >
+              <IconShare2 size={18} color={sharedWithFriends.length > 0 ? theme.success : theme.text} />
+            </Pressable>
             <Pressable onPress={handleClose} style={styles.topActionButton}>
               <IconX size={20} color={theme.text} />
             </Pressable>
@@ -1180,6 +1481,76 @@ export default function RunSessionScreen({
           <Text style={[styles.toastText, { color: theme.text }]}>{toastMessage}</Text>
         </Animated.View>
       ) : null}
+
+      <Modal
+        visible={showShareModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowShareModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.backgroundSecondary }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Share Live Run</Text>
+              <Pressable onPress={() => setShowShareModal(false)} style={styles.modalCloseButton}>
+                <IconX size={24} color={theme.text} />
+              </Pressable>
+            </View>
+
+            {friends.length > 0 ? (
+              <FlatList
+                data={friends}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => {
+                  const isSharing = sharedWithFriends.some(f => f.id === item.friendId);
+                  return (
+                    <Pressable
+                      onPress={() => toggleShareWithFriend(item)}
+                      style={[styles.friendItem, { borderBottomColor: theme.border }]}
+                    >
+                      <View style={styles.friendInfo}>
+                        <View style={[styles.friendAvatar, { backgroundColor: theme.primary + '30' }]}>
+                          <Text style={[styles.friendInitial, { color: theme.primary }]}>
+                            {item.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text style={[styles.friendName, { color: theme.text }]}>{item.name}</Text>
+                      </View>
+                      <View style={[
+                        styles.shareToggle,
+                        { backgroundColor: isSharing ? theme.success : theme.backgroundRoot }
+                      ]}>
+                        {isSharing ? (
+                          <IconCheck size={16} color="#FFFFFF" />
+                        ) : (
+                          <Text style={[styles.shareToggleText, { color: theme.textMuted }]}>Invite</Text>
+                        )}
+                      </View>
+                    </Pressable>
+                  );
+                }}
+              />
+            ) : (
+              <View style={styles.noFriendsContainer}>
+                <Text style={[styles.noFriendsText, { color: theme.textSecondary }]}>
+                  No friends to share with yet.
+                </Text>
+                <Text style={[styles.noFriendsSubtext, { color: theme.textMuted }]}>
+                  Add friends from your Profile to share live runs.
+                </Text>
+              </View>
+            )}
+
+            {sharedWithFriends.length > 0 ? (
+              <View style={[styles.sharingStatus, { backgroundColor: theme.success + '20' }]}>
+                <Text style={[styles.sharingStatusText, { color: theme.success }]}>
+                  Sharing with {sharedWithFriends.length} friend{sharedWithFriends.length > 1 ? 's' : ''}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1425,5 +1796,99 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
+  },
+  pulsingMic: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    maxHeight: "70%",
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    paddingBottom: Spacing["3xl"],
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.1)",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  modalCloseButton: {
+    padding: Spacing.xs,
+  },
+  friendItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderBottomWidth: 1,
+  },
+  friendInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+  },
+  friendAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  friendInitial: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  friendName: {
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  shareToggle: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    minWidth: 70,
+    alignItems: "center",
+  },
+  shareToggleText: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  noFriendsContainer: {
+    padding: Spacing["3xl"],
+    alignItems: "center",
+  },
+  noFriendsText: {
+    fontSize: 16,
+    fontWeight: "500",
+    marginBottom: Spacing.sm,
+  },
+  noFriendsSubtext: {
+    fontSize: 14,
+    textAlign: "center",
+  },
+  sharingStatus: {
+    margin: Spacing.lg,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: "center",
+  },
+  sharingStatusText: {
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

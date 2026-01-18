@@ -10,6 +10,7 @@ import RunSessionScreen from "@/screens/RunSessionScreen";
 import RunInsightsScreen from "@/screens/RunInsightsScreen";
 import NotificationsScreen from "@/screens/NotificationsScreen";
 import FriendProfileScreen from "@/screens/FriendProfileScreen";
+import LiveRunViewerScreen from "@/screens/LiveRunViewerScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingScreen } from "@/components/LoadingScreen";
@@ -54,6 +55,7 @@ export type RootStackParamList = {
   NotificationSettings: undefined;
   Notifications: undefined;
   FriendProfile: { friendId: string };
+  LiveRunViewer: { sessionId: string; runnerId?: string; runnerName?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -133,6 +135,15 @@ export default function RootStackNavigator() {
             component={FriendProfileScreen}
             options={{
               headerTitle: "Friend",
+            }}
+          />
+          <Stack.Screen
+            name="LiveRunViewer"
+            component={LiveRunViewerScreen}
+            options={{
+              headerTitle: "Live Run",
+              headerShown: false,
+              presentation: "fullScreenModal",
             }}
           />
         </>

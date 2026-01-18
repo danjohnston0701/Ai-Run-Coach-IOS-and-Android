@@ -146,6 +146,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await proxyRequest(req, res, `/api/goals/${req.params.id}`);
   });
 
+  // Talk to Coach - User question during run
+  app.post("/api/ai/coaching", async (req, res) => {
+    await proxyRequest(req, res, "/api/ai/coaching");
+  });
+
+  // Friends
+  app.get("/api/friends", async (req, res) => {
+    const userId = req.query.userId;
+    await proxyRequest(req, res, `/api/friends${userId ? `?userId=${userId}` : ''}`);
+  });
+
+  // Live Sessions
+  app.put("/api/live-sessions/sync", async (req, res) => {
+    await proxyRequest(req, res, "/api/live-sessions/sync");
+  });
+
+  app.post("/api/live-sessions/:sessionId/invite-observer", async (req, res) => {
+    await proxyRequest(req, res, `/api/live-sessions/${req.params.sessionId}/invite-observer`);
+  });
+
+  app.post("/api/live-sessions/:sessionId/observer-joined", async (req, res) => {
+    await proxyRequest(req, res, `/api/live-sessions/${req.params.sessionId}/observer-joined`);
+  });
+
+  app.get("/api/live-sessions/:sessionId", async (req, res) => {
+    await proxyRequest(req, res, `/api/live-sessions/${req.params.sessionId}`);
+  });
+
+  app.get("/api/users/:userId/live-session", async (req, res) => {
+    await proxyRequest(req, res, `/api/users/${req.params.userId}/live-session`);
+  });
+
+  app.post("/api/live-sessions/end-by-key", async (req, res) => {
+    await proxyRequest(req, res, "/api/live-sessions/end-by-key");
+  });
+
+  // Notification Preferences
+  app.get("/api/notification-preferences/:userId", async (req, res) => {
+    await proxyRequest(req, res, `/api/notification-preferences/${req.params.userId}`);
+  });
+
+  app.put("/api/notification-preferences/:userId", async (req, res) => {
+    await proxyRequest(req, res, `/api/notification-preferences/${req.params.userId}`);
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;
