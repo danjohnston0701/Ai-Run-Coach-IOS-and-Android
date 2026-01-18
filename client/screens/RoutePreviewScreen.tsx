@@ -560,15 +560,18 @@ export default function RoutePreviewScreen() {
               <View style={[styles.legendDot, { backgroundColor: theme.primary }]} />
               <Text style={styles.legendText}>Start</Text>
             </View>
-            <LinearGradient
-              colors={[theme.primary, theme.success]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.legendLine}
-            />
+            <View style={styles.legendSeparator} />
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: theme.success }]} />
-              <Text style={styles.legendText}>Finish</Text>
+              <Text style={styles.legendText}>Easy</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: theme.warning }]} />
+              <Text style={styles.legendText}>Moderate</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: theme.error }]} />
+              <Text style={styles.legendText}>Hard</Text>
             </View>
           </View>
         </View>
@@ -646,10 +649,11 @@ export default function RoutePreviewScreen() {
               <>
                 <PolylineCompat
                   coordinates={cardCoordinates}
-                  strokeColor={theme.success}
+                  strokeColor={difficultyColor}
                   strokeWidth={3}
                   lineCap="round"
                   lineJoin="round"
+                  lineDashPattern={routeData.difficulty?.toLowerCase() === 'hard' || routeData.difficulty?.toLowerCase() === 'challenging' ? [10, 5] : undefined}
                 />
                 <MarkerCompat
                   coordinate={cardCoordinates[0]}
@@ -657,7 +661,7 @@ export default function RoutePreviewScreen() {
                 />
                 <MarkerCompat
                   coordinate={cardCoordinates[cardCoordinates.length - 1]}
-                  pinColor={theme.success}
+                  pinColor={difficultyColor}
                 />
               </>
             )}
@@ -702,6 +706,8 @@ export default function RoutePreviewScreen() {
     const cardCoordinates = decodePolylineCompat(routeData.polyline);
     const calculatedRegion = calculateRegionForCoordinates(cardCoordinates);
     const zoomLevel = mapZoomLevels[fullscreenMapIndex] || 1;
+    const difficultyColor = getDifficultyColor(routeData.difficulty);
+    const isExpert = routeData.difficulty?.toLowerCase() === 'hard' || routeData.difficulty?.toLowerCase() === 'challenging';
     
     const zoomedRegion = calculatedRegion ? {
       ...calculatedRegion,
@@ -743,10 +749,11 @@ export default function RoutePreviewScreen() {
               <>
                 <PolylineCompat
                   coordinates={cardCoordinates}
-                  strokeColor={theme.success}
+                  strokeColor={difficultyColor}
                   strokeWidth={4}
                   lineCap="round"
                   lineJoin="round"
+                  lineDashPattern={isExpert ? [10, 5] : undefined}
                 />
                 <MarkerCompat
                   coordinate={cardCoordinates[0]}
@@ -754,7 +761,7 @@ export default function RoutePreviewScreen() {
                 />
                 <MarkerCompat
                   coordinate={cardCoordinates[cardCoordinates.length - 1]}
-                  pinColor={theme.success}
+                  pinColor={difficultyColor}
                 />
               </>
             )}
@@ -1156,6 +1163,13 @@ const styles = StyleSheet.create({
     fontSize: Typography.body.fontSize,
     color: theme.text,
     fontWeight: '500',
+    marginRight: Spacing.md,
+  },
+  legendSeparator: {
+    width: 1,
+    height: 16,
+    backgroundColor: theme.border,
+    marginHorizontal: Spacing.md,
   },
   legendLine: {
     flex: 1,

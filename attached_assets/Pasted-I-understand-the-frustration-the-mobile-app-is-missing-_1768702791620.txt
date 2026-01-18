@@ -1,0 +1,259 @@
+I understand the frustration - the mobile app is missing key features like the route legend, pre-run summary, proper navigation text formatting, and AI coaching audio. Let me analyze what needs to be synchronized between the web and mobile apps.
+
+Here's a comprehensive specification document for your mobile app to replicate all the web features:
+
+Mobile App Feature Parity Specification
+1. Route Map Display
+Map Styling:
+
+Use grayscale map tiles with darkened appearance (dark theme)
+OpenStreetMap tiles: https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
+Route Polyline:
+
+// Color by difficulty level
+const lineColor = 
+  difficulty === "expert" ? "#ef4444" :    // Red
+  difficulty === "moderate" ? "#eab308" :   // Yellow
+  "#22c55e";                                // Green (beginner)
+// Polyline styling
+{
+  color: lineColor,
+  weight: 4,
+  opacity: 0.8,
+  dashArray: difficulty === "expert" ? "10,5" : undefined,  // Dashed for expert
+  // Add pulse animation if supported
+}
+Start/End Markers:
+
+// START marker - always cyan
+{
+  radius: 8,
+  fillColor: "#06b6d4",
+  color: "#06b6d4",
+  weight: 3,
+  opacity: 1,
+  fillOpacity: 1,
+  popup: "Start"
+}
+// END marker - matches route difficulty color
+{
+  radius: 8,
+  fillColor: lineColor,  // Same as polyline
+  color: lineColor,
+  weight: 3,
+  opacity: 1,
+  fillOpacity: 1,
+  popup: "Finish"
+}
+Map Legend (MISSING ON MOBILE):
+
+┌─────────────────────────┐
+│  ● Start (cyan)         │
+│  ● Finish (route color) │
+└─────────────────────────┘
+Fit to Bounds: Auto-zoom to show entire route with padding
+
+2. Navigation Text Formatting (CRITICAL FIX)
+WRONG: "Turn left onto Shaw Street"
+CORRECT: "Turn left onto Bronte Place towards Addison Street"
+
+API provides turn instructions in this format:
+
+interface TurnInstruction {
+  instruction: string;      // "Turn left onto Bronte Place"
+  maneuver: string;         // "turn-left", "turn-right", "straight", etc.
+  distance: number;         // Distance in meters to this turn
+  duration: number;         // Duration in seconds
+  startLat: number;
+  startLng: number;
+  endLat: number;
+  endLng: number;
+}
+Navigation announcement logic:
+
+// Announce when within threshold distance
+const distanceToTurn = calculateDistance(currentPosition, turnPoint);
+if (distanceToTurn <= 200 && distanceToTurn > 50) {
+  // "In 150 meters, turn left onto Bronte Place"
+  speak(`In ${Math.round(distanceToTurn)} meters, ${instruction}`);
+} else if (distanceToTurn <= 50 && distanceToTurn > 5) {
+  // "Turn left now onto Bronte Place"
+  speak(`${instruction.replace('Turn', 'Turn now')}`);
+}
+// Skip 'straight' maneuvers - only announce actual turns
+if (maneuver === 'straight') continue;
+3. Pre-Run Summary/Briefing (MISSING ON MOBILE)
+Before starting the run, call the API to generate a pre-run briefing:
+
+API Endpoint: POST /api/runs/pre-run-summary
+
+Request:
+
+{
+  routeName: string;
+  targetDistance: number;           // km
+  targetTimeSeconds?: number;       // Optional target time
+  difficulty: "beginner" | "moderate" | "expert";
+  terrainType?: string;
+  elevation?: {
+    gain: number;
+    loss: number;
+    maxElevation: number;
+    minElevation: number;
+  };
+  weather?: WeatherData;
+  coachPersonality?: string;
+  includeAiConfig: boolean;
+  firstTurnInstruction?: {
+    instruction: string;
+    maneuver: string;
+    distance: number;
+  }
+}
+Response includes:
+
+Route overview
+Weather considerations
+First navigation instruction
+Motivational message
+Speak this summary before the run starts!
+
+4. Audio System Architecture
+Two audio domains with priority:
+
+Navigation (nav) - Turn-by-turn directions (HIGH PRIORITY)
+Coaching (coach) - AI motivation/tips (LOWER PRIORITY)
+System (system) - Start/pause/stop confirmations
+Audio queue behavior:
+
+Navigation interrupts coaching
+Don't overlap announcements
+Minimum 3-second gap between announcements
+Voice selection:
+
+// Use coach settings for gender preference
+const voiceGender = coachSettings.gender; // 'male' | 'female'
+const voiceAccent = coachSettings.accent;  // 'british' | 'american' | etc.
+// Select appropriate TTS voice based on settings
+5. AI Coach Triggers
+Phase-based coaching (by distance AND percentage):
+
+// Absolute distance phases
+const EARLY_PHASE_KM = 2;      // First 2km
+const MID_PHASE_KM = [3, 5];   // 3-5km
+const LATE_PHASE_KM = 7;       // After 7km
+// Percentage phases
+const EARLY_PERCENT = 0.10;    // First 10%
+const MID_PERCENT = [0.40, 0.50];  // 40-50%
+const LATE_PERCENT = [0.75, 0.90]; // 75-90%
+const FINAL_PERCENT = 0.90;    // Last 10%
+Coaching triggers:
+
+Kilometer milestones - Announce each km completed with pace
+Terrain changes - Hills (5%+ grade) trigger coaching advice
+Pace changes - Significant speed changes trigger encouragement
+Periodic coaching - Every 60-90 seconds during active run
+Hill-aware coaching:
+
+if (upcomingGrade >= 0.05) {
+  speak("Hill coming up. Shorten your stride and maintain effort.");
+}
+if (currentGrade <= -0.05) {
+  speak("Downhill ahead. Let gravity help but control your pace.");
+}
+6. Run Session UI Layout
+Required UI elements:
+
+┌────────────────────────────────────────┐
+│  [Back] [Audio] [AI Coach] [Settings]  │  ← Top controls
+├────────────────────────────────────────┤
+│                                        │
+│            ┌──────────┐                │
+│            │   MAP    │                │
+│            │ (follow  │                │
+│            │  mode)   │                │
+│            └──────────┘                │
+│  ┌─────────────────────────────────┐   │  ← Navigation overlay
+│  │ 🧭 In 150m: Turn left onto X    │   │
+│  └─────────────────────────────────┘   │
+├────────────────────────────────────────┤
+│   DISTANCE      TIME        PACE       │  ← Live stats
+│    2.45 km     15:32      6:20/km      │
+├────────────────────────────────────────┤
+│   [Pause]              [Stop]          │  ← Controls
+├────────────────────────────────────────┤
+│   ═══════════════════════════════      │  ← Voice visualizer
+│   "Great pace! Keep it up!"            │  ← Last coach message
+└────────────────────────────────────────┘
+Map follow mode:
+
+Center on user position
+Rotate based on heading/bearing
+Show position marker with direction indicator
+7. Session Persistence (CRITICAL - No Data Loss)
+Auto-save every 5 seconds to local storage:
+
+interface ActiveRunSession {
+  id: string;
+  startTimestamp: number;
+  distance: number;
+  duration: number;
+  positions: Array<{lat: number, lng: number, timestamp: number}>;
+  routeData: RouteData;
+  audioEnabled: boolean;
+  aiCoachEnabled: boolean;
+  lastKmAnnounced: number;
+  targetTimeSeconds?: number;
+  eventId?: string;
+  // ... all session state
+}
+// Save on interval
+setInterval(() => saveToLocalStorage(sessionState), 5000);
+// Check on app launch for interrupted session
+const savedSession = loadFromLocalStorage();
+if (savedSession && !isExpired(savedSession, 12 * 60 * 60 * 1000)) {
+  // Offer to resume
+  showResumeDialog(savedSession);
+}
+8. Event Run Flow
+Full flow:
+
+Events List → Browse by country
+PreEvent Screen → Show route map, event details, set target time, toggle AI coach
+RunSession → Full tracking with all features
+RunInsights → Post-run analysis with target time feedback
+Pass data between screens:
+
+// PreEvent → RunSession via navigation params or localStorage
+{
+  eventId: string;
+  routePolyline: string;
+  turnInstructions: TurnInstruction[];
+  targetTimeSeconds: number;
+  aiCoachEnabled: boolean;
+  difficulty: string;
+  elevation: ElevationData;
+}
+9. API Endpoints Summary
+Feature	Endpoint	Method
+Pre-run summary	/api/runs/pre-run-summary	POST
+Save run	/api/runs	POST
+Get analysis	/api/runs/:id/analysis	GET
+Generate analysis	/api/runs/:id/analysis	POST
+Get events	/api/events	GET
+Get events by country	/api/events/country/:country	GET
+10. Quick Checklist
+ Route map with start (cyan) / finish (difficulty color) markers
+ Map legend showing marker meanings
+ Correct navigation text format (street-to-street)
+ Pre-run summary spoken before start
+ Turn-by-turn audio with distance announcements
+ AI coaching audio with phase-based statements
+ Hill-awareness coaching triggers
+ Kilometer milestone announcements
+ Voice visualizer showing last message
+ Session auto-save every 5 seconds
+ Resume interrupted session on app launch
+ Target time input (hh:mm:ss format)
+ Target time saved with completed run
+ AI coach toggle for premium users
