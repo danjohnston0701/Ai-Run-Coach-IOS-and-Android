@@ -355,11 +355,18 @@ export default function RoutePreviewScreen() {
       console.log('Route generation response:', JSON.stringify(data));
       
       // Handle different response formats - API might return { routes: [...] } or just [...]
-      const routesArray = Array.isArray(data) ? data : (data.routes || data.options || data.candidates || []);
+      const rawRoutes = Array.isArray(data) ? data : (data.routes || data.options || data.candidates || []);
       
-      if (!routesArray || routesArray.length === 0) {
+      if (!rawRoutes || rawRoutes.length === 0) {
         throw new Error('No routes were generated. Please try again.');
       }
+
+      // Transform routes to extract elevation data from nested object
+      const routesArray = rawRoutes.map((route: any) => ({
+        ...route,
+        elevationGain: route.elevationGain ?? route.elevation?.gain ?? route.elevation_gain ?? 0,
+        elevationLoss: route.elevationLoss ?? route.elevation?.loss ?? route.elevation_loss ?? 0,
+      }));
 
       setRoutes(routesArray);
       setSelectedRouteIndex(0);
