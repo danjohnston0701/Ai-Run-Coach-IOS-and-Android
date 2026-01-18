@@ -614,8 +614,15 @@ export default function ProfileScreen({ navigation }: any) {
           <MenuItem
             icon={<IconUserPlus size={18} color={theme.success} />}
             label="Add Friends"
-            onPress={() => setShowSearchModal(true)}
+            onPress={() => navigation.navigate("UserSearch")}
             color={theme.success}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <MenuItem
+            icon={<IconUsers size={18} color={theme.primary} />}
+            label="Group Runs"
+            onPress={() => navigation.navigate("GroupRuns")}
+            color={theme.primary}
           />
         </Card>
       </View>
@@ -688,8 +695,16 @@ export default function ProfileScreen({ navigation }: any) {
           <MenuItem
             icon={<IconBell size={18} color={theme.primary} />}
             label="Notifications"
-            onPress={() => navigation.navigate("NotificationSettings")}
+            onPress={() => navigation.navigate("NotificationCenter")}
             color={theme.primary}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <MenuItem
+            icon={<IconCreditCard size={18} color={theme.warning} />}
+            label="Subscription"
+            value={badge.label}
+            onPress={() => navigation.navigate("Subscription")}
+            color={theme.warning}
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <MenuItem
@@ -697,14 +712,6 @@ export default function ProfileScreen({ navigation }: any) {
             label="Open Web App"
             onPress={openWebApp}
             color={theme.textMuted}
-          />
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <MenuItem
-            icon={<IconCreditCard size={18} color={theme.warning} />}
-            label="Subscription"
-            value={badge.label}
-            onPress={openWebApp}
-            color={theme.warning}
           />
         </Card>
       </View>
