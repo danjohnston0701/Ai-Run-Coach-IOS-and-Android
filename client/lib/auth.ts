@@ -89,6 +89,16 @@ export async function clearStoredUser(): Promise<void> {
   await deleteItem(USER_KEY);
 }
 
+export async function updateStoredUserPhoto(photoUrl: string): Promise<User | null> {
+  const user = await getStoredUser();
+  if (user) {
+    user.profilePic = photoUrl;
+    await setStoredUser(user);
+    return user;
+  }
+  return null;
+}
+
 export async function login(email: string, password: string): Promise<{ user: User; token?: string }> {
   const baseUrl = getApiUrl();
   const url = `${baseUrl}/api/auth/login`;

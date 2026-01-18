@@ -45,7 +45,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
-import { getStoredToken } from "@/lib/auth";
+import { getStoredToken, updateStoredUserPhoto } from "@/lib/auth";
 
 interface Friend {
   id: string;
@@ -293,7 +293,27 @@ export default function ProfileScreen({ navigation }: any) {
           if (uploadResponse.ok) {
             uploadSuccess = true;
             console.log("Upload succeeded at:", endpoint);
-            await refreshUser?.(true); // Fetch fresh data from server
+            
+            // Try to get the new photo URL from the response
+            try {
+              const responseData = await uploadResponse.json();
+              console.log("Upload response data:", responseData);
+              
+              // The response might contain the new photo URL in various fields
+              const newPhotoUrl = responseData.profilePic || responseData.photoUrl || 
+                                  responseData.url || responseData.imageUrl ||
+                                  responseData.user?.profilePic;
+              
+              if (newPhotoUrl) {
+                // Update local storage with the new photo URL
+                await updateStoredUserPhoto(newPhotoUrl);
+              }
+            } catch (parseError) {
+              console.log("Could not parse upload response:", parseError);
+            }
+            
+            // Refresh from local storage (not server to avoid logout)
+            await refreshUser?.();
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             Alert.alert("Success", "Profile photo updated successfully!");
             break;

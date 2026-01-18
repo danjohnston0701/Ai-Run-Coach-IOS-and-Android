@@ -43,13 +43,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const refreshUser = useCallback(async (fetchFromServer: boolean = false) => {
     try {
       const locationPermission = await AsyncStorage.getItem(LOCATION_PERMISSION_KEY);
+      const currentUser = await getStoredUser();
       
-      // If fetchFromServer is true, get fresh data from the API
-      let user: User | null = null;
-      if (fetchFromServer) {
-        user = await fetchCurrentUser();
-      } else {
-        user = await getStoredUser();
+      // If fetchFromServer is true, try to get fresh data from the API
+      let user: User | null = currentUser;
+      if (fetchFromServer && currentUser) {
+        try {
+          const freshUser = await fetchCurrentUser();
+          // Only update if we got a valid user back
+          if (freshUser) {
+            user = freshUser;
+          }
+        } catch (error) {
+          console.log("Failed to fetch fresh user data, keeping current user");
+          // Keep the current user if fetch fails
+        }
       }
       
       if (user) {
@@ -68,12 +76,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
         });
       }
     } catch {
-      setState({
-        user: null,
-        isLoading: false,
-        isAuthenticated: false,
-        locationPermissionGranted: false,
-      });
+      // On error, try to keep the user logged in if we have stored data
+      const storedUser = await getStoredUser();
+      if (storedUser) {
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+        }));
+      } else {
+        setState({
+          user: null,
+          isLoading: false,
+          isAuthenticated: false,
+          locationPermissionGranted: false,
+        });
+      }
     }
   }, []);
 
