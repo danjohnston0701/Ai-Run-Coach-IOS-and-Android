@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { getApiUrl } from './query-client';
 
@@ -32,8 +33,8 @@ export interface User {
   createdAt?: string;
 }
 
-// Storage wrapper that works on both web and native
-async function setItem(key: string, value: string): Promise<void> {
+// SecureStore wrapper for tokens (small, sensitive data)
+async function setSecureItem(key: string, value: string): Promise<void> {
   if (Platform.OS === 'web') {
     localStorage.setItem(key, value);
   } else {
@@ -41,7 +42,7 @@ async function setItem(key: string, value: string): Promise<void> {
   }
 }
 
-async function getItem(key: string): Promise<string | null> {
+async function getSecureItem(key: string): Promise<string | null> {
   if (Platform.OS === 'web') {
     return localStorage.getItem(key);
   } else {
@@ -49,7 +50,7 @@ async function getItem(key: string): Promise<string | null> {
   }
 }
 
-async function deleteItem(key: string): Promise<void> {
+async function deleteSecureItem(key: string): Promise<void> {
   if (Platform.OS === 'web') {
     localStorage.removeItem(key);
   } else {
@@ -57,20 +58,45 @@ async function deleteItem(key: string): Promise<void> {
   }
 }
 
+// AsyncStorage wrapper for user data (can handle larger data like base64 images)
+async function setUserItem(key: string, value: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    localStorage.setItem(key, value);
+  } else {
+    await AsyncStorage.setItem(key, value);
+  }
+}
+
+async function getUserItem(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    return localStorage.getItem(key);
+  } else {
+    return await AsyncStorage.getItem(key);
+  }
+}
+
+async function deleteUserItem(key: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    localStorage.removeItem(key);
+  } else {
+    await AsyncStorage.removeItem(key);
+  }
+}
+
 export async function getStoredToken(): Promise<string | null> {
-  return await getItem(TOKEN_KEY);
+  return await getSecureItem(TOKEN_KEY);
 }
 
 export async function setStoredToken(token: string): Promise<void> {
-  await setItem(TOKEN_KEY, token);
+  await setSecureItem(TOKEN_KEY, token);
 }
 
 export async function clearStoredToken(): Promise<void> {
-  await deleteItem(TOKEN_KEY);
+  await deleteSecureItem(TOKEN_KEY);
 }
 
 export async function getStoredUser(): Promise<User | null> {
-  const userData = await getItem(USER_KEY);
+  const userData = await getUserItem(USER_KEY);
   if (userData) {
     try {
       return JSON.parse(userData);
@@ -82,11 +108,11 @@ export async function getStoredUser(): Promise<User | null> {
 }
 
 export async function setStoredUser(user: User): Promise<void> {
-  await setItem(USER_KEY, JSON.stringify(user));
+  await setUserItem(USER_KEY, JSON.stringify(user));
 }
 
 export async function clearStoredUser(): Promise<void> {
-  await deleteItem(USER_KEY);
+  await deleteUserItem(USER_KEY);
 }
 
 export async function updateStoredUserPhoto(photoUrl: string): Promise<User | null> {
