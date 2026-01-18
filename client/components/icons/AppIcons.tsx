@@ -668,3 +668,69 @@ export function IconShare2({ size = 24, color = "#00D4FF" }: IconProps) {
     </Svg>
   );
 }
+
+export function IconSun({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Circle cx="12" cy="12" r="5" />
+      <Line x1="12" y1="1" x2="12" y2="3" />
+      <Line x1="12" y1="21" x2="12" y2="23" />
+      <Line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <Line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <Line x1="1" y1="12" x2="3" y2="12" />
+      <Line x1="21" y1="12" x2="23" y2="12" />
+      <Line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <Line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </Svg>
+  );
+}
+
+export function IconCloudRain({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Line x1="16" y1="13" x2="16" y2="21" />
+      <Line x1="8" y1="13" x2="8" y2="21" />
+      <Line x1="12" y1="15" x2="12" y2="23" />
+      <Path d="M20 16.58A5 5 0 0018 7h-1.26A8 8 0 104 15.25" />
+    </Svg>
+  );
+}
+
+export function IconTrendingUp({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+      <Polyline points="17 6 23 6 23 12" />
+    </Svg>
+  );
+}
+
+export function IconAlertTriangle({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+      <Line x1="12" y1="9" x2="12" y2="13" />
+      <Line x1="12" y1="17" x2="12.01" y2="17" />
+    </Svg>
+  );
+}
+
+export function IconGift({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Polyline points="20 12 20 22 4 22 4 12" />
+      <Rect x="2" y="7" width="20" height="5" />
+      <Line x1="12" y1="22" x2="12" y2="7" />
+      <Path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z" />
+      <Path d="M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z" />
+    </Svg>
+  );
+}
+
+export function IconCrown({ size = 24, color = "#00D4FF" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14" />
+    </Svg>
+  );
+}
