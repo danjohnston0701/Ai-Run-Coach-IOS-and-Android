@@ -19,6 +19,7 @@ export interface User {
   distanceMinKm?: number;
   distanceMaxKm?: number;
   distanceDecimalsEnabled?: boolean;
+  pushNotificationsEnabled?: boolean;
   isAdmin?: boolean;
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;

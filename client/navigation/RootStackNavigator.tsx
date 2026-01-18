@@ -14,6 +14,7 @@ import LiveRunViewerScreen from "@/screens/LiveRunViewerScreen";
 import CoachSettingsScreen from "@/screens/CoachSettingsScreen";
 import SubscriptionScreen from "@/screens/SubscriptionScreen";
 import NotificationCenterScreen from "@/screens/NotificationCenterScreen";
+import NotificationSettingsScreen from "@/screens/NotificationSettingsScreen";
 import GroupRunsScreen from "@/screens/GroupRunsScreen";
 import UserSearchScreen from "@/screens/UserSearchScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
@@ -189,6 +190,13 @@ export default function RootStackNavigator() {
             component={UserSearchScreen}
             options={{
               headerTitle: "Find Friends",
+            }}
+          />
+          <Stack.Screen
+            name="NotificationSettings"
+            component={NotificationSettingsScreen}
+            options={{
+              headerTitle: "Manage Notifications",
             }}
           />
         </>

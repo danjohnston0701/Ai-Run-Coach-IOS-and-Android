@@ -10,6 +10,7 @@ import {
   TextInput,
   FlatList,
   Modal,
+  Switch,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -40,6 +41,7 @@ import {
   IconCopy,
   IconSearch,
   IconX,
+  IconSettings,
 } from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
@@ -127,6 +129,90 @@ export default function ProfileScreen({ navigation }: any) {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null);
   const [showPhotoConfirmModal, setShowPhotoConfirmModal] = useState(false);
+
+  const [distanceMin, setDistanceMin] = useState<string>(String(user?.distanceMinKm ?? 1));
+  const [distanceMax, setDistanceMax] = useState<string>(String(user?.distanceMaxKm ?? 50));
+  const [decimalsEnabled, setDecimalsEnabled] = useState(user?.distanceDecimalsEnabled ?? false);
+  const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState((user as any)?.pushNotificationsEnabled ?? false);
+  const [savingPreferences, setSavingPreferences] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setDistanceMin(String(user.distanceMinKm ?? 1));
+      setDistanceMax(String(user.distanceMaxKm ?? 50));
+      setDecimalsEnabled(user.distanceDecimalsEnabled ?? false);
+      setPushNotificationsEnabled((user as any)?.pushNotificationsEnabled ?? false);
+    }
+  }, [user]);
+
+  const saveDistancePreferences = useCallback(async () => {
+    if (!user?.id) return;
+    
+    const minVal = parseFloat(distanceMin) || 1;
+    const maxVal = parseFloat(distanceMax) || 50;
+    
+    if (decimalsEnabled && (maxVal - minVal) > 30) {
+      Alert.alert("Invalid Range", "When decimals are enabled, the maximum range between min and max is 30km.");
+      return;
+    }
+    
+    if (minVal >= maxVal) {
+      Alert.alert("Invalid Range", "Minimum must be less than maximum.");
+      return;
+    }
+    
+    setSavingPreferences(true);
+    try {
+      const baseUrl = getApiUrl();
+      await fetch(`${baseUrl}/api/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          distanceMinKm: minVal,
+          distanceMaxKm: maxVal,
+          distanceDecimalsEnabled: decimalsEnabled,
+        }),
+      });
+      await refreshUser();
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.log("Failed to save distance preferences:", error);
+      Alert.alert("Error", "Failed to save preferences");
+    } finally {
+      setSavingPreferences(false);
+    }
+  }, [user?.id, distanceMin, distanceMax, decimalsEnabled, refreshUser]);
+
+  const handleDecimalsToggle = useCallback(async (value: boolean) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDecimalsEnabled(value);
+    
+    const minVal = parseFloat(distanceMin) || 1;
+    const maxVal = parseFloat(distanceMax) || 50;
+    
+    if (value && (maxVal - minVal) > 30) {
+      setDistanceMax(String(minVal + 30));
+    }
+  }, [distanceMin, distanceMax]);
+
+  const handlePushToggle = useCallback(async (value: boolean) => {
+    if (!user?.id) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPushNotificationsEnabled(value);
+    
+    try {
+      const baseUrl = getApiUrl();
+      await fetch(`${baseUrl}/api/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pushNotificationsEnabled: value }),
+      });
+    } catch (error) {
+      console.log("Failed to update push notification setting:", error);
+    }
+  }, [user?.id]);
 
   const fetchFriends = useCallback(async () => {
     if (!user?.id) return;
@@ -689,17 +775,107 @@ export default function ProfileScreen({ navigation }: any) {
       </View>
 
       <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <View style={[styles.sectionIconContainer, { backgroundColor: theme.primary + "20" }]}>
+            <IconSettings size={18} color={theme.primary} />
+          </View>
+          <ThemedText type="h4">Distance Scale</ThemedText>
+        </View>
+        <Card style={styles.menuCard}>
+          <ThemedText type="small" style={{ color: theme.textMuted, marginBottom: Spacing.md, paddingHorizontal: Spacing.md, paddingTop: Spacing.md }}>
+            Customize the distance slider range on the home screen. Default is 0-50km.
+          </ThemedText>
+          <View style={styles.distanceInputRow}>
+            <View style={styles.distanceInputGroup}>
+              <ThemedText type="small" style={{ color: theme.textSecondary, marginBottom: Spacing.xs }}>
+                MINIMUM (KM)
+              </ThemedText>
+              <TextInput
+                value={distanceMin}
+                onChangeText={setDistanceMin}
+                keyboardType="decimal-pad"
+                style={[styles.distanceInput, { backgroundColor: theme.backgroundTertiary, color: theme.text }]}
+                placeholderTextColor={theme.textMuted}
+              />
+            </View>
+            <View style={styles.distanceInputGroup}>
+              <ThemedText type="small" style={{ color: theme.textSecondary, marginBottom: Spacing.xs }}>
+                MAXIMUM (KM)
+              </ThemedText>
+              <TextInput
+                value={distanceMax}
+                onChangeText={setDistanceMax}
+                keyboardType="decimal-pad"
+                style={[styles.distanceInput, { backgroundColor: theme.backgroundTertiary, color: theme.text }]}
+                placeholderTextColor={theme.textMuted}
+              />
+            </View>
+          </View>
+          <View style={[styles.divider, { backgroundColor: theme.border, marginVertical: Spacing.md }]} />
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleContent}>
+              <ThemedText type="body" style={{ fontWeight: "500" }}>
+                Enable Decimals
+              </ThemedText>
+              <ThemedText type="small" style={{ color: theme.textMuted }}>
+                Show 1 decimal place (e.g., 3.2km). Max range limited to 30km when enabled.
+              </ThemedText>
+            </View>
+            <Switch
+              value={decimalsEnabled}
+              onValueChange={handleDecimalsToggle}
+              trackColor={{ false: theme.backgroundTertiary, true: theme.success }}
+              thumbColor={Platform.OS === "android" ? (decimalsEnabled ? theme.success : theme.textMuted) : "#fff"}
+              ios_backgroundColor={theme.backgroundTertiary}
+            />
+          </View>
+        </Card>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <View style={[styles.sectionIconContainer, { backgroundColor: theme.primary + "20" }]}>
+            <IconBell size={18} color={theme.primary} />
+          </View>
+          <ThemedText type="h4">Notifications</ThemedText>
+          <Pressable
+            onPress={() => navigation.navigate("NotificationSettings")}
+            style={[styles.manageButton, { backgroundColor: theme.primary }]}
+          >
+            <ThemedText type="small" style={{ color: theme.backgroundRoot, fontWeight: "600" }}>
+              MANAGE
+            </ThemedText>
+          </Pressable>
+        </View>
+        <Card style={styles.menuCard}>
+          <View style={styles.toggleRow}>
+            <View style={[styles.sectionIconContainer, { backgroundColor: theme.primary + "20", marginRight: Spacing.md }]}>
+              <IconBell size={18} color={theme.primary} />
+            </View>
+            <View style={styles.toggleContent}>
+              <ThemedText type="body" style={{ fontWeight: "500" }}>
+                Push Notifications
+              </ThemedText>
+              <ThemedText type="small" style={{ color: theme.textMuted }}>
+                Get notified when friends add you
+              </ThemedText>
+            </View>
+            <Switch
+              value={pushNotificationsEnabled}
+              onValueChange={handlePushToggle}
+              trackColor={{ false: theme.backgroundTertiary, true: theme.success }}
+              thumbColor={Platform.OS === "android" ? (pushNotificationsEnabled ? theme.success : theme.textMuted) : "#fff"}
+              ios_backgroundColor={theme.backgroundTertiary}
+            />
+          </View>
+        </Card>
+      </View>
+
+      <View style={styles.section}>
         <ThemedText type="h4" style={styles.sectionTitle}>
           Settings
         </ThemedText>
         <Card style={styles.menuCard}>
-          <MenuItem
-            icon={<IconBell size={18} color={theme.primary} />}
-            label="Notifications"
-            onPress={() => navigation.navigate("NotificationCenter")}
-            color={theme.primary}
-          />
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <MenuItem
             icon={<IconCreditCard size={18} color={theme.warning} />}
             label="Subscription"
@@ -716,6 +892,15 @@ export default function ProfileScreen({ navigation }: any) {
           />
         </Card>
       </View>
+
+      <Button
+        variant="primary"
+        onPress={saveDistancePreferences}
+        loading={savingPreferences}
+        style={styles.saveButton}
+      >
+        Save Changes
+      </Button>
 
       <Button
         variant="outline"
@@ -1095,5 +1280,52 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     alignItems: "center",
     justifyContent: "center",
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  sectionIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  manageButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.lg,
+    marginLeft: "auto",
+  },
+  distanceInputRow: {
+    flexDirection: "row",
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.md,
+  },
+  distanceInputGroup: {
+    flex: 1,
+  },
+  distanceInput: {
+    height: 48,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+  },
+  toggleContent: {
+    flex: 1,
+    marginRight: Spacing.md,
+  },
+  saveButton: {
+    marginTop: Spacing.lg,
   },
 });
