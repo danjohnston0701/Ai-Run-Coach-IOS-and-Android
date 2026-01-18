@@ -54,6 +54,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
+import { RouteRatingModal } from "@/components/RouteRatingModal";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Colors, Spacing, BorderRadius, Typography } from "@/constants/theme";
@@ -221,6 +222,8 @@ export default function RunSessionScreen({
   const [cadence, setCadence] = useState<number>(0);
   const [gpsHealthy, setGpsHealthy] = useState(true);
   const [gpsRecovering, setGpsRecovering] = useState(false);
+  const [showRouteRatingModal, setShowRouteRatingModal] = useState(false);
+  const [completedRunId, setCompletedRunId] = useState<string | null>(null);
 
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1417,7 +1420,13 @@ export default function RunSessionScreen({
         const run = await response.json();
         await AsyncStorage.removeItem("activeRoute");
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        navigation.replace("RunInsights", { runId: run.id });
+        setCompletedRunId(run.id);
+        
+        if (routeData?.id) {
+          setShowRouteRatingModal(true);
+        } else {
+          navigation.replace("RunInsights", { runId: run.id });
+        }
       } else {
         throw new Error("Failed to save run");
       }
@@ -1859,6 +1868,25 @@ export default function RunSessionScreen({
           </View>
         </View>
       </Modal>
+
+      <RouteRatingModal
+        visible={showRouteRatingModal}
+        onClose={() => {
+          setShowRouteRatingModal(false);
+          if (completedRunId) {
+            navigation.replace("RunInsights", { runId: completedRunId });
+          }
+        }}
+        onSubmit={async (rating, comment) => {
+          setShowRouteRatingModal(false);
+          if (completedRunId) {
+            navigation.replace("RunInsights", { runId: completedRunId });
+          }
+        }}
+        routeId={routeData?.id}
+        routeName={routeData?.routeName}
+        userId={user?.id}
+      />
     </View>
   );
 }
