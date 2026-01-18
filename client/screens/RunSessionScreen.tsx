@@ -7,7 +7,10 @@ import {
   Platform,
   Dimensions,
   ScrollView,
+  Image,
+  Text,
 } from "react-native";
+import aiCoachAvatar from "../../assets/images/ai-coach-avatar.png";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { MapViewCompat, PolylineCompat, MarkerCompat } from "@/components/MapViewCompat";
@@ -936,255 +939,247 @@ export default function RunSessionScreen({
     longitude: p.lng,
   }));
 
+  const hasRoute = routeCoordinates.length > 0;
+  const latestCoachMessage = coachMessages.length > 0 ? coachMessages[coachMessages.length - 1].text : null;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
-      <Pressable
-        onPress={handleClose}
-        style={[
-          styles.closeButton,
-          {
-            top: insets.top + Spacing.md,
-            backgroundColor: theme.backgroundSecondary,
-          },
-        ]}
+      <ScrollView 
+        style={styles.scrollContainer}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + Spacing.md }]}
+        showsVerticalScrollIndicator={false}
       >
-        <IconX size={24} color={theme.text} />
-      </Pressable>
-
-      <Pressable
-        onPress={() => setAiCoachEnabled(!aiCoachEnabled)}
-        style={[
-          styles.coachButton,
-          {
-            top: insets.top + Spacing.md,
-            backgroundColor: aiCoachEnabled ? theme.primary + "30" : theme.backgroundSecondary,
-          },
-        ]}
-      >
-        {aiCoachEnabled ? (
-          <IconVolume size={20} color={theme.primary} />
-        ) : (
-          <IconVolumeX size={20} color={theme.textMuted} />
-        )}
-      </Pressable>
-
-      {showMap && routeCoordinates.length > 0 ? (
-        <View style={styles.mapContainer}>
-          <MapViewCompat
-            mapRef={mapRef}
-            style={styles.map}
-            initialRegion={{
-              latitude: routeCoordinates[0]?.latitude || 0,
-              longitude: routeCoordinates[0]?.longitude || 0,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-          >
-            <PolylineCompat
-              coordinates={routeCoordinates}
-              strokeColor={theme.textMuted}
-              strokeWidth={4}
-              lineDashPattern={[10, 5]}
-            />
-            {gpsTrackCoordinates.length > 1 ? (
-              <PolylineCompat
-                coordinates={gpsTrackCoordinates}
-                strokeColor={theme.primary}
-                strokeWidth={5}
-              />
-            ) : null}
-            {routeCoordinates.length > 0 ? (
-              <>
-                <MarkerCompat
-                  coordinate={routeCoordinates[0]}
-                  title="Start"
-                  pinColor={theme.success}
-                />
-                <MarkerCompat
-                  coordinate={routeCoordinates[routeCoordinates.length - 1]}
-                  title="Finish"
-                  pinColor={theme.error}
-                />
-              </>
-            ) : null}
-            {currentLocation ? (
-              <MarkerCompat
-                coordinate={{
-                  latitude: currentLocation.lat,
-                  longitude: currentLocation.lng,
-                }}
-              >
-                <View style={styles.currentLocationMarker}>
-                  <View style={[styles.currentLocationDot, { backgroundColor: theme.primary }]} />
-                </View>
-              </MarkerCompat>
-            ) : null}
-          </MapViewCompat>
-
-          {currentInstruction ? (
-            <Animated.View
-              entering={FadeIn}
-              style={[styles.navigationCard, { backgroundColor: theme.backgroundSecondary }]}
+        <View style={styles.topBar}>
+          <View style={styles.statusIndicators}>
+            <View style={[styles.statusPill, { backgroundColor: theme.success + '30' }]}>
+              <View style={[styles.statusDot, { backgroundColor: theme.success }]} />
+              <Text style={[styles.statusText, { color: theme.success }]}>GPS</Text>
+            </View>
+            <Pressable 
+              onPress={() => setAiCoachEnabled(!aiCoachEnabled)}
+              style={[styles.statusPill, { backgroundColor: aiCoachEnabled ? theme.primary + '30' : theme.backgroundSecondary }]}
             >
-              <IconNavigation size={24} color={theme.primary} />
-              <View style={styles.navigationText}>
-                <ThemedText style={[Typography.bodySmall, { color: theme.textSecondary }]}>
-                  In {formatDistanceToTurn(distanceToNextTurn)}
-                </ThemedText>
-                <ThemedText style={[Typography.body, { color: theme.text }]} numberOfLines={2}>
-                  {formatNavigationInstruction(currentInstruction.instruction)}
-                </ThemedText>
-              </View>
-            </Animated.View>
+              {aiCoachEnabled ? (
+                <IconVolume size={14} color={theme.primary} />
+              ) : (
+                <IconVolumeX size={14} color={theme.textMuted} />
+              )}
+              <Text style={[styles.statusText, { color: aiCoachEnabled ? theme.primary : theme.textMuted }]}>
+                COACH {aiCoachEnabled ? 'ON' : 'OFF'}
+              </Text>
+            </Pressable>
+          </View>
+          <View style={styles.topActions}>
+            <Pressable onPress={handleClose} style={styles.topActionButton}>
+              <IconX size={20} color={theme.text} />
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>TIME</Text>
+            <Text style={[styles.statValue, { color: theme.text }]}>{formatTime(elapsedTime)}</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>DISTANCE</Text>
+            <Text style={[styles.statValue, { color: theme.text }]}>{distance.toFixed(2)}</Text>
+            <Text style={[styles.statUnit, { color: theme.textMuted }]}>km</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>AVG PACE</Text>
+            <Text style={[styles.statValue, { color: theme.text }]}>{currentPace}</Text>
+            <Text style={[styles.statUnit, { color: theme.textMuted }]}>/km</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>CADENCE</Text>
+            <Text style={[styles.statValue, { color: theme.text }]}>--</Text>
+            <Text style={[styles.statUnit, { color: theme.textMuted }]}>spm</Text>
+          </View>
+        </View>
+
+        <View style={styles.mainControlSection}>
+          {runState === "ready" ? (
+            <Pressable
+              onPress={handleStart}
+              style={[styles.startRunButton, { backgroundColor: theme.success }]}
+            >
+              <IconPlay size={24} color={theme.backgroundRoot} />
+              <Text style={[styles.startRunText, { color: theme.backgroundRoot }]}>START RUN</Text>
+            </Pressable>
+          ) : runState === "running" ? (
+            <View style={styles.runningControlsRow}>
+              <Pressable
+                onPress={handleStop}
+                style={[styles.controlButtonSmall, { backgroundColor: theme.backgroundSecondary }]}
+              >
+                <IconSquare size={24} color={theme.text} />
+              </Pressable>
+              <Pressable
+                onPress={handlePause}
+                style={[styles.pauseButton, { backgroundColor: theme.primary }]}
+              >
+                <IconPause size={32} color={theme.backgroundRoot} />
+              </Pressable>
+            </View>
+          ) : runState === "paused" ? (
+            <View style={styles.runningControlsRow}>
+              <Pressable
+                onPress={handleStop}
+                style={[styles.controlButtonSmall, { backgroundColor: theme.error }]}
+              >
+                <IconSquare size={24} color={theme.buttonText} />
+              </Pressable>
+              <Pressable
+                onPress={handleResume}
+                style={[styles.pauseButton, { backgroundColor: theme.success }]}
+              >
+                <IconPlay size={32} color={theme.backgroundRoot} />
+              </Pressable>
+            </View>
           ) : null}
         </View>
-      ) : null}
 
-      <Pressable
-        onPress={() => setShowMap(!showMap)}
-        style={[styles.mapToggle, { backgroundColor: theme.backgroundSecondary }]}
-      >
-        {showMap ? (
-          <IconChevronUp size={20} color={theme.text} />
-        ) : (
-          <IconChevronDown size={20} color={theme.text} />
-        )}
-      </Pressable>
+        {hasRoute ? (
+          <View style={styles.mapSection}>
+            <Pressable 
+              onPress={() => setShowMap(!showMap)}
+              style={styles.mapHeader}
+            >
+              <View style={styles.mapHeaderLeft}>
+                <IconNavigation size={16} color={theme.primary} />
+                <Text style={[styles.mapHeaderText, { color: theme.text }]}>
+                  {showMap ? 'HIDE MAP' : 'SHOW MAP'}
+                </Text>
+              </View>
+              {showMap ? (
+                <IconChevronUp size={20} color={theme.text} />
+              ) : (
+                <IconChevronDown size={20} color={theme.text} />
+              )}
+            </Pressable>
 
-      {coachMessages.length > 0 ? (
-        <Animated.View
-          entering={FadeIn}
-          exiting={FadeOut}
-          style={[styles.coachMessage, { backgroundColor: theme.primary + "20" }]}
-        >
-          <View style={styles.coachMessageHeader}>
-            <View style={styles.voiceVisualizer}>
-              <Animated.View style={[styles.voiceBar, styles.voiceBar1, { backgroundColor: theme.primary }]} />
-              <Animated.View style={[styles.voiceBar, styles.voiceBar2, { backgroundColor: theme.primary }]} />
-              <Animated.View style={[styles.voiceBar, styles.voiceBar3, { backgroundColor: theme.primary }]} />
-              <Animated.View style={[styles.voiceBar, styles.voiceBar4, { backgroundColor: theme.primary }]} />
+            {showMap ? (
+              <View style={styles.mapContainer}>
+                <MapViewCompat
+                  mapRef={mapRef}
+                  style={styles.map}
+                  initialRegion={{
+                    latitude: routeCoordinates[0]?.latitude || 0,
+                    longitude: routeCoordinates[0]?.longitude || 0,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  }}
+                >
+                  <PolylineCompat
+                    coordinates={routeCoordinates}
+                    strokeColor={theme.primary}
+                    strokeWidth={4}
+                  />
+                  {gpsTrackCoordinates.length > 1 ? (
+                    <PolylineCompat
+                      coordinates={gpsTrackCoordinates}
+                      strokeColor={theme.success}
+                      strokeWidth={5}
+                    />
+                  ) : null}
+                  {routeCoordinates.length > 0 ? (
+                    <>
+                      <MarkerCompat
+                        coordinate={routeCoordinates[0]}
+                        title="Start"
+                        pinColor={theme.success}
+                      />
+                      <MarkerCompat
+                        coordinate={routeCoordinates[routeCoordinates.length - 1]}
+                        title="Finish"
+                        pinColor={theme.error}
+                      />
+                    </>
+                  ) : null}
+                  {currentLocation ? (
+                    <MarkerCompat
+                      coordinate={{
+                        latitude: currentLocation.lat,
+                        longitude: currentLocation.lng,
+                      }}
+                    >
+                      <View style={styles.currentLocationMarker}>
+                        <View style={[styles.currentLocationDot, { backgroundColor: theme.primary }]} />
+                      </View>
+                    </MarkerCompat>
+                  ) : null}
+                </MapViewCompat>
+
+                {currentInstruction ? (
+                  <Animated.View
+                    entering={FadeIn}
+                    style={[styles.navigationCard, { backgroundColor: theme.backgroundSecondary }]}
+                  >
+                    <View style={[styles.navIcon, { backgroundColor: theme.warning }]}>
+                      <IconNavigation size={16} color={theme.backgroundRoot} />
+                    </View>
+                    <Text style={[styles.navText, { color: theme.text }]}>
+                      In {formatDistanceToTurn(distanceToNextTurn)}: {formatNavigationInstruction(currentInstruction.instruction)}
+                    </Text>
+                  </Animated.View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.coachSection}>
+          <View style={styles.coachAvatarContainer}>
+            <Image source={aiCoachAvatar} style={styles.coachAvatar} resizeMode="contain" />
+          </View>
+          
+          <View style={[styles.coachMessageBox, { backgroundColor: theme.backgroundSecondary }]}>
+            <Text style={[styles.coachMessageText, { color: theme.primary }]}>
+              {latestCoachMessage || (runState === 'ready' 
+                ? '"GPS locked! Tap \'Start Run\' when you\'re ready."'
+                : '"Keep up the great work!"')}
+            </Text>
+          </View>
+
+          {runState === 'running' ? (
+            <View style={styles.voiceVisualizerRow}>
+              {[...Array(20)].map((_, i) => (
+                <Animated.View 
+                  key={i} 
+                  style={[
+                    styles.voiceBarAnimated, 
+                    { 
+                      backgroundColor: theme.primary,
+                      height: 4 + Math.random() * 20,
+                    }
+                  ]} 
+                />
+              ))}
             </View>
-            <ThemedText style={[Typography.caption, { color: theme.primary, marginLeft: Spacing.sm }]}>
-              AI COACH
-            </ThemedText>
-          </View>
-          <ThemedText style={[Typography.body, { color: theme.primary, marginTop: Spacing.xs }]}>
-            {coachMessages[coachMessages.length - 1].text}
-          </ThemedText>
-        </Animated.View>
-      ) : null}
-
-      {toastMessage ? (
-        <Animated.View
-          entering={FadeIn}
-          exiting={FadeOut}
-          style={[styles.toast, { backgroundColor: theme.backgroundSecondary }]}
-        >
-          <ThemedText style={[Typography.bodySmall, { color: theme.text }]}>
-            {toastMessage}
-          </ThemedText>
-        </Animated.View>
-      ) : null}
-
-      <View style={styles.mainStats}>
-        <View style={styles.primaryStat}>
-          <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            DISTANCE
-          </ThemedText>
-          <ThemedText style={[Typography.statLarge, { color: theme.primary }]}>
-            {distance.toFixed(2)}
-          </ThemedText>
-          <ThemedText type="body" style={{ color: theme.textSecondary }}>
-            km
-          </ThemedText>
-        </View>
-
-        <View style={styles.secondaryStats}>
-          <View style={styles.stat}>
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              TIME
-            </ThemedText>
-            <ThemedText style={[Typography.stat, { color: theme.text }]}>
-              {formatTime(elapsedTime)}
-            </ThemedText>
-          </View>
-          <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
-          <View style={styles.stat}>
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              PACE
-            </ThemedText>
-            <ThemedText style={[Typography.stat, { color: theme.text }]}>
-              {currentPace}
-            </ThemedText>
-            <ThemedText type="small" style={{ color: theme.textMuted }}>
-              /km
-            </ThemedText>
-          </View>
+          ) : null}
         </View>
 
         {kmSplits.length > 0 ? (
           <View style={[styles.splitCard, { backgroundColor: theme.backgroundSecondary }]}>
             <IconFlag size={16} color={theme.success} />
-            <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
+            <Text style={[styles.splitText, { color: theme.text }]}>
               Km {kmSplits[kmSplits.length - 1].km}: {kmSplits[kmSplits.length - 1].pace}
-            </ThemedText>
+            </Text>
           </View>
         ) : null}
-      </View>
 
-      <View style={[styles.controls, { paddingBottom: insets.bottom + Spacing.xl }]}>
-        {runState === "ready" ? (
-          <Pressable
-            onPress={handleStart}
-            style={[styles.startButton, { backgroundColor: theme.success }]}
-          >
-            <IconPlay size={48} color={theme.buttonText} />
-          </Pressable>
-        ) : runState === "running" ? (
-          <View style={styles.runningControls}>
-            <Pressable
-              onPress={handlePause}
-              style={[styles.controlButton, { backgroundColor: theme.warning }]}
-            >
-              <IconPause size={32} color={theme.buttonText} />
-            </Pressable>
-            <Animated.View style={pulseStyle}>
-              <View
-                style={[
-                  styles.runningIndicator,
-                  { backgroundColor: theme.error + "20" },
-                ]}
-              >
-                <View style={[styles.runningDot, { backgroundColor: theme.error }]} />
-              </View>
-            </Animated.View>
-            <Pressable
-              onPress={handleStop}
-              style={[styles.controlButton, { backgroundColor: theme.error }]}
-            >
-              <IconSquare size={32} color={theme.buttonText} />
-            </Pressable>
-          </View>
-        ) : runState === "paused" ? (
-          <View style={styles.runningControls}>
-            <Pressable
-              onPress={handleResume}
-              style={[styles.controlButton, { backgroundColor: theme.success }]}
-            >
-              <IconPlay size={32} color={theme.buttonText} />
-            </Pressable>
-            <ThemedText type="h4" style={{ color: theme.warning }}>
-              PAUSED
-            </ThemedText>
-            <Pressable
-              onPress={handleStop}
-              style={[styles.controlButton, { backgroundColor: theme.error }]}
-            >
-              <IconSquare size={32} color={theme.buttonText} />
-            </Pressable>
-          </View>
-        ) : null}
-      </View>
+      </ScrollView>
+
+      {toastMessage ? (
+        <Animated.View
+          entering={FadeIn}
+          exiting={FadeOut}
+          style={[styles.toast, { backgroundColor: theme.backgroundSecondary, top: insets.top + 60 }]}
+        >
+          <Text style={[styles.toastText, { color: theme.text }]}>{toastMessage}</Text>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -1202,92 +1197,212 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  closeButton: {
-    position: "absolute",
-    left: Spacing.lg,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 10,
+  scrollContainer: {
+    flex: 1,
   },
-  coachButton: {
-    position: "absolute",
-    right: Spacing.lg,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  scrollContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing["3xl"],
+  },
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.md,
+  },
+  statusIndicators: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.pill,
+    gap: Spacing.xs,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  topActions: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  topActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 10,
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.sm,
+  },
+  statItem: {
+    alignItems: "center",
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: "500",
+    marginBottom: 2,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  statUnit: {
+    fontSize: 10,
+    fontWeight: "400",
+  },
+  mainControlSection: {
+    alignItems: "center",
+    marginBottom: Spacing.xl,
+  },
+  startRunButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing["3xl"],
+    borderRadius: BorderRadius.pill,
+    gap: Spacing.md,
+  },
+  startRunText: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  runningControlsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xl,
+  },
+  controlButtonSmall: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pauseButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapSection: {
+    marginBottom: Spacing.lg,
+  },
+  mapHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  mapHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  mapHeaderText: {
+    fontSize: 14,
+    fontWeight: "600",
   },
   mapContainer: {
-    height: SCREEN_HEIGHT * 0.35,
-    marginTop: 80,
-    marginHorizontal: Spacing.md,
-    borderRadius: BorderRadius.xl,
+    height: 200,
+    borderRadius: BorderRadius.lg,
     overflow: "hidden",
   },
   map: {
     flex: 1,
   },
-  mapToggle: {
-    alignSelf: "center",
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.pill,
-    marginTop: Spacing.sm,
-  },
   navigationCard: {
     position: "absolute",
-    bottom: Spacing.md,
-    left: Spacing.md,
-    right: Spacing.md,
+    bottom: Spacing.sm,
+    left: Spacing.sm,
+    right: Spacing.sm,
     flexDirection: "row",
     alignItems: "center",
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.sm,
   },
-  navigationText: {
-    marginLeft: Spacing.md,
+  navIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navText: {
     flex: 1,
+    fontSize: 13,
   },
-  coachMessage: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.md,
-    padding: Spacing.md,
+  coachSection: {
+    alignItems: "center",
+    marginVertical: Spacing.xl,
+  },
+  coachAvatarContainer: {
+    width: 140,
+    height: 140,
+    marginBottom: Spacing.md,
+  },
+  coachAvatar: {
+    width: "100%",
+    height: "100%",
+  },
+  coachMessageBox: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     borderRadius: BorderRadius.lg,
+    marginHorizontal: Spacing.md,
+    maxWidth: "100%",
   },
-  coachMessageHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+  coachMessageText: {
+    fontSize: 15,
+    fontStyle: "italic",
+    textAlign: "center",
+    lineHeight: 22,
   },
-  voiceVisualizer: {
+  voiceVisualizerRow: {
     flexDirection: "row",
-    alignItems: "center",
-    height: 16,
+    alignItems: "flex-end",
+    justifyContent: "center",
+    height: 30,
+    marginTop: Spacing.lg,
     gap: 2,
   },
-  voiceBar: {
+  voiceBarAnimated: {
     width: 3,
     borderRadius: 2,
   },
-  voiceBar1: {
-    height: 8,
+  splitCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.sm,
   },
-  voiceBar2: {
-    height: 14,
-  },
-  voiceBar3: {
-    height: 10,
-  },
-  voiceBar4: {
-    height: 6,
+  splitText: {
+    fontSize: 14,
+    fontWeight: "500",
   },
   toast: {
     position: "absolute",
-    top: 100,
     left: Spacing.lg,
     right: Spacing.lg,
     padding: Spacing.md,
@@ -1295,72 +1410,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     zIndex: 100,
   },
-  mainStats: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: Spacing.xl,
-  },
-  primaryStat: {
-    alignItems: "center",
-    marginBottom: Spacing["3xl"],
-  },
-  secondaryStats: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  stat: {
-    alignItems: "center",
-    paddingHorizontal: Spacing["3xl"],
-  },
-  statDivider: {
-    width: 1,
-    height: 60,
-  },
-  splitCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    marginTop: Spacing["3xl"],
-  },
-  controls: {
-    alignItems: "center",
-    paddingHorizontal: Spacing.xl,
-  },
-  startButton: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  runningControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    maxWidth: 320,
-  },
-  controlButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  runningIndicator: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  runningDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+  toastText: {
+    fontSize: 14,
   },
   currentLocationMarker: {
     width: 24,
