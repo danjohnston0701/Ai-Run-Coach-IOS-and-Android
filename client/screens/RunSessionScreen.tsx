@@ -921,6 +921,16 @@ export default function RunSessionScreen({
     return `${Math.round(meters)} m`;
   };
 
+  const formatNavigationInstruction = (instruction: string) => {
+    if (!instruction) return '';
+    let formatted = instruction
+      .replace(/Turn left onto /gi, 'Turn left towards ')
+      .replace(/Turn right onto /gi, 'Turn right towards ')
+      .replace(/Continue onto /gi, 'Continue on ')
+      .replace(/Head (north|south|east|west|northeast|northwest|southeast|southwest) on /gi, 'Head $1 on ');
+    return formatted;
+  };
+
   const gpsTrackCoordinates = gpsTrack.map((p) => ({
     latitude: p.lat,
     longitude: p.lng,
@@ -1021,8 +1031,8 @@ export default function RunSessionScreen({
                 <ThemedText style={[Typography.bodySmall, { color: theme.textSecondary }]}>
                   In {formatDistanceToTurn(distanceToNextTurn)}
                 </ThemedText>
-                <ThemedText style={[Typography.body, { color: theme.text }]} numberOfLines={1}>
-                  {currentInstruction.instruction}
+                <ThemedText style={[Typography.body, { color: theme.text }]} numberOfLines={2}>
+                  {formatNavigationInstruction(currentInstruction.instruction)}
                 </ThemedText>
               </View>
             </Animated.View>
@@ -1047,7 +1057,18 @@ export default function RunSessionScreen({
           exiting={FadeOut}
           style={[styles.coachMessage, { backgroundColor: theme.primary + "20" }]}
         >
-          <ThemedText style={[Typography.body, { color: theme.primary }]}>
+          <View style={styles.coachMessageHeader}>
+            <View style={styles.voiceVisualizer}>
+              <Animated.View style={[styles.voiceBar, styles.voiceBar1, { backgroundColor: theme.primary }]} />
+              <Animated.View style={[styles.voiceBar, styles.voiceBar2, { backgroundColor: theme.primary }]} />
+              <Animated.View style={[styles.voiceBar, styles.voiceBar3, { backgroundColor: theme.primary }]} />
+              <Animated.View style={[styles.voiceBar, styles.voiceBar4, { backgroundColor: theme.primary }]} />
+            </View>
+            <ThemedText style={[Typography.caption, { color: theme.primary, marginLeft: Spacing.sm }]}>
+              AI COACH
+            </ThemedText>
+          </View>
+          <ThemedText style={[Typography.body, { color: theme.primary, marginTop: Spacing.xs }]}>
             {coachMessages[coachMessages.length - 1].text}
           </ThemedText>
         </Animated.View>
@@ -1237,6 +1258,32 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
+  },
+  coachMessageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  voiceVisualizer: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 16,
+    gap: 2,
+  },
+  voiceBar: {
+    width: 3,
+    borderRadius: 2,
+  },
+  voiceBar1: {
+    height: 8,
+  },
+  voiceBar2: {
+    height: 14,
+  },
+  voiceBar3: {
+    height: 10,
+  },
+  voiceBar4: {
+    height: 6,
   },
   toast: {
     position: "absolute",
