@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { StyleSheet, View, FlatList, RefreshControl, Pressable } from "react-native";
+import React, { useState, useEffect, useCallback, useLayoutEffect } from "react";
+import { StyleSheet, View, FlatList, RefreshControl, Pressable, Alert, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { HeaderButton } from "@react-navigation/elements";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -17,6 +19,8 @@ import {
   IconTrending,
   IconMic,
   IconMap,
+  IconRefresh,
+  IconCloud,
 } from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
@@ -32,6 +36,118 @@ export default function RunHistoryScreen({ navigation }: any) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [localRunsCount, setLocalRunsCount] = useState(0);
+
+  const checkLocalRuns = useCallback(async () => {
+    try {
+      const localHistory = await AsyncStorage.getItem("runHistory");
+      if (localHistory) {
+        const parsedHistory = JSON.parse(localHistory);
+        const unsyncedRuns = parsedHistory.filter((run: any) => !run.dbSynced);
+        setLocalRunsCount(unsyncedRuns.length);
+      }
+    } catch (error) {
+      console.log("Error checking local runs:", error);
+    }
+  }, []);
+
+  const syncLocalRuns = useCallback(async () => {
+    setSyncing(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    try {
+      const localHistory = await AsyncStorage.getItem("runHistory");
+      if (!localHistory) {
+        Alert.alert("No Local Runs", "All your runs are already synced to the cloud.");
+        setSyncing(false);
+        return;
+      }
+
+      const parsedHistory = JSON.parse(localHistory);
+      const unsyncedRuns = parsedHistory.filter((run: any) => !run.dbSynced);
+      
+      if (unsyncedRuns.length === 0) {
+        Alert.alert("All Synced", "All your runs are already backed up to the cloud.");
+        setSyncing(false);
+        return;
+      }
+
+      const baseUrl = getApiUrl();
+      let syncedCount = 0;
+
+      for (const run of unsyncedRuns) {
+        try {
+          const response = await fetch(`${baseUrl}/api/runs`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              ...run,
+              dbSynced: true,
+            }),
+          });
+
+          if (response.ok) {
+            syncedCount++;
+            const index = parsedHistory.findIndex((r: any) => r.id === run.id);
+            if (index !== -1) {
+              parsedHistory[index].dbSynced = true;
+            }
+          }
+        } catch (error) {
+          console.log("Error syncing run:", run.id, error);
+        }
+      }
+
+      await AsyncStorage.setItem("runHistory", JSON.stringify(parsedHistory));
+      await fetchRuns();
+      await checkLocalRuns();
+      
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Sync Complete", `Successfully synced ${syncedCount} run${syncedCount !== 1 ? 's' : ''} to the cloud.`);
+    } catch (error) {
+      console.log("Sync error:", error);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Sync Failed", "Could not sync runs. Please try again.");
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <HeaderButton
+          onPress={syncLocalRuns}
+          disabled={syncing}
+        >
+          {syncing ? (
+            <ActivityIndicator size="small" color={theme.primary} />
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <IconCloud size={20} color={theme.primary} />
+              {localRunsCount > 0 ? (
+                <View style={{
+                  backgroundColor: theme.accent,
+                  borderRadius: 10,
+                  minWidth: 18,
+                  height: 18,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 4,
+                }}>
+                  <ThemedText type="small" style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
+                    {localRunsCount}
+                  </ThemedText>
+                </View>
+              ) : null}
+            </View>
+          )}
+        </HeaderButton>
+      ),
+    });
+  }, [navigation, syncing, localRunsCount, theme]);
 
   const fetchRuns = useCallback(async () => {
     try {
@@ -52,7 +168,8 @@ export default function RunHistoryScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchRuns();
-  }, [fetchRuns]);
+    checkLocalRuns();
+  }, [fetchRuns, checkLocalRuns]);
 
   const onRefresh = async () => {
     setRefreshing(true);
