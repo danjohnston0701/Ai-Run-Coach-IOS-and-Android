@@ -60,6 +60,20 @@ export interface Route {
   sourceRunId?: string;
 }
 
+export interface RunAnalysis {
+  highlights: string[];
+  struggles: string[];
+  personalBests?: Array<{
+    type: string;
+    value: string;
+    description: string;
+  }>;
+  improvementTips: string[];
+  nextRunSuggestions?: string;
+  overallScore?: number; // 1-100
+  effortLevel?: string; // easy, moderate, hard, max
+}
+
 export interface Run {
   id: string;
   userId: string;
@@ -92,11 +106,12 @@ export interface Run {
     conditions?: string;
   };
   aiInsights?: string;
+  aiAnalysis?: RunAnalysis;
   aiCoachingNotes?: Array<{ time: number; message: string }>;
   aiCoachEnabled?: boolean;
   completedAt?: string;
-  targetTime?: number; // Target time in seconds
-  targetTimeAnalysis?: string; // AI analysis of target time achievement
+  targetTime?: number;
+  targetTimeAnalysis?: string;
 }
 
 export interface Event {

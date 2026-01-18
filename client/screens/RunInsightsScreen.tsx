@@ -22,6 +22,11 @@ import {
   IconRepeat,
   IconShare,
   IconCheck,
+  IconSparkles,
+  IconTarget,
+  IconAlertCircle,
+  IconAward,
+  IconTrendingUp,
 } from "@/components/icons/AppIcons";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -484,20 +489,145 @@ export default function RunInsightsScreen({
         <ThemedText type="h4" style={styles.sectionTitle}>
           AI Analysis
         </ThemedText>
-        {run.aiInsights ? (
-          <Card gradient>
-            <View style={styles.aiHeader}>
-              <View style={[styles.aiIcon, { backgroundColor: theme.primary + "20" }]}>
-                <IconCpu size={20} color={theme.primary} />
-              </View>
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                Coach Insights
-              </ThemedText>
-            </View>
-            <ThemedText type="body" style={{ lineHeight: 24 }}>
-              {run.aiInsights}
-            </ThemedText>
-          </Card>
+        {run.aiInsights || run.aiAnalysis ? (
+          <>
+            {run.aiAnalysis?.overallScore ? (
+              <Card style={styles.scoreCard}>
+                <View style={styles.scoreRow}>
+                  <View style={[styles.scoreBadge, { backgroundColor: theme.success + "20" }]}>
+                    <ThemedText type="h2" style={{ color: theme.success }}>
+                      {run.aiAnalysis.overallScore}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.scoreInfo}>
+                    <ThemedText type="h4">Performance Score</ThemedText>
+                    <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                      {run.aiAnalysis.effortLevel ? `${run.aiAnalysis.effortLevel.charAt(0).toUpperCase() + run.aiAnalysis.effortLevel.slice(1)} effort` : "Good run"}
+                    </ThemedText>
+                  </View>
+                </View>
+              </Card>
+            ) : null}
+
+            {run.aiAnalysis?.personalBests && run.aiAnalysis.personalBests.length > 0 ? (
+              <Card style={[styles.pbCard, { borderColor: theme.warning }]}>
+                <View style={styles.aiHeader}>
+                  <View style={[styles.aiIcon, { backgroundColor: theme.warning + "20" }]}>
+                    <IconAward size={20} color={theme.warning} />
+                  </View>
+                  <ThemedText type="h4" style={{ color: theme.warning }}>
+                    Personal Bests
+                  </ThemedText>
+                </View>
+                {run.aiAnalysis.personalBests.map((pb, index) => (
+                  <View key={index} style={styles.pbItem}>
+                    <ThemedText type="body" style={{ fontWeight: "600" }}>
+                      {pb.type}: {pb.value}
+                    </ThemedText>
+                    <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                      {pb.description}
+                    </ThemedText>
+                  </View>
+                ))}
+              </Card>
+            ) : null}
+
+            {run.aiAnalysis?.highlights && run.aiAnalysis.highlights.length > 0 ? (
+              <Card style={styles.highlightsCard}>
+                <View style={styles.aiHeader}>
+                  <View style={[styles.aiIcon, { backgroundColor: theme.success + "20" }]}>
+                    <IconSparkles size={20} color={theme.success} />
+                  </View>
+                  <ThemedText type="h4" style={{ color: theme.success }}>
+                    Highlights
+                  </ThemedText>
+                </View>
+                {run.aiAnalysis.highlights.map((highlight, index) => (
+                  <View key={index} style={styles.analysisItem}>
+                    <IconCheck size={16} color={theme.success} />
+                    <ThemedText type="body" style={{ flex: 1, marginLeft: Spacing.sm }}>
+                      {highlight}
+                    </ThemedText>
+                  </View>
+                ))}
+              </Card>
+            ) : null}
+
+            {run.aiAnalysis?.struggles && run.aiAnalysis.struggles.length > 0 ? (
+              <Card style={styles.strugglesCard}>
+                <View style={styles.aiHeader}>
+                  <View style={[styles.aiIcon, { backgroundColor: theme.accent + "20" }]}>
+                    <IconAlertCircle size={20} color={theme.accent} />
+                  </View>
+                  <ThemedText type="h4" style={{ color: theme.accent }}>
+                    Areas to Improve
+                  </ThemedText>
+                </View>
+                {run.aiAnalysis.struggles.map((struggle, index) => (
+                  <View key={index} style={styles.analysisItem}>
+                    <IconTrendingUp size={16} color={theme.accent} />
+                    <ThemedText type="body" style={{ flex: 1, marginLeft: Spacing.sm }}>
+                      {struggle}
+                    </ThemedText>
+                  </View>
+                ))}
+              </Card>
+            ) : null}
+
+            {run.aiAnalysis?.improvementTips && run.aiAnalysis.improvementTips.length > 0 ? (
+              <Card gradient>
+                <View style={styles.aiHeader}>
+                  <View style={[styles.aiIcon, { backgroundColor: theme.primary + "20" }]}>
+                    <IconTarget size={20} color={theme.primary} />
+                  </View>
+                  <ThemedText type="h4" style={{ color: theme.primary }}>
+                    Coach Tips
+                  </ThemedText>
+                </View>
+                {run.aiAnalysis.improvementTips.map((tip, index) => (
+                  <ThemedText 
+                    key={index} 
+                    type="body" 
+                    style={{ marginTop: index > 0 ? Spacing.sm : 0, lineHeight: 22 }}
+                  >
+                    {tip}
+                  </ThemedText>
+                ))}
+              </Card>
+            ) : null}
+
+            {run.aiInsights && !run.aiAnalysis ? (
+              <Card gradient>
+                <View style={styles.aiHeader}>
+                  <View style={[styles.aiIcon, { backgroundColor: theme.primary + "20" }]}>
+                    <IconCpu size={20} color={theme.primary} />
+                  </View>
+                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                    Coach Insights
+                  </ThemedText>
+                </View>
+                <ThemedText type="body" style={{ lineHeight: 24 }}>
+                  {run.aiInsights}
+                </ThemedText>
+              </Card>
+            ) : null}
+
+            {run.aiAnalysis?.nextRunSuggestions ? (
+              <Card style={{ marginTop: Spacing.md }}>
+                <View style={styles.aiHeader}>
+                  <View style={[styles.aiIcon, { backgroundColor: theme.textMuted + "20" }]}>
+                    <IconRepeat size={20} color={theme.textMuted} />
+                  </View>
+                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                    Next Run
+                  </ThemedText>
+                </View>
+                <ThemedText type="body" style={{ lineHeight: 22 }}>
+                  {run.aiAnalysis.nextRunSuggestions}
+                </ThemedText>
+              </Card>
+            ) : null}
+          </>
         ) : (
           <Card>
             <ThemedText type="body" style={{ color: theme.textSecondary, marginBottom: Spacing.md }}>
@@ -910,6 +1040,42 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: Spacing.sm,
+  },
+  scoreCard: {
+    marginBottom: Spacing.md,
+  },
+  scoreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  scoreBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.lg,
+  },
+  scoreInfo: {
+    flex: 1,
+  },
+  pbCard: {
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+  },
+  pbItem: {
+    marginTop: Spacing.sm,
+  },
+  highlightsCard: {
+    marginBottom: Spacing.md,
+  },
+  strugglesCard: {
+    marginBottom: Spacing.md,
+  },
+  analysisItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: Spacing.sm,
   },
   targetTimeCard: {
     borderWidth: 1,
