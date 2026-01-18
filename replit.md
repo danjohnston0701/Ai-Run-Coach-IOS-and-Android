@@ -275,3 +275,18 @@ STORAGE_KEYS = {
 ### Technical Improvements
 - MapViewCompat split into platform-specific files (.native.tsx and .web.tsx) for proper web fallback
 - Profile photo storage switched from SecureStore to AsyncStorage to handle large base64 images
+
+### Talk to Coach Feature
+- Purple mic button in RunSessionScreen top bar (purple when idle, red pulsing when listening)
+- Voice input via Web Speech API (web platform only, mobile shows toast to type instead)
+- POST /api/ai/coaching endpoint for user questions with force priority (bypasses cooldowns)
+- TTS response via expo-speech for coach answers
+- Shows AI Coach avatar with message bubble during response
+
+### Share Live Run Feature
+- Share button (green when sharing, gray otherwise) to share active run with friends
+- Friend selector modal showing friend list with toggle buttons (Invite/checkmark)
+- Live session sync every 5 seconds during active runs via PUT /api/live-sessions/sync
+- Invite notifications sent to selected friends via POST /api/live-sessions/:sessionId/invite-observer
+- LiveRunViewerScreen for observers with 3-second polling, live map, and real-time stats
+- Session ends automatically when run stops
