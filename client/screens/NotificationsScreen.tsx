@@ -226,7 +226,7 @@ export default function NotificationsScreen({ navigation }: any) {
       {unreadCount > 0 ? (
         <Pressable
           onPress={markAllAsRead}
-          style={[styles.markAllButton, { backgroundColor: theme.backgroundSecondary }]}
+          style={[styles.markAllButton, { backgroundColor: theme.backgroundSecondary, marginTop: headerHeight + Spacing.md }]}
         >
           <ThemedText type="small" style={{ color: theme.primary }}>
             Mark all as read ({unreadCount})
