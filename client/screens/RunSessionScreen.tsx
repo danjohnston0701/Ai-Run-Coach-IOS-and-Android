@@ -36,8 +36,13 @@ import {
   IconShare2,
   IconMic,
   IconCheck,
+  IconActivity,
 } from "@/components/icons/AppIcons";
 import * as Speech from "expo-speech";
+import { speechQueue } from "@/lib/speechQueue";
+import { cadenceDetector } from "@/lib/cadenceDetector";
+import { gpsWatchdog } from "@/lib/gpsWatchdog";
+import { navigationEngine, RouteWaypoint } from "@/lib/navigationEngine";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -213,6 +218,9 @@ export default function RunSessionScreen({
   const [isLiveSyncing, setIsLiveSyncing] = useState(false);
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
   const [friends, setFriends] = useState<Array<{id: string; friendId: string; name: string; profilePhoto?: string}>>([]);
+  const [cadence, setCadence] = useState<number>(0);
+  const [gpsHealthy, setGpsHealthy] = useState(true);
+  const [gpsRecovering, setGpsRecovering] = useState(false);
 
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -234,6 +242,9 @@ export default function RunSessionScreen({
   const lastOffRouteTimeRef = useRef<number>(0);
   const recentPacesRef = useRef<number[]>([]);
   const baselinePaceRef = useRef<number>(0);
+  const runStartTimestampRef = useRef<number>(0);
+  const pausedTimeRef = useRef<number>(0);
+  const lastPauseTimestampRef = useRef<number>(0);
 
   const pulseAnim = useSharedValue(1);
 
@@ -262,6 +273,8 @@ export default function RunSessionScreen({
     activateKeepAwakeAsync();
     checkForRecoverySession();
     
+    speechQueue.setEnabled(true);
+    
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -277,6 +290,10 @@ export default function RunSessionScreen({
 
     return () => {
       deactivateKeepAwake();
+      speechQueue.clear();
+      cadenceDetector.stop();
+      gpsWatchdog.stop();
+      navigationEngine.reset();
     };
   }, []);
 
@@ -1029,37 +1046,55 @@ export default function RunSessionScreen({
   const handleStart = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setRunState("running");
+    
+    runStartTimestampRef.current = Date.now();
+    pausedTimeRef.current = 0;
+    
     startTimeRef.current = Date.now();
     lastKmTimeRef.current = 0;
     startTimer();
     startLocationTracking();
     startAutoSave();
     startDbSync();
+    
+    cadenceDetector.start((spm) => {
+      setCadence(spm);
+    });
+    
+    speechQueue.setEnabled(aiCoachEnabled);
+    speechQueue.enqueueSystem("Run started. Let's go!");
   };
 
   const handlePause = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setRunState("paused");
+    
+    lastPauseTimestampRef.current = Date.now();
+    
     stopTimer();
     stopLocationTracking();
     await autoSaveSession();
+    
+    speechQueue.enqueueSystem("Run paused");
   };
 
   const handleResume = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setRunState("running");
+    
+    if (lastPauseTimestampRef.current > 0) {
+      pausedTimeRef.current += Date.now() - lastPauseTimestampRef.current;
+    }
+    
     startTimer();
     startLocationTracking();
+    
+    speechQueue.enqueueSystem("Run resumed. Keep going!");
   };
 
   const speakCoachMessage = useCallback((text: string) => {
     if (!aiCoachEnabled) return;
-    Speech.stop();
-    Speech.speak(text, {
-      language: 'en-US',
-      pitch: 1.0,
-      rate: 0.9,
-    });
+    speechQueue.enqueueCoach(text);
   }, [aiCoachEnabled]);
 
   const sendToCoach = useCallback(async (userMessage: string) => {
@@ -1320,6 +1355,11 @@ export default function RunSessionScreen({
       stopLocationTracking();
       stopAutoSave();
       stopDbSync();
+      
+      cadenceDetector.stop();
+      speechQueue.clear();
+      navigationEngine.reset();
+      
       await endLiveSession();
       await AsyncStorage.removeItem("runSession");
       await saveRun();
@@ -1402,15 +1442,22 @@ export default function RunSessionScreen({
   };
 
   const handleClose = () => {
+    const cleanupAndClose = () => {
+      stopTimer();
+      stopLocationTracking();
+      stopAutoSave();
+      stopDbSync();
+      cadenceDetector.stop();
+      speechQueue.clear();
+      navigationEngine.reset();
+      AsyncStorage.removeItem("runSession");
+      navigation.goBack();
+    };
+
     if (runState === "running" || runState === "paused") {
       if (Platform.OS === "web") {
         if (window.confirm("Are you sure you want to discard this run?")) {
-          stopTimer();
-          stopLocationTracking();
-          stopAutoSave();
-          stopDbSync();
-          AsyncStorage.removeItem("runSession");
-          navigation.goBack();
+          cleanupAndClose();
         }
       } else {
         Alert.alert(
@@ -1421,14 +1468,7 @@ export default function RunSessionScreen({
             {
               text: "Discard",
               style: "destructive",
-              onPress: () => {
-                stopTimer();
-                stopLocationTracking();
-                stopAutoSave();
-                stopDbSync();
-                AsyncStorage.removeItem("runSession");
-                navigation.goBack();
-              },
+              onPress: cleanupAndClose,
             },
           ]
         );
@@ -1444,6 +1484,9 @@ export default function RunSessionScreen({
       stopLocationTracking();
       stopAutoSave();
       stopDbSync();
+      cadenceDetector.stop();
+      speechQueue.clear();
+      navigationEngine.reset();
     };
   }, [stopTimer, stopLocationTracking, stopAutoSave, stopDbSync]);
 
@@ -1559,7 +1602,7 @@ export default function RunSessionScreen({
           </View>
           <View style={styles.statItem}>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>CADENCE</Text>
-            <Text style={[styles.statValue, { color: theme.text }]}>--</Text>
+            <Text style={[styles.statValue, { color: theme.text }]}>{cadence > 0 ? cadence : '--'}</Text>
             <Text style={[styles.statUnit, { color: theme.textMuted }]}>spm</Text>
           </View>
         </View>

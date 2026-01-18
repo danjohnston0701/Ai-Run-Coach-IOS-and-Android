@@ -12,6 +12,10 @@ import NotificationsScreen from "@/screens/NotificationsScreen";
 import FriendProfileScreen from "@/screens/FriendProfileScreen";
 import LiveRunViewerScreen from "@/screens/LiveRunViewerScreen";
 import CoachSettingsScreen from "@/screens/CoachSettingsScreen";
+import SubscriptionScreen from "@/screens/SubscriptionScreen";
+import NotificationCenterScreen from "@/screens/NotificationCenterScreen";
+import GroupRunsScreen from "@/screens/GroupRunsScreen";
+import UserSearchScreen from "@/screens/UserSearchScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingScreen } from "@/components/LoadingScreen";
@@ -57,6 +61,11 @@ export type RootStackParamList = {
   Notifications: undefined;
   FriendProfile: { friendId: string };
   LiveRunViewer: { sessionId: string; runnerId?: string; runnerName?: string };
+  Subscription: undefined;
+  NotificationCenter: undefined;
+  GroupRuns: undefined;
+  GroupRunDetail: { runId: string };
+  UserSearch: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -152,6 +161,34 @@ export default function RootStackNavigator() {
             component={CoachSettingsScreen}
             options={{
               headerTitle: "AI Coach Settings",
+            }}
+          />
+          <Stack.Screen
+            name="Subscription"
+            component={SubscriptionScreen}
+            options={{
+              headerTitle: "Premium",
+            }}
+          />
+          <Stack.Screen
+            name="NotificationCenter"
+            component={NotificationCenterScreen}
+            options={{
+              headerTitle: "Notifications",
+            }}
+          />
+          <Stack.Screen
+            name="GroupRuns"
+            component={GroupRunsScreen}
+            options={{
+              headerTitle: "Group Runs",
+            }}
+          />
+          <Stack.Screen
+            name="UserSearch"
+            component={UserSearchScreen}
+            options={{
+              headerTitle: "Find Friends",
             }}
           />
         </>

@@ -289,6 +289,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await proxyRequest(req, res, "/api/push-subscriptions");
   });
 
+  // Notifications
+  app.get("/api/notifications", async (req, res) => {
+    const userId = req.query.userId;
+    await proxyRequest(req, res, `/api/notifications${userId ? `?userId=${userId}` : ''}`);
+  });
+
+  app.put("/api/notifications/:id/read", async (req, res) => {
+    await proxyRequest(req, res, `/api/notifications/${req.params.id}/read`);
+  });
+
+  app.delete("/api/notifications/:id", async (req, res) => {
+    await proxyRequest(req, res, `/api/notifications/${req.params.id}`);
+  });
+
+  app.put("/api/notifications/mark-all-read", async (req, res) => {
+    await proxyRequest(req, res, "/api/notifications/mark-all-read");
+  });
+
+  // Route Ratings
+  app.get("/api/routes/:id/ratings", async (req, res) => {
+    await proxyRequest(req, res, `/api/routes/${req.params.id}/ratings`);
+  });
+
+  app.post("/api/routes/:id/ratings", async (req, res) => {
+    await proxyRequest(req, res, `/api/routes/${req.params.id}/ratings`);
+  });
+
+  // Weakness Events
+  app.post("/api/runs/:id/weakness-events", async (req, res) => {
+    await proxyRequest(req, res, `/api/runs/${req.params.id}/weakness-events`);
+  });
+
+  // Link Coaching Logs
+  app.post("/api/runs/:id/link-coaching-logs", async (req, res) => {
+    await proxyRequest(req, res, `/api/runs/${req.params.id}/link-coaching-logs`);
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;
