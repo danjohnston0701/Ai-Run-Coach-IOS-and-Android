@@ -259,3 +259,19 @@ STORAGE_KEYS = {
 - `DATABASE_URL` - PostgreSQL connection string
 - `EXPO_PUBLIC_API_URL` or `EXPO_PUBLIC_DOMAIN` - Backend API endpoint
 - `REPLIT_DEV_DOMAIN` / `REPLIT_DOMAINS` - For CORS configuration in Replit environment
+
+## Recent Changes (January 2026)
+
+### Route Preview Screen Improvements
+- Map legend now shows Start (cyan) and difficulty-based finish markers (Easy=green, Moderate=yellow, Hard=red)
+- Route polylines colored by difficulty level with dashed lines for hard/challenging routes
+- Both route cards and fullscreen map use consistent difficulty-based coloring
+
+### Run Session Screen Enhancements  
+- Voice visualizer added to AI coach message display with animated bars and "AI COACH" label
+- Navigation instructions reformatted to show "towards [street]" instead of "onto [street]"
+- AI coaching triggers verified: phase-based (3 min intervals), hill-aware (5% grade), periodic API coaching (2 min), km milestones
+
+### Technical Improvements
+- MapViewCompat split into platform-specific files (.native.tsx and .web.tsx) for proper web fallback
+- Profile photo storage switched from SecureStore to AsyncStorage to handle large base64 images
