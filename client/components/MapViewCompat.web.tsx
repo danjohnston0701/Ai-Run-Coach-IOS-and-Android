@@ -1,21 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Colors, Spacing, Typography } from '@/constants/theme';
-
-const isWeb = Platform.OS === 'web';
-
-let MapViewNative: any = null;
-let PolylineNative: any = null;
-let MarkerNative: any = null;
-let PROVIDER_DEFAULT_NATIVE: any = null;
-
-if (!isWeb) {
-  const Maps = require('react-native-maps');
-  MapViewNative = Maps.default;
-  PolylineNative = Maps.Polyline;
-  MarkerNative = Maps.Marker;
-  PROVIDER_DEFAULT_NATIVE = Maps.PROVIDER_DEFAULT;
-}
 
 interface MapViewCompatProps {
   style?: any;
@@ -44,35 +29,19 @@ interface MapViewCompatProps {
 
 export function MapViewCompat({ 
   style, 
-  children, 
-  mapRef,
-  ...props 
 }: MapViewCompatProps) {
-  if (isWeb) {
-    return (
-      <View style={[styles.webFallback, style]}>
-        <View style={styles.webContent}>
-          <Text style={styles.webTitle}>Map View</Text>
-          <Text style={styles.webSubtitle}>
-            Maps are available in Expo Go on your mobile device
-          </Text>
-          <Text style={styles.webHint}>
-            Scan the QR code to run this app on your phone
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <MapViewNative
-      ref={mapRef}
-      style={style}
-      provider={PROVIDER_DEFAULT_NATIVE}
-      {...props}
-    >
-      {children}
-    </MapViewNative>
+    <View style={[styles.webFallback, style]}>
+      <View style={styles.webContent}>
+        <Text style={styles.webTitle}>Map View</Text>
+        <Text style={styles.webSubtitle}>
+          Maps are available in Expo Go on your mobile device
+        </Text>
+        <Text style={styles.webHint}>
+          Scan the QR code to run this app on your phone
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -85,9 +54,8 @@ interface PolylineProps {
   lineJoin?: string;
 }
 
-export function PolylineCompat(props: PolylineProps) {
-  if (isWeb || !PolylineNative) return null;
-  return <PolylineNative {...props} />;
+export function PolylineCompat(_props: PolylineProps) {
+  return null;
 }
 
 interface MarkerProps {
@@ -98,9 +66,8 @@ interface MarkerProps {
   children?: React.ReactNode;
 }
 
-export function MarkerCompat(props: MarkerProps) {
-  if (isWeb || !MarkerNative) return null;
-  return <MarkerNative {...props} />;
+export function MarkerCompat(_props: MarkerProps) {
+  return null;
 }
 
 const styles = StyleSheet.create({
