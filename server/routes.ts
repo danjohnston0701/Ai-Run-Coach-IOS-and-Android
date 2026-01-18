@@ -75,6 +75,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await proxyRequest(req, res, "/api/runs");
   });
 
+  app.post("/api/runs/sync-progress", async (req, res) => {
+    await proxyRequest(req, res, "/api/runs/sync-progress");
+  });
+
   app.get("/api/runs/user/:userId", async (req, res) => {
     await proxyRequest(req, res, `/api/runs/user/${req.params.userId}`);
   });

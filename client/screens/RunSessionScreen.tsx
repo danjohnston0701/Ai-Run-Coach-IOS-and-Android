@@ -217,6 +217,8 @@ export default function RunSessionScreen({
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const autoSaveRef = useRef<NodeJS.Timeout | null>(null);
+  const dbSyncRef = useRef<NodeJS.Timeout | null>(null);
+  const lastDbSyncRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
   const lastKmRef = useRef<number>(0);
   const lastKmTimeRef = useRef<number>(0);
@@ -392,6 +394,56 @@ export default function RunSessionScreen({
     if (autoSaveRef.current) {
       clearInterval(autoSaveRef.current);
       autoSaveRef.current = null;
+    }
+  }, []);
+
+  const syncToDatabase = useCallback(async () => {
+    if (!user?.id || distance < 0.01) return;
+    
+    const now = Date.now();
+    if (now - lastDbSyncRef.current < 30000) return;
+    
+    try {
+      const baseUrl = getApiUrl();
+      const avgPaceSeconds = distance > 0 ? elapsedTime / distance : 0;
+      const avgPaceMin = Math.floor(avgPaceSeconds / 60);
+      const avgPaceSec = Math.floor(avgPaceSeconds % 60);
+
+      await fetch(`${baseUrl}/api/runs/sync-progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          sessionKey,
+          userId: user?.id,
+          routeId: routeData?.id,
+          distance: Math.round(distance * 1000) / 1000,
+          duration: elapsedTime,
+          avgPace: `${avgPaceMin}:${avgPaceSec.toString().padStart(2, "0")}`,
+          elevationGain: Math.round(elevationGain),
+          gpsTrack: gpsTrack.slice(-100),
+          aiCoachEnabled,
+          difficulty: routeData?.difficulty,
+          inProgress: true,
+          lastUpdate: new Date().toISOString(),
+        }),
+      });
+      lastDbSyncRef.current = now;
+    } catch (error) {
+      console.log("Database sync error:", error);
+    }
+  }, [user, distance, elapsedTime, elevationGain, gpsTrack, routeData, aiCoachEnabled, sessionKey]);
+
+  const startDbSync = useCallback(() => {
+    dbSyncRef.current = setInterval(() => {
+      syncToDatabase();
+    }, 30000);
+  }, [syncToDatabase]);
+
+  const stopDbSync = useCallback(() => {
+    if (dbSyncRef.current) {
+      clearInterval(dbSyncRef.current);
+      dbSyncRef.current = null;
     }
   }, []);
 
@@ -982,6 +1034,7 @@ export default function RunSessionScreen({
     startTimer();
     startLocationTracking();
     startAutoSave();
+    startDbSync();
   };
 
   const handlePause = async () => {
@@ -1266,6 +1319,7 @@ export default function RunSessionScreen({
       stopTimer();
       stopLocationTracking();
       stopAutoSave();
+      stopDbSync();
       await endLiveSession();
       await AsyncStorage.removeItem("runSession");
       await saveRun();
@@ -1354,6 +1408,7 @@ export default function RunSessionScreen({
           stopTimer();
           stopLocationTracking();
           stopAutoSave();
+          stopDbSync();
           AsyncStorage.removeItem("runSession");
           navigation.goBack();
         }
@@ -1370,6 +1425,7 @@ export default function RunSessionScreen({
                 stopTimer();
                 stopLocationTracking();
                 stopAutoSave();
+                stopDbSync();
                 AsyncStorage.removeItem("runSession");
                 navigation.goBack();
               },
@@ -1387,8 +1443,9 @@ export default function RunSessionScreen({
       stopTimer();
       stopLocationTracking();
       stopAutoSave();
+      stopDbSync();
     };
-  }, [stopTimer, stopLocationTracking, stopAutoSave]);
+  }, [stopTimer, stopLocationTracking, stopAutoSave, stopDbSync]);
 
   const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
