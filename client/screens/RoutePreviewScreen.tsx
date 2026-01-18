@@ -137,6 +137,72 @@ function getDifficultyColor(difficulty: string): string {
   }
 }
 
+function getDifficultyOrder(difficulty: string): number {
+  switch (difficulty?.toLowerCase()) {
+    case 'easy':
+      return 0;
+    case 'moderate':
+      return 1;
+    case 'hard':
+    case 'challenging':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function interpolateColor(startColor: string, endColor: string, factor: number): string {
+  const start = {
+    r: parseInt(startColor.slice(1, 3), 16),
+    g: parseInt(startColor.slice(3, 5), 16),
+    b: parseInt(startColor.slice(5, 7), 16),
+  };
+  const end = {
+    r: parseInt(endColor.slice(1, 3), 16),
+    g: parseInt(endColor.slice(3, 5), 16),
+    b: parseInt(endColor.slice(5, 7), 16),
+  };
+  const r = Math.round(start.r + (end.r - start.r) * factor);
+  const g = Math.round(start.g + (end.g - start.g) * factor);
+  const b = Math.round(start.b + (end.b - start.b) * factor);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+const GRADIENT_START_COLOR = '#00D4FF';
+const GRADIENT_END_COLOR = '#00E676';
+
+function GradientPolyline({ coordinates, strokeWidth = 3 }: { coordinates: Array<{ latitude: number; longitude: number }>; strokeWidth?: number }) {
+  if (coordinates.length < 2) return null;
+  
+  const segments = [];
+  const numSegments = Math.min(coordinates.length - 1, 20);
+  const pointsPerSegment = Math.max(1, Math.floor(coordinates.length / numSegments));
+  
+  for (let i = 0; i < numSegments; i++) {
+    const startIdx = i * pointsPerSegment;
+    const endIdx = i === numSegments - 1 ? coordinates.length : (i + 1) * pointsPerSegment + 1;
+    const segmentCoords = coordinates.slice(startIdx, Math.min(endIdx, coordinates.length));
+    
+    if (segmentCoords.length >= 2) {
+      const factor = i / (numSegments - 1);
+      const color = interpolateColor(GRADIENT_START_COLOR, GRADIENT_END_COLOR, factor);
+      
+      segments.push(
+        <PolylineCompat
+          key={`segment-${i}`}
+          coordinates={segmentCoords}
+          strokeColor={color}
+          strokeWidth={strokeWidth}
+          lineCap="round"
+          lineJoin="round"
+        />
+      );
+    }
+  }
+  
+  return <>{segments}</>;
+}
+
 function formatTime(minutes: number | undefined | null): string {
   if (minutes === undefined || minutes === null || isNaN(minutes)) {
     return '--';
@@ -624,26 +690,23 @@ export default function RoutePreviewScreen() {
           
           <View style={styles.legendContainer}>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: theme.primary }]} />
+              <View style={[styles.legendDot, { backgroundColor: GRADIENT_START_COLOR }]} />
               <Text style={styles.legendText}>Start</Text>
             </View>
-            <View style={styles.legendSeparator} />
+            <LinearGradient
+              colors={[GRADIENT_START_COLOR, GRADIENT_END_COLOR]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.legendGradientLine}
+            />
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: theme.success }]} />
-              <Text style={styles.legendText}>Easy</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: theme.warning }]} />
-              <Text style={styles.legendText}>Moderate</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: theme.error }]} />
-              <Text style={styles.legendText}>Hard</Text>
+              <View style={[styles.legendDot, { backgroundColor: GRADIENT_END_COLOR }]} />
+              <Text style={styles.legendText}>Finish</Text>
             </View>
           </View>
         </View>
 
-        {routes.map((routeData, index) => renderVerticalRouteCard(routeData, index))}
+        {renderRoutesByDifficulty()}
         
         <Pressable style={styles.regenerateButton} onPress={handleRetry}>
           <IconRefresh size={18} color={theme.text} />
@@ -777,6 +840,45 @@ export default function RoutePreviewScreen() {
     );
   }
 
+  function renderRoutesByDifficulty() {
+    const sortedRoutes = [...routes].map((r, idx) => ({ route: r, originalIndex: idx }))
+      .sort((a, b) => getDifficultyOrder(a.route.difficulty) - getDifficultyOrder(b.route.difficulty));
+    
+    const grouped: { [key: string]: Array<{ route: RouteCandidate; originalIndex: number }> } = {
+      easy: [],
+      moderate: [],
+      hard: [],
+    };
+    
+    sortedRoutes.forEach(item => {
+      const diff = item.route.difficulty?.toLowerCase() || 'moderate';
+      if (diff === 'easy') grouped.easy.push(item);
+      else if (diff === 'hard' || diff === 'challenging') grouped.hard.push(item);
+      else grouped.moderate.push(item);
+    });
+    
+    const sections = [
+      { key: 'easy', title: 'EASY ROUTES', color: theme.success, routes: grouped.easy },
+      { key: 'moderate', title: 'MODERATE ROUTES', color: theme.warning, routes: grouped.moderate },
+      { key: 'hard', title: 'HARD ROUTES', color: theme.error, routes: grouped.hard },
+    ].filter(s => s.routes.length > 0);
+    
+    return (
+      <>
+        {sections.map(section => (
+          <View key={section.key}>
+            <Text style={[styles.sectionHeader, { color: section.color }]}>
+              {section.title}
+            </Text>
+            {section.routes.map(({ route, originalIndex }) => 
+              renderVerticalRouteCard(route, originalIndex)
+            )}
+          </View>
+        ))}
+      </>
+    );
+  }
+
   function renderVerticalRouteCard(routeData: RouteCandidate, index: number) {
     const isSelected = index === selectedRouteIndex;
     const difficultyColor = getDifficultyColor(routeData.difficulty);
@@ -825,21 +927,14 @@ export default function RoutePreviewScreen() {
           >
             {cardCoordinates.length > 0 && (
               <>
-                <PolylineCompat
-                  coordinates={cardCoordinates}
-                  strokeColor={difficultyColor}
-                  strokeWidth={3}
-                  lineCap="round"
-                  lineJoin="round"
-                  lineDashPattern={routeData.difficulty?.toLowerCase() === 'hard' || routeData.difficulty?.toLowerCase() === 'challenging' ? [10, 5] : undefined}
-                />
+                <GradientPolyline coordinates={cardCoordinates} strokeWidth={3} />
                 <MarkerCompat
                   coordinate={cardCoordinates[0]}
-                  pinColor={theme.primary}
+                  pinColor={GRADIENT_START_COLOR}
                 />
                 <MarkerCompat
                   coordinate={cardCoordinates[cardCoordinates.length - 1]}
-                  pinColor={difficultyColor}
+                  pinColor={GRADIENT_END_COLOR}
                 />
               </>
             )}
@@ -925,21 +1020,14 @@ export default function RoutePreviewScreen() {
           >
             {cardCoordinates.length > 0 && (
               <>
-                <PolylineCompat
-                  coordinates={cardCoordinates}
-                  strokeColor={difficultyColor}
-                  strokeWidth={4}
-                  lineCap="round"
-                  lineJoin="round"
-                  lineDashPattern={isExpert ? [10, 5] : undefined}
-                />
+                <GradientPolyline coordinates={cardCoordinates} strokeWidth={4} />
                 <MarkerCompat
                   coordinate={cardCoordinates[0]}
-                  pinColor={theme.primary}
+                  pinColor={GRADIENT_START_COLOR}
                 />
                 <MarkerCompat
                   coordinate={cardCoordinates[cardCoordinates.length - 1]}
-                  pinColor={difficultyColor}
+                  pinColor={GRADIENT_END_COLOR}
                 />
               </>
             )}
@@ -1340,8 +1428,20 @@ const styles = StyleSheet.create({
   legendText: {
     fontSize: Typography.body.fontSize,
     color: theme.text,
-    fontWeight: '500',
-    marginRight: Spacing.md,
+  },
+  legendGradientLine: {
+    width: 60,
+    height: 4,
+    borderRadius: 2,
+    marginHorizontal: Spacing.md,
+  },
+  sectionHeader: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
+    marginLeft: Spacing.xs,
   },
   legendSeparator: {
     width: 1,
