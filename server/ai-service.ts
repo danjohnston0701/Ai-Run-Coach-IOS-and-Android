@@ -262,6 +262,35 @@ function buildCoachingSystemPrompt(context: CoachingContext): string {
     prompt += ` Current temperature: ${context.weather.current.temperature}°C.`;
   }
   
+  if (context.heartRate) {
+    const maxHR = 190;
+    const hrPercent = (context.heartRate / maxHR) * 100;
+    let zone = 'Zone 1 (Recovery)';
+    let zoneAdvice = 'easy effort';
+    
+    if (hrPercent >= 90) {
+      zone = 'Zone 5 (Maximum)';
+      zoneAdvice = 'maximum effort - only sustainable briefly';
+    } else if (hrPercent >= 80) {
+      zone = 'Zone 4 (Threshold)';
+      zoneAdvice = 'high intensity - building speed endurance';
+    } else if (hrPercent >= 70) {
+      zone = 'Zone 3 (Tempo)';
+      zoneAdvice = 'moderate-hard effort - building aerobic capacity';
+    } else if (hrPercent >= 60) {
+      zone = 'Zone 2 (Aerobic)';
+      zoneAdvice = 'comfortable effort - fat burning zone';
+    }
+    
+    prompt += ` Current heart rate: ${context.heartRate} BPM (${zone}, ${zoneAdvice}).`;
+    
+    if (hrPercent >= 90) {
+      prompt += ' The runner may need to slow down to recover.';
+    } else if (hrPercent >= 85) {
+      prompt += ' Heart rate is elevated - monitor effort level.';
+    }
+  }
+  
   return prompt;
 }
 
