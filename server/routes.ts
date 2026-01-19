@@ -1034,8 +1034,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const garminService = await import("./garmin-service");
       const state = `${req.user!.userId}_${Date.now()}`;
-      const baseUrl = `https://${req.get('host')}`;
-      const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
+      // Use fixed redirect URI to match Garmin Developer Portal exactly
+      const redirectUri = 'https://airuncoach.live/api/auth/garmin/callback';
       
       const authUrl = garminService.getGarminAuthUrl(redirectUri, state);
       res.json({ authUrl, state });
@@ -1063,8 +1063,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = (state as string).split('_')[0];
       
       const garminService = await import("./garmin-service");
-      const baseUrl = `https://${req.get('host')}`;
-      const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
+      // Use fixed redirect URI to match Garmin Developer Portal exactly
+      const redirectUri = 'https://airuncoach.live/api/auth/garmin/callback';
       
       const tokens = await garminService.exchangeGarminCode(
         code as string,
