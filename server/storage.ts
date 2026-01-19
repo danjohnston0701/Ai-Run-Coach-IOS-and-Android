@@ -2,12 +2,13 @@ import {
   users, friends, friendRequests, runs, routes, goals, 
   notifications, notificationPreferences, liveRunSessions,
   groupRuns, groupRunParticipants, events, routeRatings, runAnalyses,
-  connectedDevices, deviceData,
+  connectedDevices, deviceData, garminWellnessMetrics,
   type User, type InsertUser, type Run, type InsertRun,
   type Route, type InsertRoute, type Goal, type InsertGoal,
   type Friend, type FriendRequest, type Notification, type NotificationPreference,
   type LiveRunSession, type GroupRun, type GroupRunParticipant, type Event,
-  type RouteRating, type RunAnalysis, type ConnectedDevice, type DeviceData
+  type RouteRating, type RunAnalysis, type ConnectedDevice, type DeviceData,
+  type GarminWellnessMetric
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, or, and, desc, ilike, sql } from "drizzle-orm";
@@ -96,6 +97,12 @@ export interface IStorage {
   // Device Data
   getDeviceDataByRun(runId: string): Promise<DeviceData[]>;
   createDeviceData(data: any): Promise<DeviceData>;
+  
+  // Garmin Wellness
+  getGarminWellnessByDate(userId: string, date: Date): Promise<GarminWellnessMetric | undefined>;
+  createGarminWellness(data: any): Promise<GarminWellnessMetric>;
+  updateGarminWellness(id: string, data: Partial<GarminWellnessMetric>): Promise<GarminWellnessMetric | undefined>;
+  getAllActiveGarminDevices(): Promise<ConnectedDevice[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -437,6 +444,36 @@ export class DatabaseStorage implements IStorage {
     const [deviceDataRow] = await db.insert(deviceData).values(data).returning();
     return deviceDataRow;
   }
+
+  // Garmin Wellness
+  async getGarminWellnessByDate(userId: string, date: Date): Promise<GarminWellnessMetric | undefined> {
+    const dateStr = date.toISOString().split('T')[0];
+    const [wellness] = await db.select().from(garminWellnessMetrics)
+      .where(and(
+        eq(garminWellnessMetrics.userId, userId),
+        sql`DATE(${garminWellnessMetrics.date}) = ${dateStr}`
+      ));
+    return wellness || undefined;
+  }
+
+  async createGarminWellness(data: any): Promise<GarminWellnessMetric> {
+    const [wellness] = await db.insert(garminWellnessMetrics).values(data).returning();
+    return wellness;
+  }
+
+  async updateGarminWellness(id: string, data: Partial<GarminWellnessMetric>): Promise<GarminWellnessMetric | undefined> {
+    const [wellness] = await db.update(garminWellnessMetrics).set(data).where(eq(garminWellnessMetrics.id, id)).returning();
+    return wellness || undefined;
+  }
+
+  async getAllActiveGarminDevices(): Promise<ConnectedDevice[]> {
+    return db.select().from(connectedDevices)
+      .where(and(
+        eq(connectedDevices.deviceType, 'garmin'),
+        eq(connectedDevices.isActive, true)
+      ));
+  }
 }
 
 export const storage = new DatabaseStorage();
+export type { ConnectedDevice };

@@ -2,6 +2,7 @@ import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { registerRoutes } from "./routes";
+import { startScheduler } from "./scheduler";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -266,6 +267,7 @@ function setupErrorHandler(app: express.Application) {
     },
     () => {
       log(`express server serving on port ${port}`);
+      startScheduler();
     },
   );
 })();
