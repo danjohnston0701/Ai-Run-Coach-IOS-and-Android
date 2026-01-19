@@ -304,6 +304,14 @@ export function getGeometricTemplates(): TemplatePattern[] {
     { name: 'East-West Circuit', waypoints: [{ bearing: 90, radiusMultiplier: 1.4 }, { bearing: 30, radiusMultiplier: 0.8 }, { bearing: 330, radiusMultiplier: 0.8 }, { bearing: 270, radiusMultiplier: 1.4 }, { bearing: 210, radiusMultiplier: 0.8 }, { bearing: 150, radiusMultiplier: 0.8 }] },
     { name: 'Cloverleaf', waypoints: [{ bearing: 0, radiusMultiplier: 1.5 }, { bearing: 45, radiusMultiplier: 0.6 }, { bearing: 90, radiusMultiplier: 1.5 }, { bearing: 135, radiusMultiplier: 0.6 }, { bearing: 180, radiusMultiplier: 1.5 }, { bearing: 225, radiusMultiplier: 0.6 }, { bearing: 270, radiusMultiplier: 1.5 }, { bearing: 315, radiusMultiplier: 0.6 }] },
     { name: 'Diamond Extended', waypoints: [{ bearing: 0, radiusMultiplier: 1.8 }, { bearing: 45, radiusMultiplier: 0.9 }, { bearing: 90, radiusMultiplier: 1.8 }, { bearing: 135, radiusMultiplier: 0.9 }, { bearing: 180, radiusMultiplier: 1.8 }, { bearing: 225, radiusMultiplier: 0.9 }, { bearing: 270, radiusMultiplier: 1.8 }, { bearing: 315, radiusMultiplier: 0.9 }] },
+    { name: 'Wide North Arc', waypoints: [{ bearing: 315, radiusMultiplier: 2.0 }, { bearing: 0, radiusMultiplier: 2.2 }, { bearing: 45, radiusMultiplier: 2.0 }] },
+    { name: 'Wide South Arc', waypoints: [{ bearing: 135, radiusMultiplier: 2.0 }, { bearing: 180, radiusMultiplier: 2.2 }, { bearing: 225, radiusMultiplier: 2.0 }] },
+    { name: 'Wide East Arc', waypoints: [{ bearing: 45, radiusMultiplier: 2.0 }, { bearing: 90, radiusMultiplier: 2.2 }, { bearing: 135, radiusMultiplier: 2.0 }] },
+    { name: 'Wide West Arc', waypoints: [{ bearing: 225, radiusMultiplier: 2.0 }, { bearing: 270, radiusMultiplier: 2.2 }, { bearing: 315, radiusMultiplier: 2.0 }] },
+    { name: 'Expanded Square', waypoints: [{ bearing: 0, radiusMultiplier: 2.0 }, { bearing: 90, radiusMultiplier: 2.0 }, { bearing: 180, radiusMultiplier: 2.0 }, { bearing: 270, radiusMultiplier: 2.0 }] },
+    { name: 'Large Pentagon', waypoints: [{ bearing: 0, radiusMultiplier: 1.8 }, { bearing: 72, radiusMultiplier: 1.8 }, { bearing: 144, radiusMultiplier: 1.8 }, { bearing: 216, radiusMultiplier: 1.8 }, { bearing: 288, radiusMultiplier: 1.8 }] },
+    { name: 'Scenic Triangle', waypoints: [{ bearing: 30, radiusMultiplier: 2.2 }, { bearing: 150, radiusMultiplier: 2.2 }, { bearing: 270, radiusMultiplier: 2.2 }] },
+    { name: 'Explorer Loop', waypoints: [{ bearing: 20, radiusMultiplier: 1.6 }, { bearing: 100, radiusMultiplier: 1.4 }, { bearing: 200, radiusMultiplier: 1.6 }, { bearing: 280, radiusMultiplier: 1.4 }] },
   ];
 }
 
@@ -379,18 +387,18 @@ async function calibrateRoute(
   startLng: number,
   baseWaypoints: LatLng[],
   targetDistance: number,
-  optimize: boolean = true
+  optimize: boolean = false
 ): Promise<CalibratedRoute | null> {
   let scale = 1.0;
-  let minScale = 0.2;
-  let maxScale = 12.0;
+  let minScale = 0.3;
+  let maxScale = 15.0;
   
   let bestResult: CalibratedRoute | null = null;
   let bestError = Infinity;
   
   const origin = { lat: startLat, lng: startLng };
   
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 8; i++) {
     const scaledWaypoints = baseWaypoints.map(wp => ({
       lat: startLat + (wp.lat - startLat) * scale,
       lng: startLng + (wp.lng - startLng) * scale,
@@ -476,7 +484,7 @@ export async function generateRouteOptions(
 ): Promise<GeneratedRoute[]> {
   console.log(`[RouteGen] Starting route generation for ${targetDistanceKm}km ${activityType}`);
   
-  const baseRadius = targetDistanceKm / 2.0;
+  const baseRadius = targetDistanceKm / 1.5;
   const templates = getGeometricTemplates();
   const shuffledTemplates = templates.sort(() => Math.random() - 0.5);
   
