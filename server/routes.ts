@@ -1029,6 +1029,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== GARMIN OAUTH ENDPOINTS ====================
   
+  // Garmin success page
+  app.get("/garmin-success", (req: Request, res: Response) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Garmin Connected - AI Run Coach</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+          }
+          .container { text-align: center; padding: 40px; max-width: 400px; }
+          .success-icon {
+            width: 80px; height: 80px;
+            background: linear-gradient(135deg, #00D4FF, #00a8cc);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 24px;
+            font-size: 40px;
+          }
+          h1 { font-size: 24px; margin-bottom: 16px; color: #00D4FF; }
+          p { color: #a0a0a0; line-height: 1.6; margin-bottom: 24px; }
+          .instruction {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 20px;
+          }
+          .instruction p { color: #00D4FF; margin: 0; font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="success-icon">&#10003;</div>
+          <h1>Garmin Connected!</h1>
+          <p>Your Garmin account has been successfully connected to AI Run Coach.</p>
+          <div class="instruction">
+            <p>You can now close this window and return to the app to sync your wellness data.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  });
+
   // Initiate Garmin OAuth flow
   app.get("/api/auth/garmin", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -1100,8 +1155,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Redirect to success page on the same host
-      res.redirect('/garmin-success.html');
+      // Redirect to success page
+      res.redirect('/garmin-success');
     } catch (error: any) {
       console.error("Garmin callback error:", error);
       res.redirect(`/connected-devices?error=${encodeURIComponent(error.message)}`);
