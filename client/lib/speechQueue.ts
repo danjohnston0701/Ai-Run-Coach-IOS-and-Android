@@ -1,5 +1,7 @@
 import * as Speech from 'expo-speech';
-import { getApiUrl } from './query-client';
+import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
+import { getApiUrl, getAuthToken } from './query-client';
 
 export type SpeechDomain = 'coach' | 'navigation' | 'system';
 
@@ -10,11 +12,13 @@ export interface SpeechItem {
   priority: number;
   timestamp: number;
   onComplete?: () => void;
+  useOpenAI?: boolean;
 }
 
 interface TTSCacheEntry {
   text: string;
   audioData?: string;
+  filePath?: string;
   timestamp: number;
 }
 
@@ -27,10 +31,7 @@ const DOMAIN_PRIORITIES: Record<SpeechDomain, number> = {
   coach: 1,
 };
 
-// Strip emojis and special characters from text before TTS
 function stripEmojis(text: string): string {
-  // Remove emojis using a comprehensive regex pattern
-  // This covers most common emoji ranges
   return text
     .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '')
     .replace(/\s+/g, ' ')
@@ -45,6 +46,8 @@ class SpeechQueueManager {
   private currentItem: SpeechItem | null = null;
   private ttsCache: Map<string, TTSCacheEntry> = new Map();
   private enabled = true;
+  private currentSound: Audio.Sound | null = null;
+  private useOpenAITTS = true;
   private coachVoiceSettings = {
     gender: 'female' as 'male' | 'female',
     accent: 'american' as string,
@@ -52,12 +55,33 @@ class SpeechQueueManager {
     pitch: 1.0,
   };
 
+  async initAudio() {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: true,
+        interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+        playThroughEarpieceAndroid: false,
+      });
+    } catch (error) {
+      console.error('Failed to init audio mode:', error);
+    }
+  }
+
   setEnabled(enabled: boolean) {
     this.enabled = enabled;
     if (!enabled) {
       this.clear();
       Speech.stop();
+      this.stopCurrentSound();
     }
+  }
+
+  setUseOpenAITTS(useOpenAI: boolean) {
+    this.useOpenAITTS = useOpenAI;
   }
 
   setCoachVoiceSettings(settings: {
@@ -72,7 +96,6 @@ class SpeechQueueManager {
   enqueue(text: string, domain: SpeechDomain, onComplete?: () => void): string {
     if (!this.enabled || !text.trim()) return '';
 
-    // Strip emojis from text before TTS
     const cleanText = stripEmojis(text);
     if (!cleanText) return '';
 
@@ -84,6 +107,7 @@ class SpeechQueueManager {
       priority: DOMAIN_PRIORITIES[domain],
       timestamp: Date.now(),
       onComplete,
+      useOpenAI: this.useOpenAITTS && domain === 'coach',
     };
 
     const insertIndex = this.queue.findIndex(
@@ -111,6 +135,163 @@ class SpeechQueueManager {
     return this.enqueue(text, 'system', onComplete);
   }
 
+  async playOpenAIAudio(params: {
+    text?: string;
+    distance?: number;
+    elevationGain?: number;
+    elevationLoss?: number;
+    difficulty?: string;
+    activityType?: string;
+    weather?: any;
+    targetPace?: string;
+    wellness?: any;
+  }, onComplete?: () => void): Promise<void> {
+    if (!this.enabled) return;
+
+    try {
+      await this.initAudio();
+      
+      const baseUrl = getApiUrl();
+      const token = await getAuthToken();
+      
+      const response = await fetch(`${baseUrl}/api/coaching/pre-run-briefing-audio`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(params),
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.audio) {
+        throw new Error('No audio data received');
+      }
+
+      const fileUri = `${FileSystem.cacheDirectory}briefing_${Date.now()}.mp3`;
+      await FileSystem.writeAsStringAsync(fileUri, data.audio, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      await this.stopCurrentSound();
+      
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: fileUri },
+        { shouldPlay: true }
+      );
+      
+      this.currentSound = sound;
+      
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          this.stopCurrentSound();
+          onComplete?.();
+          FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
+        }
+      });
+      
+    } catch (error) {
+      console.error('OpenAI TTS playback error:', error);
+      if (params.text) {
+        this.speakWithDeviceTTS(params.text, onComplete);
+      }
+      onComplete?.();
+    }
+  }
+
+  async generateAndPlayTTS(text: string, onComplete?: () => void): Promise<void> {
+    if (!this.enabled || !text.trim()) {
+      onComplete?.();
+      return;
+    }
+
+    const cleanText = stripEmojis(text);
+    if (!cleanText) {
+      onComplete?.();
+      return;
+    }
+
+    try {
+      await this.initAudio();
+      
+      const baseUrl = getApiUrl();
+      const token = await getAuthToken();
+      
+      const response = await fetch(`${baseUrl}/api/tts/generate`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text: cleanText }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.audio) {
+        throw new Error('No audio data received');
+      }
+
+      const fileUri = `${FileSystem.cacheDirectory}tts_${Date.now()}.mp3`;
+      await FileSystem.writeAsStringAsync(fileUri, data.audio, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      await this.stopCurrentSound();
+      
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: fileUri },
+        { shouldPlay: true }
+      );
+      
+      this.currentSound = sound;
+      
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          this.stopCurrentSound();
+          onComplete?.();
+          FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
+        }
+      });
+      
+    } catch (error) {
+      console.error('OpenAI TTS error, falling back to device TTS:', error);
+      this.speakWithDeviceTTS(cleanText, onComplete);
+    }
+  }
+
+  private speakWithDeviceTTS(text: string, onComplete?: () => void): void {
+    Speech.speak(text, {
+      language: 'en-US',
+      pitch: this.coachVoiceSettings.pitch,
+      rate: this.coachVoiceSettings.rate,
+      onDone: () => onComplete?.(),
+      onError: () => onComplete?.(),
+      onStopped: () => onComplete?.(),
+    });
+  }
+
+  private async stopCurrentSound(): Promise<void> {
+    if (this.currentSound) {
+      try {
+        await this.currentSound.stopAsync();
+        await this.currentSound.unloadAsync();
+      } catch (error) {
+        // Ignore errors when stopping
+      }
+      this.currentSound = null;
+    }
+  }
+
   private async processQueue() {
     if (this.isPlaying || this.queue.length === 0 || !this.enabled) return;
 
@@ -132,7 +313,11 @@ class SpeechQueueManager {
     this.startWatchdog();
 
     try {
-      await this.speak(this.currentItem);
+      if (this.currentItem.useOpenAI) {
+        await this.generateAndPlayTTS(this.currentItem.text);
+      } else {
+        await this.speak(this.currentItem);
+      }
     } catch (error) {
       console.error('Speech error:', error);
     } finally {
@@ -197,6 +382,7 @@ class SpeechQueueManager {
     this.watchdogTimer = setTimeout(() => {
       console.warn('Speech watchdog triggered - item stuck for 45s');
       Speech.stop();
+      this.stopCurrentSound();
       this.isPlaying = false;
       this.currentItem = null;
       this.processQueue();
@@ -214,6 +400,7 @@ class SpeechQueueManager {
     this.queue = [];
     this.stopWatchdog();
     Speech.stop();
+    this.stopCurrentSound();
     this.isPlaying = false;
     this.currentItem = null;
   }
@@ -222,11 +409,13 @@ class SpeechQueueManager {
     this.queue = this.queue.filter((item) => item.domain !== domain);
     if (this.currentItem?.domain === domain) {
       Speech.stop();
+      this.stopCurrentSound();
     }
   }
 
   interrupt(text: string, domain: SpeechDomain = 'system'): string {
     Speech.stop();
+    this.stopCurrentSound();
     this.isPlaying = false;
     this.currentItem = null;
     this.stopWatchdog();
@@ -239,46 +428,6 @@ class SpeechQueueManager {
 
   isCurrentlyPlaying(): boolean {
     return this.isPlaying;
-  }
-
-  async fetchAndCacheAITTS(text: string, userId?: string): Promise<void> {
-    const cacheKey = text.substring(0, 100);
-    if (this.ttsCache.has(cacheKey)) {
-      return;
-    }
-
-    if (this.ttsCache.size >= MAX_TTS_CACHE_SIZE) {
-      const oldestKey = Array.from(this.ttsCache.entries())
-        .sort((a, b) => a[1].timestamp - b[1].timestamp)[0]?.[0];
-      if (oldestKey) {
-        this.ttsCache.delete(oldestKey);
-      }
-    }
-
-    try {
-      const baseUrl = getApiUrl();
-      const response = await fetch(`${baseUrl}/api/ai/tts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          text,
-          userId,
-          voice: this.coachVoiceSettings,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        this.ttsCache.set(cacheKey, {
-          text,
-          audioData: data.audioData,
-          timestamp: Date.now(),
-        });
-      }
-    } catch (error) {
-      console.error('TTS cache fetch error:', error);
-    }
   }
 }
 

@@ -552,84 +552,17 @@ export default function RoutePreviewScreen() {
         estimatedTime,
       });
       
-      // Build comprehensive audio briefing
-      let audioBriefingParts: string[] = [];
-      
-      // Distance and terrain
-      audioBriefingParts.push(`Today's ${params.activityType === 'walk' ? 'walk' : 'run'} is ${distance.toFixed(1)} kilometres`);
-      
-      // Elevation summary
-      if (elevGain > 10 || elevLoss > 10) {
-        if (terrainType === 'hilly') {
-          audioBriefingParts.push(`with ${elevGain} metres of climbing. Expect some challenging hills.`);
-        } else if (terrainType === 'undulating') {
-          audioBriefingParts.push(`with ${elevGain} metres of elevation gain. Some gentle rolling terrain ahead.`);
-        } else {
-          audioBriefingParts.push(`on mostly flat terrain.`);
-        }
-      } else {
-        audioBriefingParts.push(`on flat terrain.`);
-      }
-      
-      // Weather conditions
-      if (weatherData.temp !== undefined) {
-        const temp = Math.round(weatherData.temp);
-        const condition = weatherData.condition?.toLowerCase() || '';
-        if (condition.includes('rain') || condition.includes('shower')) {
-          audioBriefingParts.push(`It's ${temp} degrees with rain. You might want to wear waterproof gear.`);
-        } else if (condition.includes('cloud')) {
-          audioBriefingParts.push(`It's ${temp} degrees and cloudy. Good conditions for running.`);
-        } else if (condition.includes('sun') || condition.includes('clear')) {
-          audioBriefingParts.push(`It's ${temp} degrees and sunny. Remember to stay hydrated.`);
-        } else {
-          audioBriefingParts.push(`It's ${temp} degrees outside.`);
-        }
-        if (weatherData.windSpeed && weatherData.windSpeed > 20) {
-          audioBriefingParts.push(`There's some wind at ${weatherData.windSpeed} kilometres per hour.`);
-        }
-      }
-      
-      // Target pace (only if set)
-      if (targetPaceForSpeech) {
-        audioBriefingParts.push(`Your target pace is ${targetPaceForSpeech}.`);
-      }
-      
-      // Garmin body readiness data
-      if (wellnessData.readinessScore !== undefined) {
-        if (wellnessData.readinessScore >= 80) {
-          audioBriefingParts.push(`Your body readiness is excellent at ${wellnessData.readinessScore}. You're primed for a great session.`);
-        } else if (wellnessData.readinessScore >= 60) {
-          audioBriefingParts.push(`Your body readiness is ${wellnessData.readinessScore}. You're in good shape for this ${params.activityType === 'walk' ? 'walk' : 'run'}.`);
-        } else if (wellnessData.readinessScore >= 40) {
-          audioBriefingParts.push(`Your body readiness is ${wellnessData.readinessScore}. Consider taking it easy today.`);
-        } else {
-          audioBriefingParts.push(`Your body readiness is low at ${wellnessData.readinessScore}. Listen to your body and don't push too hard.`);
-        }
-      } else if (wellnessData.bodyBattery !== undefined) {
-        if (wellnessData.bodyBattery >= 70) {
-          audioBriefingParts.push(`Your body battery is at ${wellnessData.bodyBattery}%. You've got plenty of energy.`);
-        } else if (wellnessData.bodyBattery >= 40) {
-          audioBriefingParts.push(`Your body battery is at ${wellnessData.bodyBattery}%. Pace yourself wisely.`);
-        } else {
-          audioBriefingParts.push(`Your body battery is low at ${wellnessData.bodyBattery}%. Consider a lighter effort today.`);
-        }
-      }
-      
-      // Sleep info if no readiness/battery
-      if (!wellnessData.readinessScore && !wellnessData.bodyBattery && wellnessData.sleepHours) {
-        const sleepHrs = Math.round(wellnessData.sleepHours * 10) / 10;
-        if (sleepHrs >= 7) {
-          audioBriefingParts.push(`You got ${sleepHrs} hours of sleep. Well rested.`);
-        } else if (sleepHrs >= 5) {
-          audioBriefingParts.push(`You got ${sleepHrs} hours of sleep. Be mindful of your energy levels.`);
-        }
-      }
-      
-      // Motivational close
-      audioBriefingParts.push(coachAdvice);
-      
-      const fullBriefing = audioBriefingParts.join(' ');
-      speechQueue.enqueueCoach(fullBriefing);
+      // Play high-quality OpenAI TTS audio briefing
+      speechQueue.playOpenAIAudio({
+        distance,
+        elevationGain: elevGain,
+        elevationLoss: elevLoss,
+        difficulty: selectedRoute.difficulty,
+        activityType: params.activityType,
+        weather: weatherData,
+        targetPace: targetPaceForSpeech,
+        wellness: wellnessData,
+      });
     } catch (error) {
       console.error('Pre-run summary error:', error);
       const errorAdvice = "Remember to warm up and start at a comfortable pace!";
@@ -637,7 +570,7 @@ export default function RoutePreviewScreen() {
         terrainSummary: `This ${selectedRoute?.actualDistance?.toFixed(1) || '?'}km route awaits you.`,
         coachAdvice: errorAdvice,
       });
-      speechQueue.enqueueCoach(errorAdvice);
+      speechQueue.generateAndPlayTTS(errorAdvice);
     } finally {
       setLoadingSummary(false);
     }
