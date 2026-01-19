@@ -1401,6 +1401,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get comprehensive wellness data
       const wellness = await garminService.getGarminComprehensiveWellness(garminDevice.accessToken, targetDate);
       
+      console.log("[Wellness Sync] Received wellness data:", JSON.stringify(wellness, null, 2));
+      
       // Store in database
       const dateStr = wellness.date;
       
@@ -1459,14 +1461,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rawData: wellness,
       };
       
+      console.log("[Wellness Sync] Record to insert/update:", JSON.stringify(wellnessRecord, null, 2));
+      console.log("[Wellness Sync] Existing record:", existing ? existing.id : "none");
+      
       if (existing) {
         // Update existing record
         await db.update(garminWellnessMetrics)
           .set({ ...wellnessRecord, syncedAt: new Date() })
           .where(eq(garminWellnessMetrics.id, existing.id));
+        console.log("[Wellness Sync] Updated existing record:", existing.id);
       } else {
         // Insert new record
-        await db.insert(garminWellnessMetrics).values(wellnessRecord);
+        const result = await db.insert(garminWellnessMetrics).values(wellnessRecord);
+        console.log("[Wellness Sync] Inserted new record");
       }
       
       res.json({ success: true, wellness });
