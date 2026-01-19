@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { COACHING_PHASE_PROMPT, determinePhase, type CoachingPhase } from "../shared/coaching-statements";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
@@ -11,13 +12,14 @@ export interface CoachingContext {
   elevation?: number;
   elevationChange?: string;
   weather?: any;
-  phase?: string;
+  phase?: CoachingPhase;
   isStruggling?: boolean;
   cadence?: number;
   activityType?: string;
   userFitnessLevel?: string;
   coachTone?: string;
   coachAccent?: string;
+  totalDistance?: number;
 }
 
 export async function getCoachingResponse(message: string, context: CoachingContext): Promise<string> {
@@ -230,22 +232,30 @@ function buildCoachingSystemPrompt(context: CoachingContext): string {
     prompt += ` Your tone should be ${context.coachTone}.`;
   }
   
-  if (context.phase) {
-    const phaseAdvice: Record<string, string> = {
-      'warmup': 'The runner is warming up. Encourage easy pace and proper form.',
-      'mid': 'The runner is in the middle of their run. Provide steady encouragement.',
-      'late': 'The runner is in the later stages. Help them push through.',
-      'final': 'The runner is finishing. Celebrate their effort and encourage a strong finish.'
-    };
-    prompt += ` ${phaseAdvice[context.phase] || ''}`;
+  const currentPhase = context.phase || (context.distance !== undefined 
+    ? determinePhase(context.distance, context.totalDistance || null)
+    : 'generic');
+  
+  prompt += `\n\n${COACHING_PHASE_PROMPT}`;
+  prompt += `\n\nCURRENT PHASE: ${currentPhase.toUpperCase()}`;
+  
+  if (context.distance !== undefined) {
+    prompt += ` (Runner is at ${context.distance.toFixed(2)}km`;
+    if (context.totalDistance) {
+      const percent = (context.distance / context.totalDistance) * 100;
+      prompt += ` of ${context.totalDistance.toFixed(1)}km total, ${percent.toFixed(0)}% complete`;
+    }
+    prompt += ')';
   }
   
   if (context.elevationChange) {
     prompt += ` The runner is currently on ${context.elevationChange} terrain.`;
   }
   
-  if (context.isStruggling) {
-    prompt += ' The runner appears to be struggling. Be extra supportive.';
+  if (context.isStruggling && currentPhase === 'late') {
+    prompt += ' The runner appears to be struggling. Be extra supportive with fatigue-appropriate advice.';
+  } else if (context.isStruggling) {
+    prompt += ' The runner appears to be struggling. Be supportive but remember phase-appropriate advice only.';
   }
   
   if (context.weather?.current?.temperature) {

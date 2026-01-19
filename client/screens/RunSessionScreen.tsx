@@ -43,6 +43,16 @@ import { speechQueue } from "@/lib/speechQueue";
 import { cadenceDetector } from "@/lib/cadenceDetector";
 import { gpsWatchdog } from "@/lib/gpsWatchdog";
 import { navigationEngine, RouteWaypoint } from "@/lib/navigationEngine";
+import {
+  COACHING_STATEMENTS,
+  determinePhase,
+  selectStatement,
+  recordStatementUsage,
+  shouldTriggerCoaching,
+  type CoachingPhase,
+  type StatementUsage,
+  MAX_STATEMENT_USES,
+} from "../../shared/coaching-statements";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -498,68 +508,22 @@ export default function RunSessionScreen({
     }
   }, [sessionKey, user]);
 
-  const phaseCoachingStatements: Record<string, string[]> = {
-    early: [
-      "Keep your posture tall, imagine a string lifting the top of your head.",
-      "Settle into a steady, rhythmic breathing pattern.",
-      "Start easy and let your body warm up naturally.",
-      "Find your rhythm, focus on relaxed breathing.",
-    ],
-    mid: [
-      "You're in the groove now. Stay relaxed and maintain your rhythm.",
-      "Lightly engage your core to keep your torso stable.",
-      "Think quick and elastic, lifting the foot up and through.",
-      "Great form! Keep those shoulders low and relaxed.",
-    ],
-    late: [
-      "If you're starting to tire, take a deep breath and reset.",
-      "Pain fades, pride lasts. Push through this stretch.",
-      "When it gets tough, focus on the next 100 meters.",
-      "You've got this! Stay mentally strong.",
-    ],
-    final: [
-      "You're almost there! Give it everything you have left.",
-      "The finish line is calling. Dig deep and finish strong!",
-      "Empty the tank. Leave nothing behind!",
-      "Sprint to the finish! You've earned this!",
-    ],
-    generic: [
-      "Remember to smile! It helps you relax.",
-      "One step at a time. That's how every journey is conquered.",
-      "Great running! Keep up the momentum.",
-      "Stay focused on your form and breathing.",
-    ],
-  };
+  const statementUsageRef = useRef<StatementUsage>({});
+  const lastCoachingDistanceRef = useRef(0);
+  const lastCoachingTimeRef = useRef(0);
 
-  const statementUsageRef = useRef<Record<string, number>>({});
-  const MAX_STATEMENT_USES = 3;
-
-  const getRunPhase = useCallback((): string => {
-    const targetDist = routeData?.actualDistance;
-    if (targetDist) {
-      const percent = (distance / targetDist) * 100;
-      if (percent >= 90) return "final";
-      if (percent >= 75) return "late";
-      if (percent >= 40 && percent <= 50) return "mid";
-      if (percent <= 10) return "early";
-      return "generic";
-    }
-    if (distance <= 2) return "early";
-    if (distance >= 3 && distance <= 5) return "mid";
-    return "generic";
+  const getRunPhase = useCallback((): CoachingPhase => {
+    const targetDist = routeData?.actualDistance || null;
+    return determinePhase(distance, targetDist);
   }, [distance, routeData]);
 
-  const getAvailableStatement = useCallback((phase: string): string => {
-    const statements = phaseCoachingStatements[phase] || phaseCoachingStatements.generic;
-    const available = statements.filter(
-      (s) => (statementUsageRef.current[s] || 0) < MAX_STATEMENT_USES
-    );
-    if (available.length === 0) {
-      return statements[Math.floor(Math.random() * statements.length)];
+  const getAvailableStatement = useCallback((phase: CoachingPhase): string | null => {
+    const statement = selectStatement(phase, statementUsageRef.current, true);
+    if (statement) {
+      recordStatementUsage(statementUsageRef.current, statement.id);
+      return statement.text;
     }
-    const selected = available[Math.floor(Math.random() * available.length)];
-    statementUsageRef.current[selected] = (statementUsageRef.current[selected] || 0) + 1;
-    return selected;
+    return null;
   }, []);
 
   const triggerPhaseCoaching = useCallback(async () => {
@@ -568,7 +532,13 @@ export default function RunSessionScreen({
     const phase = getRunPhase();
     const statement = getAvailableStatement(phase);
     
+    if (!statement) return;
+    
     lastPhaseCoachTimeRef.current = Date.now();
+    lastCoachingDistanceRef.current = distance;
+    lastCoachingTimeRef.current = Date.now();
+    
+    speechQueue.enqueueCoach(statement);
     
     setCoachMessages((prev) => [
       ...prev.slice(-4),
@@ -584,7 +554,7 @@ export default function RunSessionScreen({
       topic: phase,
       responseText: statement,
     });
-  }, [aiCoachEnabled, getRunPhase, getAvailableStatement, saveCoachingLog]);
+  }, [aiCoachEnabled, getRunPhase, getAvailableStatement, saveCoachingLog, distance]);
 
   const hillCoachingStatements = {
     uphill: [
@@ -1988,13 +1958,13 @@ export default function RunSessionScreen({
             navigation.replace("RunInsights", { runId: completedRunId });
           }
         }}
-        onSubmit={async (rating, comment) => {
+        onRatingSubmitted={() => {
           setShowRouteRatingModal(false);
           if (completedRunId) {
             navigation.replace("RunInsights", { runId: completedRunId });
           }
         }}
-        routeId={routeData?.id}
+        routeId={routeData?.id || ''}
         routeName={routeData?.routeName}
         userId={user?.id}
       />
