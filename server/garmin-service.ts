@@ -109,6 +109,8 @@ export async function exchangeGarminCode(
     client_secret: GARMIN_CLIENT_SECRET!,
   };
   
+  const bodyParams = new URLSearchParams(tokenParams);
+  
   console.log('=== GARMIN TOKEN EXCHANGE ===');
   console.log('Token URL:', GARMIN_TOKEN_URL);
   console.log('Redirect URI:', redirectUri);
@@ -117,7 +119,8 @@ export async function exchangeGarminCode(
   console.log('Code verifier:', codeVerifier);
   console.log('Code verifier length:', codeVerifier.length);
   console.log('Client ID:', GARMIN_CLIENT_ID);
-  console.log('Client Secret present:', !!GARMIN_CLIENT_SECRET);
+  console.log('Client Secret length:', GARMIN_CLIENT_SECRET?.length);
+  console.log('Request body:', bodyParams.toString());
   console.log('==============================');
   
   const response = await fetch(GARMIN_TOKEN_URL, {
@@ -125,7 +128,7 @@ export async function exchangeGarminCode(
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams(tokenParams),
+    body: bodyParams,
   });
   
   if (!response.ok) {
