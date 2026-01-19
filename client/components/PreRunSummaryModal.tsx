@@ -19,10 +19,14 @@ import {
   IconTrendingUp,
   IconNavigation,
   IconAlertTriangle,
+  IconHeart,
+  IconActivity,
+  IconZap,
 } from './icons/AppIcons';
 import { useTheme } from '@/hooks/useTheme';
 import { Spacing, BorderRadius } from '@/constants/theme';
-import { getApiUrl } from '@/lib/query-client';
+import { getApiUrl, apiRequest } from '@/lib/query-client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface PreRunSummaryModalProps {
   visible: boolean;
@@ -56,6 +60,22 @@ interface PreRunSummary {
   warnings: string[];
 }
 
+interface WellnessBriefing {
+  briefing: string;
+  intensityAdvice: string;
+  warnings: string[];
+  readinessInsight: string;
+  wellness: {
+    sleepHours?: number;
+    sleepQuality?: string;
+    bodyBattery?: number;
+    stressQualifier?: string;
+    hrvStatus?: string;
+    readinessScore?: number;
+  };
+  garminConnected: boolean;
+}
+
 export function PreRunSummaryModal({
   visible,
   onClose,
@@ -76,10 +96,13 @@ export function PreRunSummaryModal({
     humidity?: number;
     windSpeed?: number;
   } | null>(null);
+  const [wellnessBriefing, setWellnessBriefing] = useState<WellnessBriefing | null>(null);
+  const [loadingWellness, setLoadingWellness] = useState(false);
 
   useEffect(() => {
     if (visible && startLocation) {
       fetchPreRunData();
+      fetchWellnessBriefing();
     }
   }, [visible, startLocation]);
 
@@ -163,6 +186,39 @@ export function PreRunSummaryModal({
     }
   };
 
+  const fetchWellnessBriefing = async () => {
+    setLoadingWellness(true);
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) return;
+      
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}/api/coaching/pre-run-briefing`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          distance: routeData.actualDistance,
+          elevationGain: routeData.elevationGain,
+          difficulty: routeData.difficulty,
+          activityType,
+          weather,
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setWellnessBriefing(data);
+      }
+    } catch (err) {
+      console.error('Wellness briefing error:', err);
+    } finally {
+      setLoadingWellness(false);
+    }
+  };
+
   const getWeatherIcon = () => {
     const condition = weather?.condition?.toLowerCase() || '';
     if (condition.includes('rain') || condition.includes('shower')) {
@@ -172,6 +228,13 @@ export function PreRunSummaryModal({
       return <IconCloud size={24} color={theme.textSecondary} />;
     }
     return <IconSun size={24} color={theme.warning} />;
+  };
+
+  const getReadinessColor = (score: number, t: typeof theme) => {
+    if (score >= 80) return t.success;
+    if (score >= 60) return t.primary;
+    if (score >= 40) return t.warning;
+    return t.error;
   };
 
   return (
@@ -252,6 +315,97 @@ export function PreRunSummaryModal({
                   </ThemedText>
                 ) : null}
               </View>
+
+              {wellnessBriefing?.garminConnected ? (
+                <View style={[styles.section, { backgroundColor: theme.backgroundRoot }]}>
+                  <View style={styles.sectionHeader}>
+                    <IconActivity size={20} color={theme.success} />
+                    <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+                      Body Readiness
+                    </ThemedText>
+                  </View>
+                  
+                  <View style={styles.wellnessStats}>
+                    {wellnessBriefing.wellness.readinessScore !== undefined ? (
+                      <View style={styles.wellnessStat}>
+                        <View style={[styles.readinessCircle, { 
+                          backgroundColor: getReadinessColor(wellnessBriefing.wellness.readinessScore, theme) 
+                        }]}>
+                          <ThemedText type="h3" style={{ color: theme.backgroundRoot }}>
+                            {wellnessBriefing.wellness.readinessScore}
+                          </ThemedText>
+                        </View>
+                        <ThemedText type="small" style={{ color: theme.textMuted, marginTop: Spacing.xs }}>
+                          Readiness
+                        </ThemedText>
+                      </View>
+                    ) : null}
+                    
+                    {wellnessBriefing.wellness.bodyBattery !== undefined ? (
+                      <View style={styles.wellnessStat}>
+                        <View style={styles.wellnessIconRow}>
+                          <IconZap size={16} color={theme.warning} />
+                          <ThemedText type="body" style={{ marginLeft: 4 }}>
+                            {wellnessBriefing.wellness.bodyBattery}%
+                          </ThemedText>
+                        </View>
+                        <ThemedText type="small" style={{ color: theme.textMuted }}>
+                          Body Battery
+                        </ThemedText>
+                      </View>
+                    ) : null}
+                    
+                    {wellnessBriefing.wellness.sleepHours !== undefined ? (
+                      <View style={styles.wellnessStat}>
+                        <ThemedText type="body">
+                          {wellnessBriefing.wellness.sleepHours?.toFixed(1)}h
+                        </ThemedText>
+                        <ThemedText type="small" style={{ color: theme.textMuted }}>
+                          Sleep
+                        </ThemedText>
+                      </View>
+                    ) : null}
+                    
+                    {wellnessBriefing.wellness.stressQualifier ? (
+                      <View style={styles.wellnessStat}>
+                        <ThemedText type="body">
+                          {wellnessBriefing.wellness.stressQualifier}
+                        </ThemedText>
+                        <ThemedText type="small" style={{ color: theme.textMuted }}>
+                          Stress
+                        </ThemedText>
+                      </View>
+                    ) : null}
+                  </View>
+                  
+                  {wellnessBriefing.readinessInsight ? (
+                    <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: Spacing.sm }}>
+                      {wellnessBriefing.readinessInsight}
+                    </ThemedText>
+                  ) : null}
+                </View>
+              ) : loadingWellness ? (
+                <View style={[styles.section, { backgroundColor: theme.backgroundRoot, alignItems: 'center' }]}>
+                  <ActivityIndicator size="small" color={theme.primary} />
+                  <ThemedText type="small" style={{ color: theme.textMuted, marginTop: Spacing.xs }}>
+                    Loading wellness data...
+                  </ThemedText>
+                </View>
+              ) : null}
+
+              {wellnessBriefing?.intensityAdvice ? (
+                <View style={[styles.section, { backgroundColor: theme.success + '15' }]}>
+                  <View style={styles.sectionHeader}>
+                    <IconHeart size={20} color={theme.success} />
+                    <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+                      Coach Advice
+                    </ThemedText>
+                  </View>
+                  <ThemedText type="body" style={{ color: theme.textSecondary }}>
+                    {wellnessBriefing.intensityAdvice}
+                  </ThemedText>
+                </View>
+              ) : null}
 
               {targetTime && (targetTime.hours > 0 || targetTime.minutes > 0 || targetTime.seconds > 0) ? (
                 <View style={[styles.section, { backgroundColor: theme.backgroundRoot }]}>
@@ -414,4 +568,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   primaryButton: {},
+  wellnessStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: Spacing.sm,
+  },
+  wellnessStat: {
+    alignItems: 'center',
+  },
+  wellnessIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  readinessCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

@@ -37,7 +37,11 @@ The project is organized into `/client` (React Native frontend), `/server` (Expr
 
 ## Recent Changes (January 2026)
 - **Garmin OAuth Integration**: Full OAuth 2.0 with PKCE authentication flow for Garmin Connect. Endpoints: `/api/auth/garmin` (initiate), `/api/auth/garmin/callback` (callback), `/api/garmin/sync` (sync activities), `/api/garmin/health-summary` (health data), `/api/garmin/import-activity` (import runs). Works in Expo Go via WebBrowser.openAuthSessionAsync.
-- Garmin service (server/garmin-service.ts) supports: activity sync, health summaries, heart rate data, stress data, sleep data, running dynamics, VO2 max, training effect
+- **Garmin Health API Integration**: Comprehensive wellness data sync including sleep stages (deep, light, REM, awake), Body Battery, HRV (heart rate variability), stress levels, respiration, pulse ox, and VO2 max. Database table `garmin_wellness_metrics` stores daily wellness data.
+- **Wellness-Aware AI Coaching**: Pre-run briefings incorporate Garmin wellness data (sleep quality, Body Battery, stress, HRV status, readiness score) to provide personalized intensity advice and warnings. Endpoints: `/api/coaching/pre-run-briefing`, `/api/coaching/talk-to-coach`, `/api/coaching/hr-coaching`.
+- **Garmin Companion SDK Module**: Native module structure for real-time biometric streaming from Garmin watches (requires development build). Located at `client/modules/garmin-companion-sdk/` with TypeScript interfaces, React hooks (`useGarminCompanion`), and comprehensive documentation.
+- **Pre-Run Wellness Display**: PreRunSummaryModal displays Body Readiness section with readiness score, Body Battery, sleep hours, and stress level when Garmin is connected. AI-generated intensity advice based on wellness state.
+- Garmin service (server/garmin-service.ts) supports: activity sync, health summaries, heart rate data, stress data, sleep data, running dynamics, VO2 max, training effect, sleep stages, Body Battery, HRV, respiration, pulse ox
 - Updated ConnectedDevicesScreen to use real OAuth for Garmin (opens browser auth flow)
 - Integrated core run utilities (speechQueue, cadenceDetector, gpsWatchdog, navigationEngine) into RunSessionScreen
 - Added RouteRatingModal component that triggers after completing route-based runs
