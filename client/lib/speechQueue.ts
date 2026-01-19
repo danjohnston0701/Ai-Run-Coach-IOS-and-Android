@@ -27,6 +27,16 @@ const DOMAIN_PRIORITIES: Record<SpeechDomain, number> = {
   coach: 1,
 };
 
+// Strip emojis and special characters from text before TTS
+function stripEmojis(text: string): string {
+  // Remove emojis using a comprehensive regex pattern
+  // This covers most common emoji ranges
+  return text
+    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 class SpeechQueueManager {
   private queue: SpeechItem[] = [];
   private isPlaying = false;
@@ -62,10 +72,14 @@ class SpeechQueueManager {
   enqueue(text: string, domain: SpeechDomain, onComplete?: () => void): string {
     if (!this.enabled || !text.trim()) return '';
 
+    // Strip emojis from text before TTS
+    const cleanText = stripEmojis(text);
+    if (!cleanText) return '';
+
     const id = `speech-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const item: SpeechItem = {
       id,
-      text: text.trim(),
+      text: cleanText,
       domain,
       priority: DOMAIN_PRIORITIES[domain],
       timestamp: Date.now(),
