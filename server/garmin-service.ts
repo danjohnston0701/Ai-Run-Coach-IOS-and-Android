@@ -5,7 +5,7 @@ const GARMIN_CLIENT_SECRET = process.env.GARMIN_CLIENT_SECRET;
 
 // Garmin OAuth 2.0 endpoints (PKCE flow)
 const GARMIN_AUTH_URL = 'https://connect.garmin.com/oauth2Confirm';
-const GARMIN_TOKEN_URL = 'https://apis.garmin.com/oauth-service/oauth/token';
+const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/token';
 const GARMIN_API_BASE = 'https://apis.garmin.com';
 
 // Store PKCE code verifiers temporarily (in production, use Redis or database)
