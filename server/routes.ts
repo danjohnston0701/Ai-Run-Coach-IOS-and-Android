@@ -308,22 +308,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { startLat, startLng, distance, difficulty, activityType, terrainPreference, avoidHills } = req.body;
       
+      console.log("[API] Generate routes request:", { startLat, startLng, distance, activityType });
+      
       if (!startLat || !startLng || !distance) {
         return res.status(400).json({ error: "Missing required fields: startLat, startLng, distance" });
       }
       
-      const aiService = await import("./ai-service");
-      const routes = await aiService.generateRouteOptions({
-        startLat: parseFloat(startLat),
-        startLng: parseFloat(startLng),
-        distance: parseFloat(distance),
-        difficulty: difficulty || 'moderate',
-        activityType: activityType || 'run',
-        terrainPreference,
-        avoidHills
-      });
+      const routeGen = await import("./route-generation");
+      const routes = await routeGen.generateRouteOptions(
+        parseFloat(startLat),
+        parseFloat(startLng),
+        parseFloat(distance),
+        activityType || 'run'
+      );
       
-      res.json({ routes });
+      console.log("[API] Generated routes count:", routes.length);
+      
+      const formattedRoutes = routes.map((route, index) => ({
+        id: route.id,
+        name: route.name,
+        distance: route.distance,
+        estimatedTime: route.duration,
+        elevationGain: route.elevationGain,
+        difficulty: route.difficulty,
+        polyline: route.polyline,
+        waypoints: route.waypoints,
+        description: `${route.templateName} - ${route.distance.toFixed(1)}km circuit with ${route.elevationGain}m elevation gain`,
+        turnByTurn: route.instructions,
+        circuitQuality: {
+          backtrackRatio: route.backtrackRatio,
+          angularSpread: route.angularSpread,
+        }
+      }));
+      
+      res.json({ routes: formattedRoutes });
     } catch (error: any) {
       console.error("Generate routes error:", error);
       res.status(500).json({ error: "Failed to generate routes" });
