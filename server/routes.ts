@@ -330,10 +330,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         distance: route.distance,
         estimatedTime: route.duration,
         elevationGain: route.elevationGain,
+        elevationLoss: route.elevationLoss,
         difficulty: route.difficulty,
         polyline: route.polyline,
         waypoints: route.waypoints,
-        description: `${route.templateName} - ${route.distance.toFixed(1)}km circuit with ${route.elevationGain}m elevation gain`,
+        description: `${route.templateName} - ${route.distance.toFixed(1)}km circuit with ${route.elevationGain}m climb / ${route.elevationLoss}m descent`,
         turnByTurn: route.instructions,
         circuitQuality: {
           backtrackRatio: route.backtrackRatio,

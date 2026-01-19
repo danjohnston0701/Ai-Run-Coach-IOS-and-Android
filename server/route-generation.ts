@@ -27,6 +27,11 @@ interface CircuitValidation {
   angularSpread: number;
 }
 
+interface ElevationData {
+  gain: number;
+  loss: number;
+}
+
 interface GeneratedRoute {
   id: string;
   name: string;
@@ -36,6 +41,7 @@ interface GeneratedRoute {
   waypoints: LatLng[];
   difficulty: 'easy' | 'moderate' | 'hard';
   elevationGain: number;
+  elevationLoss: number;
   instructions: string[];
   backtrackRatio: number;
   angularSpread: number;
@@ -420,12 +426,12 @@ async function calibrateRoute(
   return (bestResult && bestError < 0.35) ? bestResult : null;
 }
 
-async function fetchElevationForRoute(encodedPolyline: string): Promise<number> {
-  if (!GOOGLE_MAPS_API_KEY) return 0;
+async function fetchElevationForRoute(encodedPolyline: string): Promise<ElevationData> {
+  if (!GOOGLE_MAPS_API_KEY) return { gain: 0, loss: 0 };
   
   try {
     const points = decodePolyline(encodedPolyline);
-    if (points.length < 2) return 0;
+    if (points.length < 2) return { gain: 0, loss: 0 };
     
     const samplePoints = points.filter((_, i) => i % Math.max(1, Math.floor(points.length / 50)) === 0);
     const path = samplePoints.map(p => `${p.lat},${p.lng}`).join('|');
@@ -435,18 +441,23 @@ async function fetchElevationForRoute(encodedPolyline: string): Promise<number> 
     const response = await fetch(url);
     const data = await response.json();
     
-    if (data.status !== 'OK' || !data.results) return 0;
+    if (data.status !== 'OK' || !data.results) return { gain: 0, loss: 0 };
     
     let totalGain = 0;
+    let totalLoss = 0;
     for (let i = 1; i < data.results.length; i++) {
       const diff = data.results[i].elevation - data.results[i - 1].elevation;
-      if (diff > 0) totalGain += diff;
+      if (diff > 0) {
+        totalGain += diff;
+      } else {
+        totalLoss += Math.abs(diff);
+      }
     }
     
-    return Math.round(totalGain);
+    return { gain: Math.round(totalGain), loss: Math.round(totalLoss) };
   } catch (error) {
     console.error('Elevation API error:', error);
-    return 0;
+    return { gain: 0, loss: 0 };
   }
 }
 
@@ -463,83 +474,94 @@ export async function generateRouteOptions(
   const shuffledTemplates = templates.sort(() => Math.random() - 0.5);
   
   const validRoutes: GeneratedRoute[] = [];
+  const MIN_ROUTES = 3;
+  const MAX_ROUTES = 5;
   const maxOverlap = 0.40;
   
-  const backtrackThresholds = [0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40];
+  const backtrackThresholds = [0.05, 0.08, 0.12, 0.15, 0.20];
   const angularSpreadThresholds = [180, 150, 120];
   
-  for (const template of shuffledTemplates) {
-    if (validRoutes.length >= 5) break;
+  for (let relaxLevel = 0; relaxLevel < backtrackThresholds.length && validRoutes.length < MAX_ROUTES; relaxLevel++) {
+    const currentBacktrackMax = backtrackThresholds[relaxLevel];
+    const currentAngularMin = angularSpreadThresholds[Math.min(relaxLevel, angularSpreadThresholds.length - 1)];
     
-    try {
-      const baseWaypoints = generateTemplateWaypoints(startLat, startLng, baseRadius, template);
-      const calibrated = await calibrateRoute(startLat, startLng, baseWaypoints, targetDistanceKm);
+    console.log(`[RouteGen] Pass ${relaxLevel + 1}: backtrack max ${(currentBacktrackMax * 100).toFixed(0)}%, angular min ${currentAngularMin}°`);
+    
+    for (const template of shuffledTemplates) {
+      if (validRoutes.length >= MAX_ROUTES) break;
       
-      if (!calibrated || !calibrated.result.polyline) continue;
+      const alreadyUsed = validRoutes.some(r => r.templateName === template.name);
+      if (alreadyUsed) continue;
       
-      const { backtrackRatio, angularSpread } = isGenuineCircuit(
-        calibrated.result.polyline,
-        startLat,
-        startLng
-      );
-      
-      let passesThreshold = false;
-      for (let btIdx = 0; btIdx < backtrackThresholds.length && !passesThreshold; btIdx++) {
-        for (let asIdx = 0; asIdx < angularSpreadThresholds.length && !passesThreshold; asIdx++) {
-          if (backtrackRatio <= backtrackThresholds[btIdx] && angularSpread >= angularSpreadThresholds[asIdx]) {
-            passesThreshold = true;
+      try {
+        const baseWaypoints = generateTemplateWaypoints(startLat, startLng, baseRadius, template);
+        const calibrated = await calibrateRoute(startLat, startLng, baseWaypoints, targetDistanceKm);
+        
+        if (!calibrated || !calibrated.result.polyline) continue;
+        
+        const { backtrackRatio, angularSpread } = isGenuineCircuit(
+          calibrated.result.polyline,
+          startLat,
+          startLng
+        );
+        
+        if (backtrackRatio > currentBacktrackMax || angularSpread < currentAngularMin) {
+          if (relaxLevel === 0) {
+            console.log(`[RouteGen] ${template.name} rejected: backtrack=${(backtrackRatio * 100).toFixed(1)}%, angular=${angularSpread}°`);
+          }
+          continue;
+        }
+        
+        let isTooSimilar = false;
+        for (const existing of validRoutes) {
+          const overlap = calculateRouteOverlap(calibrated.result.polyline, existing.polyline);
+          if (overlap > maxOverlap) {
+            isTooSimilar = true;
+            break;
           }
         }
-      }
-      
-      if (!passesThreshold) {
-        console.log(`[RouteGen] ${template.name} rejected: backtrack=${(backtrackRatio * 100).toFixed(1)}%, angular=${angularSpread}°`);
-        continue;
-      }
-      
-      let isTooSimilar = false;
-      for (const existing of validRoutes) {
-        const overlap = calculateRouteOverlap(calibrated.result.polyline, existing.polyline);
-        if (overlap > maxOverlap) {
-          isTooSimilar = true;
-          break;
+        
+        if (isTooSimilar) {
+          console.log(`[RouteGen] ${template.name} rejected: too similar to existing route`);
+          continue;
         }
+        
+        const instructions = calibrated.result.instructions || [];
+        const hasMajorRoads = containsMajorRoads(instructions);
+        const elevation = await fetchElevationForRoute(calibrated.result.polyline);
+        const difficulty = assignDifficulty(backtrackRatio, hasMajorRoads, elevation.gain);
+        
+        const route: GeneratedRoute = {
+          id: `route_${Date.now()}_${validRoutes.length}`,
+          name: `${template.name} Route`,
+          distance: calibrated.result.distance!,
+          duration: calibrated.result.duration!,
+          polyline: calibrated.result.polyline,
+          waypoints: calibrated.waypoints,
+          difficulty,
+          elevationGain: elevation.gain,
+          elevationLoss: elevation.loss,
+          instructions,
+          backtrackRatio,
+          angularSpread,
+          templateName: template.name,
+        };
+        
+        validRoutes.push(route);
+        console.log(`[RouteGen] Added ${template.name}: ${route.distance.toFixed(2)}km, backtrack=${(backtrackRatio * 100).toFixed(1)}%, climb=${elevation.gain}m, descent=${elevation.loss}m`);
+        
+      } catch (error) {
+        console.error(`[RouteGen] Error with template ${template.name}:`, error);
       }
-      
-      if (isTooSimilar) {
-        console.log(`[RouteGen] ${template.name} rejected: too similar to existing route`);
-        continue;
-      }
-      
-      const instructions = calibrated.result.instructions || [];
-      const hasMajorRoads = containsMajorRoads(instructions);
-      const elevationGain = await fetchElevationForRoute(calibrated.result.polyline);
-      const difficulty = assignDifficulty(backtrackRatio, hasMajorRoads, elevationGain);
-      
-      const route: GeneratedRoute = {
-        id: `route_${Date.now()}_${validRoutes.length}`,
-        name: `${template.name} Route`,
-        distance: calibrated.result.distance!,
-        duration: calibrated.result.duration!,
-        polyline: calibrated.result.polyline,
-        waypoints: calibrated.waypoints,
-        difficulty,
-        elevationGain,
-        instructions,
-        backtrackRatio,
-        angularSpread,
-        templateName: template.name,
-      };
-      
-      validRoutes.push(route);
-      console.log(`[RouteGen] Added ${template.name}: ${route.distance.toFixed(2)}km, backtrack=${(backtrackRatio * 100).toFixed(1)}%, angular=${angularSpread}°`);
-      
-    } catch (error) {
-      console.error(`[RouteGen] Error with template ${template.name}:`, error);
+    }
+    
+    if (validRoutes.length >= MIN_ROUTES) {
+      console.log(`[RouteGen] Found ${validRoutes.length} routes at relaxation level ${relaxLevel + 1}`);
+      break;
     }
   }
   
-  console.log(`[RouteGen] Generated ${validRoutes.length} valid routes`);
+  console.log(`[RouteGen] Generated ${validRoutes.length} valid routes (min: ${MIN_ROUTES}, max: ${MAX_ROUTES})`);
   
-  return validRoutes.slice(0, 3);
+  return validRoutes.slice(0, MAX_ROUTES);
 }
