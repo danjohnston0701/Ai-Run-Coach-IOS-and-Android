@@ -391,10 +391,12 @@ async function calibrateRoute(
 ): Promise<CalibratedRoute | null> {
   let scale = 1.0;
   let minScale = 0.3;
-  let maxScale = 15.0;
+  let maxScale = 8.0;
   
   let bestResult: CalibratedRoute | null = null;
   let bestError = Infinity;
+  let apiErrors: string[] = [];
+  let successfulCalls = 0;
   
   const origin = { lat: startLat, lng: startLng };
   
@@ -407,11 +409,17 @@ async function calibrateRoute(
     const result = await fetchGoogleDirections(origin, scaledWaypoints, optimize);
     
     if (!result.success || !result.distance) {
-      maxScale = scale;
+      if (result.error) apiErrors.push(`${result.error} (scale=${scale.toFixed(2)})`);
+      if (scale >= 1.0) {
+        maxScale = scale;
+      } else {
+        minScale = scale;
+      }
       scale = (minScale + maxScale) / 2;
       continue;
     }
     
+    successfulCalls++;
     const error = Math.abs(result.distance - targetDistance) / targetDistance;
     
     if (error < bestError) {
@@ -431,7 +439,13 @@ async function calibrateRoute(
     scale = (minScale + maxScale) / 2;
   }
   
-  return (bestResult && bestError < 0.35) ? bestResult : null;
+  if (!bestResult) {
+    console.log(`[RouteGen] Calibration failed: ${successfulCalls}/8 API calls succeeded. Errors: ${apiErrors.slice(0, 3).join('; ')}`);
+  } else if (bestError >= 0.50) {
+    console.log(`[RouteGen] Calibration failed: best error ${(bestError * 100).toFixed(1)}% exceeds 50% threshold (dist=${bestResult.result.distance?.toFixed(2)}km, target=${targetDistance}km)`);
+  }
+  
+  return (bestResult && bestError < 0.50) ? bestResult : null;
 }
 
 async function fetchElevationForRoute(encodedPolyline: string): Promise<ElevationData> {
@@ -498,10 +512,18 @@ export async function generateRouteOptions(
   
   for (const template of shuffledTemplates) {
     try {
+      console.log(`[RouteGen] Trying template: ${template.name}`);
       const baseWaypoints = generateTemplateWaypoints(startLat, startLng, baseRadius, template);
       const calibrated = await calibrateRoute(startLat, startLng, baseWaypoints, targetDistanceKm);
       
-      if (!calibrated || !calibrated.result.polyline) continue;
+      if (!calibrated) {
+        console.log(`[RouteGen] ${template.name}: calibration returned null`);
+        continue;
+      }
+      if (!calibrated.result.polyline) {
+        console.log(`[RouteGen] ${template.name}: no polyline in result`);
+        continue;
+      }
       
       const { backtrackRatio, angularSpread } = isGenuineCircuit(
         calibrated.result.polyline,
