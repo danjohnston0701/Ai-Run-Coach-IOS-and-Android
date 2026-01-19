@@ -36,6 +36,89 @@ export async function getCoachingResponse(message: string, context: CoachingCont
   return completion.choices[0].message.content || "Keep going, you're doing great!";
 }
 
+export async function generatePreRunCoaching(params: {
+  distance: number;
+  elevationGain: number;
+  elevationLoss: number;
+  difficulty: string;
+  activityType: string;
+  weather: any;
+  coachName: string;
+  coachTone: string;
+}): Promise<string> {
+  const { distance, elevationGain, elevationLoss, difficulty, activityType, weather, coachName, coachTone } = params;
+  
+  const weatherInfo = weather 
+    ? `Weather: ${weather.temp || 'N/A'}°C, ${weather.condition || 'clear'}, wind ${weather.windSpeed || 0} km/h.`
+    : 'Weather data unavailable.';
+  
+  const prompt = `You are ${coachName}, an AI running coach. Your coaching style is ${coachTone}.
+
+Generate a brief pre-run briefing (2-3 sentences max) for this upcoming ${activityType}:
+- Distance: ${distance?.toFixed(1) || '?'}km
+- Difficulty: ${difficulty}
+- Elevation gain: ${Math.round(elevationGain || 0)}m, loss: ${Math.round(elevationLoss || 0)}m
+- ${weatherInfo}
+
+Be encouraging, specific to the conditions, and give one actionable tip. Speak naturally as if talking directly to the runner.`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: `You are ${coachName}, a ${coachTone} running coach. Keep responses brief, encouraging, and actionable.` },
+      { role: "user", content: prompt }
+    ],
+    max_tokens: 120,
+    temperature: 0.8,
+  });
+
+  return completion.choices[0].message.content || "Take it easy at the start and find your rhythm. Good luck!";
+}
+
+export async function generatePaceUpdate(params: {
+  distance: number;
+  targetDistance: number;
+  currentPace: string;
+  elapsedTime: number;
+  coachName: string;
+  coachTone: string;
+  isSplit: boolean;
+  splitKm?: number;
+  splitPace?: string;
+}): Promise<string> {
+  const { distance, targetDistance, currentPace, elapsedTime, coachName, coachTone, isSplit, splitKm, splitPace } = params;
+  
+  const progress = Math.round((distance / targetDistance) * 100);
+  const timeMin = Math.floor(elapsedTime / 60);
+  
+  let prompt: string;
+  if (isSplit && splitKm && splitPace) {
+    prompt = `You are ${coachName}, an AI running coach with a ${coachTone} style.
+    
+The runner just completed kilometer ${splitKm} with a split pace of ${splitPace}/km. They're at ${progress}% of their ${targetDistance}km run.
+
+Give a brief (1 sentence) split update. Mention their pace and give quick encouragement or pacing advice.`;
+  } else {
+    prompt = `You are ${coachName}, an AI running coach with a ${coachTone} style.
+    
+500m pace check: Runner is at ${distance.toFixed(2)}km, pace ${currentPace}/km, ${timeMin} minutes in.
+
+Give a very brief (1 sentence) pace update with encouragement.`;
+  }
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: `You are ${coachName}, a ${coachTone} running coach. Keep pace updates to 1 brief sentence.` },
+      { role: "user", content: prompt }
+    ],
+    max_tokens: 50,
+    temperature: 0.7,
+  });
+
+  return completion.choices[0].message.content || (isSplit ? `Kilometer ${splitKm} done at ${splitPace}. Keep it up!` : "Looking good, keep this pace!");
+}
+
 export async function generateRunSummary(runData: any): Promise<any> {
   const prompt = `Analyze this run and provide a brief summary with highlights, struggles, and tips:
 Run Data:

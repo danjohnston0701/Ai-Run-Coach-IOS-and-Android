@@ -233,6 +233,7 @@ export default function RunSessionScreen({
   const startTimeRef = useRef<number>(0);
   const lastKmRef = useRef<number>(0);
   const lastKmTimeRef = useRef<number>(0);
+  const last500mRef = useRef<number>(0);
   const lastElevationRef = useRef<number | null>(null);
   const lastCoachTimeRef = useRef<number>(0);
   const lastPhaseCoachTimeRef = useRef<number>(0);
@@ -953,33 +954,104 @@ export default function RunSessionScreen({
                 const newDistance = prevDist + distanceKm;
 
                 const currentKm = Math.floor(newDistance);
+                const current500m = Math.floor(newDistance * 2);
+                
+                if (current500m > last500mRef.current && current500m % 2 !== 0) {
+                  last500mRef.current = current500m;
+                  
+                  if (aiCoachEnabled) {
+                    const paceSeconds = elapsedTime / newDistance;
+                    const paceMin = Math.floor(paceSeconds / 60);
+                    const paceSec = Math.floor(paceSeconds % 60);
+                    const currentPaceStr = `${paceMin}:${paceSec.toString().padStart(2, "0")}`;
+                    
+                    fetch(`${getApiUrl()}/api/ai/pace-update`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      credentials: "include",
+                      body: JSON.stringify({
+                        distance: newDistance,
+                        targetDistance: routeData?.actualDistance || 5,
+                        currentPace: currentPaceStr,
+                        elapsedTime,
+                        coachName: user?.coachName || 'Coach',
+                        coachTone: user?.coachTone || 'motivating',
+                        isSplit: false,
+                      }),
+                    })
+                      .then(res => res.json())
+                      .then(data => {
+                        if (data.message) {
+                          speechQueue.enqueueCoach(data.message);
+                          setCoachMessages((prev) => [
+                            ...prev.slice(-4),
+                            { text: data.message, timestamp: Date.now(), type: "pace" },
+                          ]);
+                        }
+                      })
+                      .catch(err => console.log("500m pace update error:", err));
+                  }
+                }
+                
                 if (currentKm > lastKmRef.current) {
                   const splitTime = elapsedTime - lastKmTimeRef.current;
                   const paceMin = Math.floor(splitTime / 60);
                   const paceSec = Math.floor(splitTime % 60);
+                  const splitPaceStr = `${paceMin}:${paceSec.toString().padStart(2, "0")}`;
 
                   setKmSplits((prevSplits) => [
                     ...prevSplits,
                     {
                       km: currentKm,
                       time: splitTime,
-                      pace: `${paceMin}:${paceSec.toString().padStart(2, "0")}`,
+                      pace: splitPaceStr,
                     },
                   ]);
 
                   lastKmRef.current = currentKm;
                   lastKmTimeRef.current = elapsedTime;
+                  last500mRef.current = current500m;
 
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                   
-                  setCoachMessages((prev) => [
-                    ...prev.slice(-4),
-                    {
-                      text: `${currentKm} km complete! Pace: ${paceMin}:${paceSec.toString().padStart(2, "0")}/km`,
-                      timestamp: Date.now(),
-                      type: "milestone",
-                    },
-                  ]);
+                  if (aiCoachEnabled) {
+                    fetch(`${getApiUrl()}/api/ai/pace-update`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      credentials: "include",
+                      body: JSON.stringify({
+                        distance: newDistance,
+                        targetDistance: routeData?.actualDistance || 5,
+                        currentPace: splitPaceStr,
+                        elapsedTime,
+                        coachName: user?.coachName || 'Coach',
+                        coachTone: user?.coachTone || 'motivating',
+                        isSplit: true,
+                        splitKm: currentKm,
+                        splitPace: splitPaceStr,
+                      }),
+                    })
+                      .then(res => res.json())
+                      .then(data => {
+                        if (data.message) {
+                          speechQueue.enqueueCoach(data.message);
+                          setCoachMessages((prev) => [
+                            ...prev.slice(-4),
+                            { text: data.message, timestamp: Date.now(), type: "milestone" },
+                          ]);
+                        }
+                      })
+                      .catch(err => console.log("1km split coaching error:", err));
+                  } else {
+                    setCoachMessages((prev) => [
+                      ...prev.slice(-4),
+                      {
+                        text: `${currentKm} km complete! Pace: ${splitPaceStr}/km`,
+                        timestamp: Date.now(),
+                        type: "milestone",
+                      },
+                    ]);
+                  }
                 }
 
                 return newDistance;

@@ -453,6 +453,9 @@ export default function RoutePreviewScreen() {
           elevationLoss: selectedRoute.elevationLoss,
           difficulty: selectedRoute.difficulty,
           activityType: params.activityType,
+          userId: user?.id,
+          coachName: user?.coachName || 'Coach',
+          coachTone: user?.coachTone || 'motivating',
         }),
       });
 

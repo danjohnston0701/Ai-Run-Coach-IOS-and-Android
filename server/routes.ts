@@ -652,7 +652,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/ai/run-summary", async (req: Request, res: Response) => {
     try {
-      const { lat, lng, distance, elevationGain, elevationLoss, difficulty, activityType } = req.body;
+      const { lat, lng, distance, elevationGain, elevationLoss, difficulty, activityType, userId, coachName, coachTone } = req.body;
       
       let weatherData = null;
       try {
@@ -672,11 +672,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? `${Math.round(weatherData.temp)}°C and ${weatherData.condition || 'clear'}. ${weatherData.windSpeed > 15 ? 'Windy conditions - adjust your effort.' : 'Good conditions for running.'}`
         : "Weather data unavailable.";
       
-      const coachAdvice = difficulty === 'hard'
-        ? `This is a challenging ${distance?.toFixed(1) || '?'}km ${activityType || 'run'} with significant hills. Start conservatively and save energy for the climbs. Remember to take shorter strides on uphills.`
-        : difficulty === 'moderate'
-        ? `A solid ${distance?.toFixed(1) || '?'}km ${activityType || 'run'} ahead. Find a comfortable rhythm early and stay consistent. Focus on your breathing and enjoy the route.`
-        : `A nice ${distance?.toFixed(1) || '?'}km ${activityType || 'run'} on easier terrain. Perfect opportunity to work on your form and pace. Stay relaxed and have fun!`;
+      let coachAdvice = "";
+      try {
+        const aiService = await import("./ai-service");
+        coachAdvice = await aiService.generatePreRunCoaching({
+          distance,
+          elevationGain,
+          elevationLoss,
+          difficulty,
+          activityType,
+          weather: weatherData,
+          coachName: coachName || 'Coach',
+          coachTone: coachTone || 'motivating',
+        });
+      } catch (aiError) {
+        console.log("AI coaching fallback:", aiError);
+        coachAdvice = difficulty === 'hard'
+          ? `This is a challenging ${distance?.toFixed(1) || '?'}km ${activityType || 'run'} with significant hills. Start conservatively and save energy for the climbs.`
+          : difficulty === 'moderate'
+          ? `A solid ${distance?.toFixed(1) || '?'}km ${activityType || 'run'} ahead. Find a comfortable rhythm early and stay consistent.`
+          : `A nice ${distance?.toFixed(1) || '?'}km ${activityType || 'run'}. Perfect opportunity to work on your form. Stay relaxed and have fun!`;
+      }
       
       res.json({
         weatherSummary,
@@ -711,6 +727,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("AI elevation coaching error:", error);
       res.status(500).json({ error: "Failed to get elevation coaching" });
+    }
+  });
+  
+  app.post("/api/ai/pace-update", async (req: Request, res: Response) => {
+    try {
+      const aiService = await import("./ai-service");
+      const message = await aiService.generatePaceUpdate(req.body);
+      res.json({ message });
+    } catch (error: any) {
+      console.error("AI pace update error:", error);
+      res.status(500).json({ error: "Failed to get pace update" });
     }
   });
 
