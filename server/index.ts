@@ -191,6 +191,7 @@ function configureExpoAndLanding(app: express.Application) {
 
   // Serve static assets
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
+  app.use("/logos", express.static(path.resolve(process.cwd(), "attached_assets/generated_images")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   // Proxy all other requests to Metro bundler for web development
