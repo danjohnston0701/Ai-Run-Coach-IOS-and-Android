@@ -1588,14 +1588,22 @@ export default function RunSessionScreen({
   const saveRun = async () => {
     try {
       const baseUrl = getApiUrl();
+      const token = await getStoredToken();
+      
+      if (!token) {
+        throw new Error("No authentication token");
+      }
+      
       const avgPaceSeconds = distance > 0 ? elapsedTime / distance : 0;
       const avgPaceMin = Math.floor(avgPaceSeconds / 60);
       const avgPaceSec = Math.floor(avgPaceSeconds % 60);
 
       const response = await fetch(`${baseUrl}/api/runs`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
         body: JSON.stringify({
           userId: user?.id,
           routeId: routeData?.id,
