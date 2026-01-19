@@ -32,6 +32,8 @@ import {
   IconPlay,
   IconHistory,
   IconMountain,
+  IconWatch,
+  IconCheck,
 } from "@/components/icons/AppIcons";
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
@@ -40,6 +42,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
+import { getStoredToken } from "@/lib/token-storage";
 
 interface Goal {
   id: number;
@@ -77,6 +80,12 @@ interface PreviousRun {
   difficulty: string;
 }
 
+interface GarminStatus {
+  isConnected: boolean;
+  lastSyncAt: string | null;
+  deviceName: string | null;
+}
+
 export default function HomeScreen({ navigation }: any) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -103,12 +112,20 @@ export default function HomeScreen({ navigation }: any) {
   const [recentRoutes, setRecentRoutes] = useState<RecentRoute[]>([]);
   const [previousRun, setPreviousRun] = useState<PreviousRun | null>(null);
 
+  // Garmin connection status
+  const [garminStatus, setGarminStatus] = useState<GarminStatus>({
+    isConnected: false,
+    lastSyncAt: null,
+    deviceName: null,
+  });
+
   useEffect(() => {
     fetchGoals();
     fetchWeather();
     fetchLocation();
     fetchRecentRoutes();
     fetchPreviousRun();
+    fetchGarminStatus();
     
     // Update time every minute
     const timer = setInterval(() => {
@@ -265,10 +282,57 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
+  const fetchGarminStatus = async () => {
+    try {
+      const baseUrl = getApiUrl();
+      const token = await getStoredToken();
+      const response = await fetch(`${baseUrl}/api/connected-devices`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      if (response.ok) {
+        const devices = await response.json();
+        const garminDevice = devices.find((d: any) => d.deviceType === "garmin" && d.isActive);
+        if (garminDevice) {
+          setGarminStatus({
+            isConnected: true,
+            lastSyncAt: garminDevice.lastSyncAt,
+            deviceName: garminDevice.deviceName || "Garmin",
+          });
+        } else {
+          setGarminStatus({
+            isConnected: false,
+            lastSyncAt: null,
+            deviceName: null,
+          });
+        }
+      }
+    } catch (error) {
+      console.log("Failed to fetch Garmin status:", error);
+    }
+  };
+
+  const formatLastSync = (dateStr: string | null) => {
+    if (!dateStr) return "Never";
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return "Yesterday";
+    return `${diffDays}d ago`;
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await Promise.all([fetchGoals(), fetchWeather(), fetchLocation(), fetchRecentRoutes(), fetchPreviousRun()]);
+    await Promise.all([fetchGoals(), fetchWeather(), fetchLocation(), fetchRecentRoutes(), fetchPreviousRun(), fetchGarminStatus()]);
     setRefreshing(false);
   };
 
@@ -431,6 +495,50 @@ export default function HomeScreen({ navigation }: any) {
           </ThemedText>
         </View>
       </View>
+
+      {/* Garmin Connection Indicator */}
+      <Pressable 
+        onPress={() => navigation.navigate("ProfileTab", { screen: "ConnectedDevices" })}
+        style={[
+          styles.garminIndicator, 
+          { 
+            backgroundColor: garminStatus.isConnected 
+              ? theme.success + "15" 
+              : theme.backgroundSecondary,
+            borderColor: garminStatus.isConnected 
+              ? theme.success + "40" 
+              : theme.border,
+          }
+        ]}
+      >
+        <View style={styles.garminLeft}>
+          <View style={[
+            styles.garminIconContainer, 
+            { backgroundColor: garminStatus.isConnected ? theme.success + "20" : theme.backgroundSecondary }
+          ]}>
+            <IconWatch size={18} color={garminStatus.isConnected ? theme.success : theme.textMuted} />
+          </View>
+          <View style={styles.garminInfo}>
+            <View style={styles.garminTitleRow}>
+              <ThemedText type="body" style={{ fontWeight: "600" }}>
+                {garminStatus.isConnected ? "Garmin Connected" : "Connect Garmin"}
+              </ThemedText>
+              {garminStatus.isConnected ? (
+                <View style={[styles.connectedBadge, { backgroundColor: theme.success + "20" }]}>
+                  <IconCheck size={10} color={theme.success} />
+                </View>
+              ) : null}
+            </View>
+            <ThemedText type="small" style={{ color: theme.textMuted }}>
+              {garminStatus.isConnected 
+                ? `Last sync: ${formatLastSync(garminStatus.lastSyncAt)}`
+                : "Tap to connect your watch"
+              }
+            </ThemedText>
+          </View>
+        </View>
+        <IconChevronRight size={16} color={theme.textMuted} />
+      </Pressable>
 
       {/* Location Card - hidden on native when permission granted (device GPS is more accurate) */}
       {(Platform.OS === "web" || !locationPermissionGranted) ? (
@@ -940,5 +1048,42 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
     gap: Spacing.sm,
+  },
+  garminIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    marginTop: Spacing.md,
+  },
+  garminLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+  },
+  garminIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  garminInfo: {
+    gap: 2,
+  },
+  garminTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  connectedBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: BorderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
