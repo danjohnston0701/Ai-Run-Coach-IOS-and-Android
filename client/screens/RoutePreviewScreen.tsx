@@ -334,6 +334,10 @@ export default function RoutePreviewScreen() {
       const baseUrl = getApiUrl();
       const token = await getStoredToken();
       
+      console.log('[RouteGen] API URL:', baseUrl);
+      console.log('[RouteGen] Has token:', !!token);
+      console.log('[RouteGen] Location:', currentLocation);
+      
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
@@ -341,7 +345,10 @@ export default function RoutePreviewScreen() {
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const response = await fetch(`${baseUrl}/api/routes/generate-options`, {
+      const url = `${baseUrl}/api/routes/generate-options`;
+      console.log('[RouteGen] Fetching:', url);
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -354,9 +361,17 @@ export default function RoutePreviewScreen() {
         }),
       });
 
+      console.log('[RouteGen] Response status:', response.status);
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to generate routes');
+        const errorText = await response.text();
+        console.log('[RouteGen] Error response:', errorText);
+        let errorMessage = 'Failed to generate routes';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {}
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
