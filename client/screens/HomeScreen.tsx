@@ -424,7 +424,7 @@ export default function HomeScreen({ navigation }: any) {
             {(user?.name || "Runner").toUpperCase()}
           </ThemedText>
           <ThemedText type="body" style={{ color: theme.textSecondary }}>
-            Welcome, Plan your run with Coach Carter
+            Welcome, Plan your run with {user?.coachName || 'Coach'}
           </ThemedText>
         </View>
         <Pressable
