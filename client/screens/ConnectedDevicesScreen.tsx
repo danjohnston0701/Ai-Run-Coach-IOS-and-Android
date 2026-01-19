@@ -21,6 +21,7 @@ import { getApiUrl } from '../lib/query-client';
 import { getStoredToken } from '../lib/token-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { useRoute } from '@react-navigation/native';
+import { useBLEHeartRate, HeartRateDevice } from '../services/ble-heart-rate';
 
 const theme = {
   ...Colors.dark,
@@ -109,6 +110,18 @@ export default function ConnectedDevicesScreen() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [connectingDevice, setConnectingDevice] = useState<DeviceType | null>(null);
+  
+  // BLE Heart Rate
+  const {
+    isScanning,
+    devices: bleDevices,
+    connectedDevice: bleConnectedDevice,
+    currentHR,
+    isSimulation,
+    startScan,
+    connect: connectBLE,
+    disconnect: disconnectBLE,
+  } = useBLEHeartRate();
 
   const { data: connectedDevices = [], isLoading } = useQuery<ConnectedDevice[]>({
     queryKey: ['/api/connected-devices'],
@@ -398,6 +411,113 @@ export default function ConnectedDevicesScreen() {
         </View>
       )}
 
+      {/* Bluetooth Heart Rate Section */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Bluetooth Heart Rate</Text>
+        <Text style={styles.sectionSubtitle}>
+          Connect to a Bluetooth heart rate monitor for real-time HR during runs
+        </Text>
+      </View>
+      
+      <View style={styles.bleCard}>
+        {bleConnectedDevice ? (
+          <View style={styles.bleConnected}>
+            <View style={styles.bleDeviceRow}>
+              <View style={[styles.deviceIcon, styles.deviceIconConnected]}>
+                <Feather name="heart" size={24} color={theme.background} />
+              </View>
+              <View style={styles.bleDeviceInfo}>
+                <Text style={styles.bleDeviceName}>{bleConnectedDevice.name}</Text>
+                <Text style={styles.bleDeviceStatus}>
+                  {currentHR ? `${currentHR} BPM` : 'Connected'}
+                  {isSimulation ? ' (Simulated)' : ''}
+                </Text>
+              </View>
+              <Pressable
+                style={styles.bleDisconnectButton}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  disconnectBLE();
+                }}
+              >
+                <Feather name="x" size={20} color={theme.error} />
+              </Pressable>
+            </View>
+            {bleConnectedDevice.batteryLevel ? (
+              <View style={styles.bleBattery}>
+                <Feather name="battery" size={14} color={theme.textSecondary} />
+                <Text style={styles.bleBatteryText}>{bleConnectedDevice.batteryLevel}%</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <View>
+            <Pressable
+              style={[styles.scanButton, isScanning && styles.scanButtonActive]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                startScan();
+              }}
+              disabled={isScanning}
+            >
+              {isScanning ? (
+                <ActivityIndicator size="small" color={theme.text} />
+              ) : (
+                <Feather name="bluetooth" size={20} color={theme.text} />
+              )}
+              <Text style={styles.scanButtonText}>
+                {isScanning ? 'Scanning...' : 'Scan for HR Monitors'}
+              </Text>
+            </Pressable>
+            
+            {bleDevices.length > 0 ? (
+              <View style={styles.bleDeviceList}>
+                {bleDevices.map((device) => (
+                  <Pressable
+                    key={device.id}
+                    style={styles.bleDeviceItem}
+                    onPress={async () => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      const success = await connectBLE(device.id);
+                      if (success) {
+                        Alert.alert('Connected', `${device.name} connected successfully`);
+                      }
+                    }}
+                  >
+                    <View style={styles.bleDeviceItemIcon}>
+                      <Feather name="heart" size={18} color={theme.primary} />
+                    </View>
+                    <View style={styles.bleDeviceItemInfo}>
+                      <Text style={styles.bleDeviceItemName}>{device.name}</Text>
+                      <Text style={styles.bleDeviceItemSignal}>
+                        Signal: {device.rssi ? `${Math.min(100, Math.max(0, 100 + device.rssi))}%` : 'Unknown'}
+                      </Text>
+                    </View>
+                    <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            
+            {isSimulation ? (
+              <View style={styles.simulationNote}>
+                <Feather name="info" size={14} color={theme.warning} />
+                <Text style={styles.simulationNoteText}>
+                  Bluetooth requires a development build. Data will be simulated in Expo Go.
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        )}
+      </View>
+
+      <View style={styles.garminTip}>
+        <Feather name="zap" size={16} color={theme.primary} />
+        <Text style={styles.garminTipText}>
+          Garmin users: Enable "Broadcast Heart Rate" in your watch settings to stream live HR while using Garmin's native run tracking.
+        </Text>
+      </View>
+
       <View style={styles.privacyNote}>
         <Feather name="shield" size={16} color={theme.textMuted} />
         <Text style={styles.privacyText}>
@@ -559,6 +679,137 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: theme.textMuted,
+    lineHeight: 18,
+  },
+  sectionHeader: {
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.md,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: theme.text,
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: theme.textSecondary,
+  },
+  bleCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 16,
+    padding: Spacing.lg,
+  },
+  bleConnected: {
+    gap: Spacing.md,
+  },
+  bleDeviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  bleDeviceInfo: {
+    flex: 1,
+  },
+  bleDeviceName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  bleDeviceStatus: {
+    fontSize: 14,
+    color: theme.success,
+    marginTop: 2,
+  },
+  bleDisconnectButton: {
+    padding: Spacing.sm,
+  },
+  bleBattery: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  bleBatteryText: {
+    fontSize: 13,
+    color: theme.textSecondary,
+  },
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: theme.primary,
+    paddingVertical: Spacing.md,
+    borderRadius: 12,
+  },
+  scanButtonActive: {
+    backgroundColor: theme.surfaceLight,
+  },
+  scanButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.background,
+  },
+  bleDeviceList: {
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  bleDeviceItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.surfaceLight,
+    padding: Spacing.md,
+    borderRadius: 12,
+    gap: Spacing.md,
+  },
+  bleDeviceItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bleDeviceItemInfo: {
+    flex: 1,
+  },
+  bleDeviceItemName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: theme.text,
+  },
+  bleDeviceItemSignal: {
+    fontSize: 12,
+    color: theme.textSecondary,
+  },
+  simulationNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    padding: Spacing.sm,
+    backgroundColor: 'rgba(255, 183, 77, 0.1)',
+    borderRadius: 8,
+  },
+  simulationNoteText: {
+    flex: 1,
+    fontSize: 12,
+    color: theme.warning,
+    lineHeight: 16,
+  },
+  garminTip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+    padding: Spacing.md,
+    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+    borderRadius: 12,
+  },
+  garminTipText: {
+    flex: 1,
+    fontSize: 13,
+    color: theme.primary,
     lineHeight: 18,
   },
 });

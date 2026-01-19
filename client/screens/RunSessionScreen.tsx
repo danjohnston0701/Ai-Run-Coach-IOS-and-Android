@@ -43,6 +43,7 @@ import { speechQueue } from "@/lib/speechQueue";
 import { cadenceDetector } from "@/lib/cadenceDetector";
 import { gpsWatchdog } from "@/lib/gpsWatchdog";
 import { navigationEngine, RouteWaypoint } from "@/lib/navigationEngine";
+import { bleHeartRateService, HeartRateReading } from "@/services/ble-heart-rate";
 import {
   COACHING_STATEMENTS,
   determinePhase,
@@ -342,38 +343,66 @@ export default function RunSessionScreen({
     }
   };
 
-  const startHeartRateSimulation = useCallback(() => {
+  const bleUnsubscribeRef = useRef<(() => void) | null>(null);
+  
+  const startHeartRateMonitoring = useCallback(() => {
     if (!hasConnectedDevice) return;
     
-    const userAge = user?.dob ? calculateAgeFromDob(user.dob) : 30;
-    const maxHR = 220 - userAge;
-    const restingHR = 70;
+    // Check if BLE device is connected (real or simulated)
+    const bleDevice = bleHeartRateService.getConnectedDevice();
     
-    let baseHR = restingHR + 40;
-    
-    heartRateIntervalRef.current = setInterval(() => {
-      const intensityFactor = Math.min(1, elapsedTime / 600);
-      const targetHR = restingHR + 40 + (maxHR - restingHR - 40) * 0.5 * intensityFactor;
-      const variation = (Math.random() - 0.5) * 8;
-      baseHR = baseHR * 0.9 + (targetHR + variation) * 0.1;
+    if (bleDevice) {
+      // Use BLE heart rate service for real/simulated HR data
+      bleUnsubscribeRef.current = bleHeartRateService.onHeartRate((reading: HeartRateReading) => {
+        setCurrentHeartRate(reading.bpm);
+        heartRateHistoryRef.current.push({ bpm: reading.bpm, timestamp: reading.timestamp });
+        
+        if (heartRateHistoryRef.current.length > 360) {
+          heartRateHistoryRef.current.shift();
+        }
+      });
+    } else {
+      // Fallback: Use built-in simulation if no BLE device connected
+      const userAge = user?.dob ? calculateAgeFromDob(user.dob) : 30;
+      const maxHR = 220 - userAge;
+      const restingHR = 70;
       
-      const currentHR = Math.round(Math.max(restingHR + 30, Math.min(maxHR - 10, baseHR)));
+      let baseHR = restingHR + 40;
       
-      setCurrentHeartRate(currentHR);
-      heartRateHistoryRef.current.push({ bpm: currentHR, timestamp: Date.now() });
-      
-      if (heartRateHistoryRef.current.length > 360) {
-        heartRateHistoryRef.current.shift();
-      }
-    }, 5000);
+      heartRateIntervalRef.current = setInterval(() => {
+        const intensityFactor = Math.min(1, elapsedTime / 600);
+        const targetHR = restingHR + 40 + (maxHR - restingHR - 40) * 0.5 * intensityFactor;
+        const variation = (Math.random() - 0.5) * 8;
+        baseHR = baseHR * 0.9 + (targetHR + variation) * 0.1;
+        
+        const currentHR = Math.round(Math.max(restingHR + 30, Math.min(maxHR - 10, baseHR)));
+        
+        setCurrentHeartRate(currentHR);
+        heartRateHistoryRef.current.push({ bpm: currentHR, timestamp: Date.now() });
+        
+        if (heartRateHistoryRef.current.length > 360) {
+          heartRateHistoryRef.current.shift();
+        }
+      }, 5000);
+    }
   }, [hasConnectedDevice, user?.dob, elapsedTime]);
 
-  const stopHeartRateSimulation = useCallback(() => {
+  const stopHeartRateMonitoring = useCallback(() => {
+    // Unsubscribe from BLE
+    if (bleUnsubscribeRef.current) {
+      bleUnsubscribeRef.current();
+      bleUnsubscribeRef.current = null;
+    }
+    // Clear interval-based simulation
     if (heartRateIntervalRef.current) {
       clearInterval(heartRateIntervalRef.current);
       heartRateIntervalRef.current = null;
     }
   }, []);
+  
+  // Keep old function name for compatibility
+  const startHeartRateSimulation = startHeartRateMonitoring;
+  const stopHeartRateSimulation = stopHeartRateMonitoring;
 
   const calculateAgeFromDob = (dob: string): number => {
     const birthDate = new Date(dob);
