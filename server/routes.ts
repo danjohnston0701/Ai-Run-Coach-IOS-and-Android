@@ -582,17 +582,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ==================== AI ENDPOINTS (Proxy to production) ====================
+  // ==================== AI ENDPOINTS (Direct OpenAI) ====================
   
   app.post("/api/ai/coach", async (req: Request, res: Response) => {
     try {
-      const response = await fetch("https://airuncoach.live/api/ai/coach", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
-      });
-      const data = await response.json();
-      res.json(data);
+      const { message, context } = req.body;
+      const aiService = await import("./ai-service");
+      const response = await aiService.getCoachingResponse(message, context || {});
+      res.json({ message: response });
     } catch (error: any) {
       console.error("AI coach error:", error);
       res.status(500).json({ error: "Failed to get AI coaching" });
@@ -601,13 +598,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/ai/tts", async (req: Request, res: Response) => {
     try {
-      const response = await fetch("https://airuncoach.live/api/ai/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
-      });
-      const data = await response.json();
-      res.json(data);
+      const { text, voice } = req.body;
+      const aiService = await import("./ai-service");
+      const audioBuffer = await aiService.generateTTS(text, voice || "alloy");
+      res.set("Content-Type", "audio/mpeg");
+      res.send(audioBuffer);
     } catch (error: any) {
       console.error("AI TTS error:", error);
       res.status(500).json({ error: "Failed to generate TTS" });
@@ -616,13 +611,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/ai/coaching", async (req: Request, res: Response) => {
     try {
-      const response = await fetch("https://airuncoach.live/api/ai/coaching", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
-      });
-      const data = await response.json();
-      res.json(data);
+      const { message, context } = req.body;
+      const aiService = await import("./ai-service");
+      const response = await aiService.getCoachingResponse(message, context || {});
+      res.json({ message: response });
     } catch (error: any) {
       console.error("AI coaching error:", error);
       res.status(500).json({ error: "Failed to get coaching response" });
@@ -631,28 +623,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/ai/run-summary", async (req: Request, res: Response) => {
     try {
-      const response = await fetch("https://airuncoach.live/api/ai/run-summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
-      });
-      const data = await response.json();
-      res.json(data);
+      const aiService = await import("./ai-service");
+      const summary = await aiService.generateRunSummary(req.body);
+      res.json(summary);
     } catch (error: any) {
       console.error("AI run summary error:", error);
       res.status(500).json({ error: "Failed to get run summary" });
     }
   });
 
+  app.post("/api/ai/pre-run-summary", async (req: Request, res: Response) => {
+    try {
+      const { route, weather } = req.body;
+      const aiService = await import("./ai-service");
+      const summary = await aiService.generatePreRunSummary(route, weather);
+      res.json(summary);
+    } catch (error: any) {
+      console.error("AI pre-run summary error:", error);
+      res.status(500).json({ error: "Failed to get pre-run summary" });
+    }
+  });
+
+  app.post("/api/ai/elevation-coaching", async (req: Request, res: Response) => {
+    try {
+      const aiService = await import("./ai-service");
+      const tip = await aiService.getElevationCoaching(req.body);
+      res.json({ message: tip });
+    } catch (error: any) {
+      console.error("AI elevation coaching error:", error);
+      res.status(500).json({ error: "Failed to get elevation coaching" });
+    }
+  });
+
   app.post("/api/runs/:id/ai-insights", async (req: Request, res: Response) => {
     try {
-      const response = await fetch(`https://airuncoach.live/api/runs/${req.params.id}/ai-insights`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
+      const run = await storage.getRun(req.params.id);
+      if (!run) {
+        return res.status(404).json({ error: "Run not found" });
+      }
+      const aiService = await import("./ai-service");
+      const insights = await aiService.generateRunSummary({
+        ...run,
+        ...req.body
       });
-      const data = await response.json();
-      res.json(data);
+      await storage.updateRun(req.params.id, { aiAnalysis: insights });
+      res.json(insights);
     } catch (error: any) {
       console.error("AI insights error:", error);
       res.status(500).json({ error: "Failed to get AI insights" });
