@@ -1,10 +1,11 @@
-import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { getApiUrl } from './query-client';
+import { getStoredToken, setStoredToken, clearStoredToken } from './token-storage';
 
-const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'user_data';
+
+export { getStoredToken, setStoredToken, clearStoredToken };
 
 export interface User {
   id: string;
@@ -33,31 +34,6 @@ export interface User {
   createdAt?: string;
 }
 
-// SecureStore wrapper for tokens (small, sensitive data)
-async function setSecureItem(key: string, value: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    localStorage.setItem(key, value);
-  } else {
-    await SecureStore.setItemAsync(key, value);
-  }
-}
-
-async function getSecureItem(key: string): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    return localStorage.getItem(key);
-  } else {
-    return await SecureStore.getItemAsync(key);
-  }
-}
-
-async function deleteSecureItem(key: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    localStorage.removeItem(key);
-  } else {
-    await SecureStore.deleteItemAsync(key);
-  }
-}
-
 // AsyncStorage wrapper for user data (can handle larger data like base64 images)
 async function setUserItem(key: string, value: string): Promise<void> {
   if (Platform.OS === 'web') {
@@ -81,18 +57,6 @@ async function deleteUserItem(key: string): Promise<void> {
   } else {
     await AsyncStorage.removeItem(key);
   }
-}
-
-export async function getStoredToken(): Promise<string | null> {
-  return await getSecureItem(TOKEN_KEY);
-}
-
-export async function setStoredToken(token: string): Promise<void> {
-  await setSecureItem(TOKEN_KEY, token);
-}
-
-export async function clearStoredToken(): Promise<void> {
-  await deleteSecureItem(TOKEN_KEY);
 }
 
 export async function getStoredUser(): Promise<User | null> {

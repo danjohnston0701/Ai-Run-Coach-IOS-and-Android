@@ -1,13 +1,37 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { Platform } from "react-native";
+import { getStoredToken } from "./token-storage";
 
 /**
- * Gets the base URL for the production API
- * All platforms connect directly to production API
+ * Gets the base URL for the API
+ * Uses local backend which connects to external Neon database
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
-  // Connect directly to the production API
-  return 'https://airuncoach.live';
+  // For web platform in development, use the Replit dev domain
+  if (Platform.OS === 'web') {
+    const domain = process.env.EXPO_PUBLIC_DOMAIN;
+    if (domain) {
+      // Remove port suffix if present and use https
+      const cleanDomain = domain.replace(':5000', '').replace(':8081', '');
+      return `https://${cleanDomain}`;
+    }
+    if (typeof window !== 'undefined' && window.location) {
+      // Use same origin for web
+      return window.location.origin;
+    }
+  }
+  
+  // For native mobile apps, use the Replit dev domain backend
+  // This will be the same domain that serves the app
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (domain) {
+    const cleanDomain = domain.replace(':5000', '').replace(':8081', '');
+    return `https://${cleanDomain}`;
+  }
+  
+  // Fallback to localhost for development
+  return 'http://localhost:5000';
 }
 
 async function throwIfResNotOk(res: Response) {
@@ -17,6 +41,17 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const token = await getStoredToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export async function apiRequest(
   method: string,
   route: string,
@@ -24,12 +59,12 @@ export async function apiRequest(
 ): Promise<Response> {
   const baseUrl = getApiUrl();
   const url = new URL(route, baseUrl);
+  const headers = await getAuthHeaders();
 
   const res = await fetch(url.toString(), {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
   });
 
   await throwIfResNotOk(res);
@@ -45,9 +80,10 @@ export const getQueryFn: <T>(options: {
     const baseUrl = getApiUrl();
     const path = queryKey.join("/");
     const url = new URL(path, baseUrl);
+    const headers = await getAuthHeaders();
 
     const res = await fetch(url.toString(), {
-      credentials: "include",
+      headers,
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
