@@ -1,5 +1,5 @@
 import * as Speech from 'expo-speech';
-import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
+import { createAudioPlayer, AudioPlayer } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
 import { getApiUrl, getAuthToken } from './query-client';
 
@@ -46,7 +46,7 @@ class SpeechQueueManager {
   private currentItem: SpeechItem | null = null;
   private ttsCache: Map<string, TTSCacheEntry> = new Map();
   private enabled = true;
-  private currentSound: Audio.Sound | null = null;
+  private currentPlayer: AudioPlayer | null = null;
   private useOpenAITTS = true;
   private coachVoiceSettings = {
     gender: 'female' as 'male' | 'female',
@@ -55,28 +55,12 @@ class SpeechQueueManager {
     pitch: 1.0,
   };
 
-  async initAudio() {
-    try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        staysActiveInBackground: true,
-        interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-        playThroughEarpieceAndroid: false,
-      });
-    } catch (error) {
-      console.error('Failed to init audio mode:', error);
-    }
-  }
-
   setEnabled(enabled: boolean) {
     this.enabled = enabled;
     if (!enabled) {
       this.clear();
       Speech.stop();
-      this.stopCurrentSound();
+      this.stopCurrentPlayer();
     }
   }
 
@@ -149,8 +133,6 @@ class SpeechQueueManager {
     if (!this.enabled) return;
 
     try {
-      await this.initAudio();
-      
       const baseUrl = getApiUrl();
       const token = await getAuthToken();
       
@@ -178,29 +160,29 @@ class SpeechQueueManager {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      await this.stopCurrentSound();
+      await this.stopCurrentPlayer();
       
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: fileUri },
-        { shouldPlay: true }
-      );
+      const player = createAudioPlayer({ uri: fileUri });
+      this.currentPlayer = player;
       
-      this.currentSound = sound;
-      
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          this.stopCurrentSound();
+      player.addListener('playbackStatusUpdate', (status: any) => {
+        if (status.didJustFinish) {
+          this.stopCurrentPlayer();
           onComplete?.();
           FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
         }
       });
       
+      player.play();
+      
     } catch (error) {
       console.error('OpenAI TTS playback error:', error);
       if (params.text) {
         this.speakWithDeviceTTS(params.text, onComplete);
+      } else {
+        const fallbackText = "Let's have a great run. Remember to enjoy it!";
+        this.speakWithDeviceTTS(fallbackText, onComplete);
       }
-      onComplete?.();
     }
   }
 
@@ -217,8 +199,6 @@ class SpeechQueueManager {
     }
 
     try {
-      await this.initAudio();
-      
       const baseUrl = getApiUrl();
       const token = await getAuthToken();
       
@@ -246,22 +226,20 @@ class SpeechQueueManager {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      await this.stopCurrentSound();
+      await this.stopCurrentPlayer();
       
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: fileUri },
-        { shouldPlay: true }
-      );
+      const player = createAudioPlayer({ uri: fileUri });
+      this.currentPlayer = player;
       
-      this.currentSound = sound;
-      
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          this.stopCurrentSound();
+      player.addListener('playbackStatusUpdate', (status: any) => {
+        if (status.didJustFinish) {
+          this.stopCurrentPlayer();
           onComplete?.();
           FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
         }
       });
+      
+      player.play();
       
     } catch (error) {
       console.error('OpenAI TTS error, falling back to device TTS:', error);
@@ -280,15 +258,14 @@ class SpeechQueueManager {
     });
   }
 
-  private async stopCurrentSound(): Promise<void> {
-    if (this.currentSound) {
+  private async stopCurrentPlayer(): Promise<void> {
+    if (this.currentPlayer) {
       try {
-        await this.currentSound.stopAsync();
-        await this.currentSound.unloadAsync();
+        this.currentPlayer.release();
       } catch (error) {
         // Ignore errors when stopping
       }
-      this.currentSound = null;
+      this.currentPlayer = null;
     }
   }
 
@@ -382,7 +359,7 @@ class SpeechQueueManager {
     this.watchdogTimer = setTimeout(() => {
       console.warn('Speech watchdog triggered - item stuck for 45s');
       Speech.stop();
-      this.stopCurrentSound();
+      this.stopCurrentPlayer();
       this.isPlaying = false;
       this.currentItem = null;
       this.processQueue();
@@ -400,7 +377,7 @@ class SpeechQueueManager {
     this.queue = [];
     this.stopWatchdog();
     Speech.stop();
-    this.stopCurrentSound();
+    this.stopCurrentPlayer();
     this.isPlaying = false;
     this.currentItem = null;
   }
@@ -409,13 +386,13 @@ class SpeechQueueManager {
     this.queue = this.queue.filter((item) => item.domain !== domain);
     if (this.currentItem?.domain === domain) {
       Speech.stop();
-      this.stopCurrentSound();
+      this.stopCurrentPlayer();
     }
   }
 
   interrupt(text: string, domain: SpeechDomain = 'system'): string {
     Speech.stop();
-    this.stopCurrentSound();
+    this.stopCurrentPlayer();
     this.isPlaying = false;
     this.currentItem = null;
     this.stopWatchdog();
