@@ -157,9 +157,13 @@ export default function ConnectedDevicesScreen() {
 
   const disconnectMutation = useMutation({
     mutationFn: async (deviceId: string) => {
+      const token = await getStoredToken();
       const baseUrl = getApiUrl();
       const response = await fetch(`${baseUrl}/api/connected-devices/${deviceId}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
       if (!response.ok) throw new Error('Failed to disconnect device');
       return response.json();
