@@ -1098,8 +1098,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Redirect to success page
-      res.redirect('/connected-devices?success=garmin');
+      // Redirect back to Expo app via deep link
+      const expoScheme = 'exp://';
+      const appScheme = 'airuncoach://';
+      // Try app scheme first, fallback to web success page
+      res.redirect(`${appScheme}connected-devices?success=garmin`);
     } catch (error: any) {
       console.error("Garmin callback error:", error);
       res.redirect(`/connected-devices?error=${encodeURIComponent(error.message)}`);
