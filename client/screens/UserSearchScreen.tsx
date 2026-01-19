@@ -65,7 +65,15 @@ export default function UserSearchScreen({ navigation }: any) {
 
       if (response.ok) {
         const data = await response.json();
-        setResults(data.filter((u: SearchUser) => u.id !== user?.id));
+        console.log('Search results:', JSON.stringify(data).slice(0, 500));
+        // API may return array directly or object with users property
+        const users = Array.isArray(data) ? data : (data.users || []);
+        // Normalize user IDs - API might use 'userId' instead of 'id'
+        const normalizedUsers = users.map((u: any) => ({
+          ...u,
+          id: u.id || u.userId,
+        })).filter((u: SearchUser) => u.id !== user?.id);
+        setResults(normalizedUsers);
       } else {
         setResults([]);
       }
@@ -79,18 +87,33 @@ export default function UserSearchScreen({ navigation }: any) {
 
   const handleSendFriendRequest = async (targetUser: SearchUser) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Validate that we have both IDs
+    const requesterId = user?.id;
+    const addresseeId = targetUser.id;
+    
+    console.log('Friend request - requesterId:', requesterId, 'addresseeId:', addresseeId);
+    
+    if (!requesterId || !addresseeId) {
+      Alert.alert('Error', 'Unable to send friend request. User data is missing.');
+      return;
+    }
+    
     setSendingRequest(targetUser.id);
 
     try {
       const baseUrl = getApiUrl();
+      const requestBody = {
+        requesterId,
+        addresseeId,
+      };
+      console.log('Sending friend request with body:', JSON.stringify(requestBody));
+      
       const response = await fetch(`${baseUrl}/api/friend-requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          requesterId: user?.id,
-          addresseeId: targetUser.id,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
@@ -102,7 +125,7 @@ export default function UserSearchScreen({ navigation }: any) {
         Alert.alert('Success', 'Friend request sent!');
       } else {
         const data = await response.json().catch(() => ({}));
-        console.log('Friend request error:', response.status, data);
+        console.log('Friend request error:', response.status, JSON.stringify(data));
         Alert.alert('Error', data.message || data.error || 'Failed to send friend request');
       }
     } catch (error) {

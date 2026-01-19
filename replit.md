@@ -45,6 +45,11 @@ The project is organized into `/client` (React Native frontend), `/server` (Expr
 - Created NotificationSettingsScreen with granular push notification controls (all on/off, individual event toggles)
 - Added Distance Scale settings in ProfileScreen (min/max km, decimals toggle with 30km max range limit)
 - Added Push Notifications toggle with MANAGE button in ProfileScreen
+- Enhanced error handling in ProfileScreen and UserSearchScreen for API calls
+- Added detailed debug logging for friend request operations
+
+## Known Limitations
+- **Session-based Authentication on Mobile**: The production API at airuncoach.live uses session-based (cookie) authentication. This works well in web browsers but has limitations on native mobile apps where cookies don't persist the same way. Some API endpoints (friends, goals, runs) may return HTML error pages instead of JSON when called from mobile without a valid session. A future enhancement would be to implement token-based authentication in the production API to better support mobile apps.
 
 ## External Dependencies
 - **Google Maps**: Used for route generation and mapping.

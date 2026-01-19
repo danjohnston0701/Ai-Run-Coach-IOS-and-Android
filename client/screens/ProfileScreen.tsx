@@ -218,20 +218,32 @@ export default function ProfileScreen({ navigation }: any) {
     if (!user?.id) return;
     try {
       const baseUrl = getApiUrl();
+      console.log("Fetching friends for userId:", user.id, "from:", baseUrl);
       const response = await fetch(`${baseUrl}/api/friends?userId=${user.id}`, {
         credentials: "include",
       });
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Friends API response:", JSON.stringify(data).slice(0, 500));
-        // Handle both formats: { friends: [], requests: [] } or direct array
-        if (Array.isArray(data)) {
-          setFriends(data);
-          setFriendRequests([]);
-        } else {
-          setFriends(data.friends || data.accepted || []);
-          setFriendRequests(data.requests || data.pending || []);
+      console.log("Friends response status:", response.status, "ok:", response.ok);
+      
+      const text = await response.text();
+      console.log("Friends response text preview:", text.slice(0, 200));
+      
+      if (response.ok && !text.startsWith('<')) {
+        try {
+          const data = JSON.parse(text);
+          console.log("Friends API response:", JSON.stringify(data).slice(0, 500));
+          // Handle both formats: { friends: [], requests: [] } or direct array
+          if (Array.isArray(data)) {
+            setFriends(data);
+            setFriendRequests([]);
+          } else {
+            setFriends(data.friends || data.accepted || []);
+            setFriendRequests(data.requests || data.pending || []);
+          }
+        } catch (e) {
+          console.log("Failed to parse friends JSON:", e);
         }
+      } else {
+        console.log("Friends API returned HTML or error");
       }
     } catch (error) {
       console.log("Failed to fetch friends:", error);

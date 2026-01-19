@@ -2,12 +2,11 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 /**
  * Gets the base URL for the production API
- * Mobile app connects directly to production backend
+ * All platforms connect directly to production API
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
   // Connect directly to the production API
-  // This is more reliable than proxying through the local server
   return 'https://airuncoach.live';
 }
 
