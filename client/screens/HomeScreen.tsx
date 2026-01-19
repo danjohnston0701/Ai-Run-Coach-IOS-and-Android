@@ -428,7 +428,7 @@ export default function HomeScreen({ navigation }: any) {
           </ThemedText>
         </View>
         <Pressable
-          onPress={() => navigation.navigate("ProfileTab")}
+          onPress={() => navigation.navigate("ProfileTab", { screen: "Profile" })}
           style={[styles.avatarContainer, { borderColor: theme.primary, backgroundColor: theme.primary + "20" }]}
         >
           {user?.profilePic ? (
