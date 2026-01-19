@@ -68,6 +68,7 @@ export function getGarminAuthUrl(redirectUri: string, state: string, nonce: stri
   // Store the code verifier using the simple nonce as key
   storeCodeVerifier(nonce, codeVerifier);
   
+  // Note: Garmin's scope is managed via app configuration, not in the auth request
   const params = new URLSearchParams({
     client_id: GARMIN_CLIENT_ID!,
     response_type: 'code',
@@ -75,7 +76,6 @@ export function getGarminAuthUrl(redirectUri: string, state: string, nonce: stri
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
     state: state,
-    scope: 'activity:read activity:write health:read health:write',
   });
   
   return `${GARMIN_AUTH_URL}?${params.toString()}`;
