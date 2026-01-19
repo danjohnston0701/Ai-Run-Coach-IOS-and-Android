@@ -241,6 +241,7 @@ export default function RunSessionScreen({
   const lastDistanceForGradeRef = useRef<number>(0);
   const recentCoachingTopicsRef = useRef<string[]>([]);
   const completedInstructionsRef = useRef<Set<number>>(new Set());
+  const announcedInstructionsRef = useRef<Set<number>>(new Set());
   const lastWeatherCoachTimeRef = useRef<number>(0);
   const lastWeaknessCoachTimeRef = useRef<number>(0);
   const lastOffRouteTimeRef = useRef<number>(0);
@@ -298,6 +299,8 @@ export default function RunSessionScreen({
       cadenceDetector.stop();
       gpsWatchdog.stop();
       navigationEngine.reset();
+      completedInstructionsRef.current.clear();
+      announcedInstructionsRef.current.clear();
     };
   }, []);
 
@@ -884,9 +887,22 @@ export default function RunSessionScreen({
       setCurrentInstruction(instruction);
       setDistanceToNextTurn(distanceToTurn);
 
+      if (distanceToTurn < 50 && distanceToTurn >= 20 && !announcedInstructionsRef.current.has(index)) {
+        announcedInstructionsRef.current.add(index);
+        const cleanInstruction = instruction.instruction?.replace(/<[^>]*>/g, '') || '';
+        if (cleanInstruction) {
+          speechQueue.enqueueNavigation(`In ${Math.round(distanceToTurn)} meters, ${cleanInstruction}`);
+        }
+      }
+
       if (distanceToTurn < 20 && index >= 0) {
         completedInstructionsRef.current.add(index);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        const cleanInstruction = instruction.instruction?.replace(/<[^>]*>/g, '') || '';
+        if (cleanInstruction) {
+          speechQueue.enqueueNavigation(cleanInstruction);
+        }
 
         if (index + 1 < routeData.turnInstructions.length) {
           const nextInst = routeData.turnInstructions[index + 1];
