@@ -66,19 +66,29 @@ export async function exchangeGarminCode(
   // Clean up the code verifier
   codeVerifiers.delete(state);
   
+  const tokenParams = {
+    grant_type: 'authorization_code',
+    code: code,
+    client_id: GARMIN_CLIENT_ID!,
+    client_secret: GARMIN_CLIENT_SECRET!,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+  };
+  
+  console.log('=== GARMIN TOKEN EXCHANGE ===');
+  console.log('Token URL:', GARMIN_TOKEN_URL);
+  console.log('Redirect URI:', redirectUri);
+  console.log('Code verifier length:', codeVerifier.length);
+  console.log('Client ID present:', !!GARMIN_CLIENT_ID);
+  console.log('Client Secret present:', !!GARMIN_CLIENT_SECRET);
+  console.log('==============================');
+  
   const response = await fetch(GARMIN_TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code: code,
-      client_id: GARMIN_CLIENT_ID!,
-      client_secret: GARMIN_CLIENT_SECRET!,
-      redirect_uri: redirectUri,
-      code_verifier: codeVerifier,
-    }),
+    body: new URLSearchParams(tokenParams),
   });
   
   if (!response.ok) {
