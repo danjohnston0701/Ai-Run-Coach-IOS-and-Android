@@ -143,12 +143,12 @@ export default function NotificationSettingsScreen({ navigation }: any) {
     fetchPreferences();
   }, [fetchPreferences]);
 
-  const savePreferences = useCallback(async (newPrefs: NotificationPreferences) => {
+  const savePreferences = useCallback(async (newPrefs: NotificationPreferences, showConfirmation = true) => {
     if (!user?.id) return;
     setSaving(true);
     try {
       const baseUrl = getApiUrl();
-      await fetch(
+      const response = await fetch(
         `${baseUrl}/api/users/${user.id}/notification-preferences`,
         {
           method: 'PUT',
@@ -157,8 +157,19 @@ export default function NotificationSettingsScreen({ navigation }: any) {
           body: JSON.stringify(newPrefs),
         }
       );
+      if (showConfirmation) {
+        if (response.ok) {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert('Saved', 'Your notification preferences have been updated.');
+        } else {
+          Alert.alert('Error', 'Failed to save notification preferences. Please try again.');
+        }
+      }
     } catch (error) {
       console.log('Failed to save notification preferences:', error);
+      if (showConfirmation) {
+        Alert.alert('Error', 'Failed to save notification preferences. Please try again.');
+      }
     } finally {
       setSaving(false);
     }
@@ -197,8 +208,36 @@ export default function NotificationSettingsScreen({ navigation }: any) {
 
   const handleTestNotification = useCallback(async (type: string) => {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Test Sent', `A test ${type} notification has been sent to your device.`);
-  }, []);
+    
+    // Try to send an actual test notification via the API
+    if (user?.id) {
+      try {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/notifications/test`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            userId: user.id,
+            type,
+            title: `Test ${type} notification`,
+            body: `This is a test notification for ${type}`,
+          }),
+        });
+        
+        if (response.ok) {
+          Alert.alert('Test Sent', `A test ${type} notification has been sent. Check your device notifications.`);
+        } else {
+          Alert.alert('Note', `Test triggered, but push notifications may need to be enabled on your device and in the Profile settings.`);
+        }
+      } catch (error) {
+        console.log('Test notification error:', error);
+        Alert.alert('Note', 'To receive push notifications, ensure they are enabled in your device settings and in Profile settings.');
+      }
+    } else {
+      Alert.alert('Note', 'Please log in to test notifications.');
+    }
+  }, [user?.id]);
 
   if (loading) {
     return (

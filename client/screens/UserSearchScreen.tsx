@@ -90,6 +90,8 @@ export default function UserSearchScreen({ navigation }: any) {
         body: JSON.stringify({
           senderId: user?.id,
           receiverId: targetUser.id,
+          fromUserId: user?.id,
+          toUserId: targetUser.id,
         }),
       });
 
@@ -99,11 +101,14 @@ export default function UserSearchScreen({ navigation }: any) {
             u.id === targetUser.id ? { ...u, friendStatus: 'sent' } : u
           )
         );
+        Alert.alert('Success', 'Friend request sent!');
       } else {
-        const data = await response.json();
-        Alert.alert('Error', data.message || 'Failed to send friend request');
+        const data = await response.json().catch(() => ({}));
+        console.log('Friend request error:', response.status, data);
+        Alert.alert('Error', data.message || data.error || 'Failed to send friend request');
       }
     } catch (error) {
+      console.log('Friend request exception:', error);
       Alert.alert('Error', 'Failed to send friend request');
     } finally {
       setSendingRequest(null);

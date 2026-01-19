@@ -223,8 +223,15 @@ export default function ProfileScreen({ navigation }: any) {
       });
       if (response.ok) {
         const data = await response.json();
-        setFriends(data.friends || []);
-        setFriendRequests(data.requests || []);
+        console.log("Friends API response:", JSON.stringify(data).slice(0, 500));
+        // Handle both formats: { friends: [], requests: [] } or direct array
+        if (Array.isArray(data)) {
+          setFriends(data);
+          setFriendRequests([]);
+        } else {
+          setFriends(data.friends || data.accepted || []);
+          setFriendRequests(data.requests || data.pending || []);
+        }
       }
     } catch (error) {
       console.log("Failed to fetch friends:", error);
