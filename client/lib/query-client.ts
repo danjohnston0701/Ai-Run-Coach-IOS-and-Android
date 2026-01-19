@@ -5,29 +5,25 @@ import { getStoredToken } from "./token-storage";
 /**
  * Gets the base URL for the API
  * Uses local backend which connects to external Neon database
+ * Backend runs on port 5000, accessible via Replit's port forwarding
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
-  // For web platform in development, use the Replit dev domain
-  if (Platform.OS === 'web') {
-    const domain = process.env.EXPO_PUBLIC_DOMAIN;
-    if (domain) {
-      // Remove port suffix if present and use https
-      const cleanDomain = domain.replace(':5000', '').replace(':8081', '');
-      return `https://${cleanDomain}`;
-    }
-    if (typeof window !== 'undefined' && window.location) {
-      // Use same origin for web
-      return window.location.origin;
-    }
+  // Check if we have the Replit dev domain configured
+  // EXPO_PUBLIC_DOMAIN is set to REPLIT_DEV_DOMAIN:5000 (includes port)
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  
+  if (domain) {
+    // Domain already includes port 5000, use it directly with https
+    // Example: "abc-123.worf.replit.dev:5000" -> "https://abc-123.worf.replit.dev:5000"
+    return `https://${domain}`;
   }
   
-  // For native mobile apps, use the Replit dev domain backend
-  // This will be the same domain that serves the app
-  const domain = process.env.EXPO_PUBLIC_DOMAIN;
-  if (domain) {
-    const cleanDomain = domain.replace(':5000', '').replace(':8081', '');
-    return `https://${cleanDomain}`;
+  // For web, construct URL for the backend port
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+    const hostname = window.location.hostname;
+    // Always target port 5000 for the API
+    return `https://${hostname}:5000`;
   }
   
   // Fallback to localhost for development

@@ -85,7 +85,11 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         Alert.alert('Login Failed', errorMessage);
       }
       
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } catch {
+        // Haptics not available on web
+      }
     } finally {
       setLoading(false);
     }
@@ -179,7 +183,11 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         ) : null}
 
         {error ? (
-          <View style={[styles.errorContainer, { backgroundColor: theme.error + "20" }]}>
+          <View 
+            style={[styles.errorContainer, { backgroundColor: theme.error + "20" }]}
+            testID="error-message"
+            accessibilityRole="alert"
+          >
             <IconAlertCircle size={16} color={theme.error} />
             <ThemedText type="small" style={{ color: theme.error, marginLeft: Spacing.sm }}>
               {error}

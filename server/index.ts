@@ -1,11 +1,13 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import { createProxyMiddleware } from "http-proxy-middleware";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
 
 const app = express();
 const log = console.log;
+const METRO_PORT = 8081;
 
 declare module "http" {
   interface IncomingMessage {
@@ -38,9 +40,9 @@ function setupCors(app: express.Application) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header(
         "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS",
+        "GET, POST, PUT, DELETE, PATCH, OPTIONS",
       );
-      res.header("Access-Control-Allow-Headers", "Content-Type");
+      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
       res.header("Access-Control-Allow-Credentials", "true");
     }
 
@@ -170,38 +172,58 @@ function configureExpoAndLanding(app: express.Application) {
   const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
 
-  log("Serving static Expo files with dynamic manifest routing");
+  log("Setting up Expo routing with Metro proxy");
 
+  // Handle manifest requests for mobile apps
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api")) {
       return next();
     }
 
-    if (req.path !== "/" && req.path !== "/manifest") {
-      return next();
-    }
-
+    // Check for mobile app manifest requests
     const platform = req.header("expo-platform");
-    if (platform && (platform === "ios" || platform === "android")) {
+    if ((req.path === "/" || req.path === "/manifest") && platform && (platform === "ios" || platform === "android")) {
       return serveExpoManifest(platform, res);
-    }
-
-    if (req.path === "/") {
-      return serveLandingPage({
-        req,
-        res,
-        landingPageTemplate,
-        appName,
-      });
     }
 
     next();
   });
 
+  // Serve static assets
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
-  log("Expo routing: Checking expo-platform header on / and /manifest");
+  // Proxy all other requests to Metro bundler for web development
+  const metroProxy = createProxyMiddleware({
+    target: `http://localhost:${METRO_PORT}`,
+    changeOrigin: true,
+    ws: true,
+    on: {
+      error: (err: Error, req: unknown, res: unknown) => {
+        log(`Metro proxy error: ${err.message}`);
+        // If Metro is not available, serve landing page
+        const response = res as Response;
+        if (!response.headersSent) {
+          serveLandingPage({
+            req: req as Request,
+            res: response,
+            landingPageTemplate,
+            appName,
+          });
+        }
+      },
+    },
+  });
+
+  // Proxy non-API requests to Metro
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith("/api")) {
+      return next();
+    }
+    return metroProxy(req, res, next);
+  });
+
+  log("Expo routing: Mobile manifests and Metro proxy configured");
 }
 
 function setupErrorHandler(app: express.Application) {
@@ -226,9 +248,11 @@ function setupErrorHandler(app: express.Application) {
   setupBodyParsing(app);
   setupRequestLogging(app);
 
-  configureExpoAndLanding(app);
-
+  // Register API routes BEFORE static file serving
   const server = await registerRoutes(app);
+
+  // Static file serving and landing page AFTER API routes
+  configureExpoAndLanding(app);
 
   setupErrorHandler(app);
 

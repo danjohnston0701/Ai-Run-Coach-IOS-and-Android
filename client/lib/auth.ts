@@ -112,12 +112,14 @@ export async function login(email: string, password: string): Promise<{ user: Us
       console.log('[Auth] Login error:', errorText);
       
       // Try to parse as JSON to get error message
+      let errorMessage = 'Login failed';
       try {
         const errorJson = JSON.parse(errorText);
-        throw new Error(errorJson.error || errorJson.message || 'Login failed');
+        errorMessage = errorJson.error || errorJson.message || 'Login failed';
       } catch {
-        throw new Error(errorText || 'Login failed');
+        errorMessage = errorText || 'Login failed';
       }
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
