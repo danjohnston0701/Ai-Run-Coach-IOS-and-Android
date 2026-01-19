@@ -652,54 +652,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/ai/run-summary", async (req: Request, res: Response) => {
     try {
-      const { lat, lng, distance, elevationGain, elevationLoss, difficulty, activityType, userId, coachName, coachTone } = req.body;
+      const { lat, lng, distance, elevationGain, elevationLoss, difficulty, activityType, targetTime, firstTurnInstruction } = req.body;
       
+      // Fetch real weather from Open-Meteo
       let weatherData = null;
       try {
-        const weatherRes = await fetch(`https://airuncoach.live/api/weather/current?lat=${lat}&lng=${lng}`);
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`;
+        const weatherRes = await fetch(weatherUrl);
         if (weatherRes.ok) {
-          weatherData = await weatherRes.json();
+          const data = await weatherRes.json();
+          const current = data.current;
+          
+          const weatherCodeToCondition = (code: number): string => {
+            if (code === 0) return "Clear";
+            if (code <= 3) return "Partly Cloudy";
+            if (code <= 49) return "Foggy";
+            if (code <= 59) return "Drizzle";
+            if (code <= 69) return "Rain";
+            if (code <= 79) return "Snow";
+            if (code <= 84) return "Showers";
+            if (code <= 94) return "Thunderstorm";
+            return "Unknown";
+          };
+          
+          weatherData = {
+            temp: current.temperature_2m,
+            feelsLike: current.apparent_temperature,
+            humidity: current.relative_humidity_2m,
+            windSpeed: Math.round(current.wind_speed_10m),
+            condition: weatherCodeToCondition(current.weather_code),
+          };
         }
       } catch (e) {
         console.log("Weather fetch failed, continuing without weather");
       }
       
-      const terrainDesc = elevationGain > 50 
-        ? `hilly terrain with ${Math.round(elevationGain)}m of climbing` 
-        : `mostly flat terrain with ${Math.round(elevationGain || 0)}m elevation change`;
+      // Build terrain analysis based on facts
+      const distanceKm = distance?.toFixed(1) || '?';
+      const elevGain = Math.round(elevationGain || 0);
+      const elevLoss = Math.round(elevationLoss || elevationGain || 0);
       
-      const weatherSummary = weatherData?.temp 
-        ? `${Math.round(weatherData.temp)}°C and ${weatherData.condition || 'clear'}. ${weatherData.windSpeed > 15 ? 'Windy conditions - adjust your effort.' : 'Good conditions for running.'}`
-        : "Weather data unavailable.";
+      let terrainType = "flat";
+      if (elevGain > 100) terrainType = "hilly";
+      else if (elevGain > 50) terrainType = "undulating";
       
-      let coachAdvice = "";
-      try {
-        const aiService = await import("./ai-service");
-        coachAdvice = await aiService.generatePreRunCoaching({
-          distance,
-          elevationGain,
-          elevationLoss,
-          difficulty,
-          activityType,
-          weather: weatherData,
-          coachName: coachName || 'Coach',
-          coachTone: coachTone || 'motivating',
-        });
-      } catch (aiError) {
-        console.log("AI coaching fallback:", aiError);
-        coachAdvice = difficulty === 'hard'
-          ? `This is a challenging ${distance?.toFixed(1) || '?'}km ${activityType || 'run'} with significant hills. Start conservatively and save energy for the climbs.`
-          : difficulty === 'moderate'
-          ? `A solid ${distance?.toFixed(1) || '?'}km ${activityType || 'run'} ahead. Find a comfortable rhythm early and stay consistent.`
-          : `A nice ${distance?.toFixed(1) || '?'}km ${activityType || 'run'}. Perfect opportunity to work on your form. Stay relaxed and have fun!`;
+      const terrainAnalysis = `${distanceKm}km ${terrainType} circuit with ${elevGain}m climb and ${elevLoss}m descent.`;
+      
+      // Calculate target pace if target time provided
+      let targetPace = null;
+      if (targetTime && distance) {
+        const totalMinutes = (targetTime.hours || 0) * 60 + (targetTime.minutes || 0) + (targetTime.seconds || 0) / 60;
+        if (totalMinutes > 0) {
+          const paceMinPerKm = totalMinutes / distance;
+          const paceMins = Math.floor(paceMinPerKm);
+          const paceSecs = Math.round((paceMinPerKm - paceMins) * 60);
+          targetPace = `${paceMins}:${paceSecs.toString().padStart(2, '0')} min/km`;
+        }
       }
       
+      // Simple motivational statement based on difficulty
+      const motivationalStatements = [
+        "You've got this. One step at a time.",
+        "Trust your training and enjoy the run.",
+        "Every kilometre is progress. Let's go!",
+        "Today is your day. Make it count.",
+        "Focus, breathe, and run your best.",
+      ];
+      const coachAdvice = motivationalStatements[Math.floor(Math.random() * motivationalStatements.length)];
+      
       res.json({
-        weatherSummary,
-        terrainSummary: `This ${distance?.toFixed(1) || '?'}km ${difficulty || 'moderate'} route features ${terrainDesc}. Elevation loss is ${Math.round(elevationLoss || elevationGain || 0)}m.`,
+        weatherSummary: weatherData ? null : "Weather unavailable",
+        terrainAnalysis,
         coachAdvice,
+        targetPace,
+        firstTurnInstruction: firstTurnInstruction || "Follow the highlighted route",
+        warnings: [],
         temperature: weatherData?.temp,
         conditions: weatherData?.condition,
+        humidity: weatherData?.humidity,
+        windSpeed: weatherData?.windSpeed,
+        feelsLike: weatherData?.feelsLike,
       });
     } catch (error: any) {
       console.error("AI run summary error:", error);
@@ -760,14 +792,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ==================== WEATHER ENDPOINTS (Proxy) ====================
+  // ==================== WEATHER ENDPOINTS (Open-Meteo API) ====================
   
   app.get("/api/weather/current", async (req: Request, res: Response) => {
     try {
       const { lat, lng } = req.query;
-      const response = await fetch(`https://airuncoach.live/api/weather/current?lat=${lat}&lng=${lng}`);
+      if (!lat || !lng) {
+        return res.status(400).json({ error: "lat and lng are required" });
+      }
+      
+      // Use Open-Meteo API (free, no API key required)
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m&timezone=auto`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Open-Meteo API error: ${response.status}`);
+      }
+      
       const data = await response.json();
-      res.json(data);
+      const current = data.current;
+      
+      // Map WMO weather codes to conditions
+      const weatherCodeToCondition = (code: number): string => {
+        if (code === 0) return "Clear";
+        if (code <= 3) return "Partly Cloudy";
+        if (code <= 49) return "Foggy";
+        if (code <= 59) return "Drizzle";
+        if (code <= 69) return "Rain";
+        if (code <= 79) return "Snow";
+        if (code <= 84) return "Showers";
+        if (code <= 94) return "Thunderstorm";
+        return "Unknown";
+      };
+      
+      res.json({
+        temp: current.temperature_2m,
+        feelsLike: current.apparent_temperature,
+        humidity: current.relative_humidity_2m,
+        windSpeed: Math.round(current.wind_speed_10m),
+        windDirection: current.wind_direction_10m,
+        condition: weatherCodeToCondition(current.weather_code),
+        weatherCode: current.weather_code,
+      });
     } catch (error: any) {
       console.error("Weather error:", error);
       res.status(500).json({ error: "Failed to get weather" });
@@ -777,7 +843,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/weather/full", async (req: Request, res: Response) => {
     try {
       const { lat, lng } = req.query;
-      const response = await fetch(`https://airuncoach.live/api/weather/full?lat=${lat}&lng=${lng}`);
+      if (!lat || !lng) {
+        return res.status(400).json({ error: "lat and lng are required" });
+      }
+      
+      // Use Open-Meteo API for full forecast
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,weather_code&forecast_days=1&timezone=auto`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Open-Meteo API error: ${response.status}`);
+      }
+      
       const data = await response.json();
       res.json(data);
     } catch (error: any) {

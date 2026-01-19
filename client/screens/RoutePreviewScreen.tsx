@@ -270,11 +270,13 @@ export default function RoutePreviewScreen() {
   const [mapZoomLevels, setMapZoomLevels] = useState<{[key: number]: number}>({});
   const [showPreRunSummary, setShowPreRunSummary] = useState(false);
   const [preRunSummary, setPreRunSummary] = useState<{
-    weatherSummary: string;
     terrainSummary: string;
     coachAdvice: string;
     temperature?: number;
     conditions?: string;
+    windSpeed?: number;
+    targetPace?: string;
+    estimatedTime?: string;
   } | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
 
@@ -441,50 +443,83 @@ export default function RoutePreviewScreen() {
     setLoadingSummary(true);
     try {
       const baseUrl = getApiUrl();
-      const response = await fetch(`${baseUrl}/api/ai/run-summary`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          lat: currentLocation.lat,
-          lng: currentLocation.lng,
-          distance: selectedRoute.actualDistance,
-          elevationGain: selectedRoute.elevationGain,
-          elevationLoss: selectedRoute.elevationLoss,
-          difficulty: selectedRoute.difficulty,
-          activityType: params.activityType,
-          userId: user?.id,
-          coachName: user?.coachName || 'Coach',
-          coachTone: user?.coachTone || 'motivating',
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const advice = data.coachAdvice || "Take it easy at the start and find your rhythm. Good luck!";
-        setPreRunSummary({
-          weatherSummary: data.weatherSummary || "Weather data unavailable",
-          terrainSummary: data.terrainSummary || `This ${selectedRoute.actualDistance.toFixed(1)}km route has ${Math.round(selectedRoute.elevationGain)}m elevation gain.`,
-          coachAdvice: advice,
-          temperature: data.temperature,
-          conditions: data.conditions,
-        });
-        speechQueue.enqueueCoach(advice);
-      } else {
-        const fallbackAdvice = "Focus on maintaining a steady pace and stay hydrated. You've got this!";
-        setPreRunSummary({
-          weatherSummary: "Weather data unavailable",
-          terrainSummary: `This ${selectedRoute.actualDistance.toFixed(1)}km ${selectedRoute.difficulty} route has ${Math.round(selectedRoute.elevationGain)}m elevation gain and ${Math.round(selectedRoute.elevationLoss)}m loss.`,
-          coachAdvice: fallbackAdvice,
-        });
-        speechQueue.enqueueCoach(fallbackAdvice);
+      
+      // Fetch real weather data from Open-Meteo via our backend
+      let weatherData: { temp?: number; condition?: string; windSpeed?: number } = {};
+      try {
+        const weatherRes = await fetch(
+          `${baseUrl}/api/weather/current?lat=${currentLocation.lat}&lng=${currentLocation.lng}`,
+          { credentials: 'include' }
+        );
+        if (weatherRes.ok) {
+          const data = await weatherRes.json();
+          weatherData = {
+            temp: data.temp,
+            condition: data.condition,
+            windSpeed: data.windSpeed,
+          };
+        }
+      } catch (e) {
+        console.log('Weather fetch failed');
       }
+      
+      // Build fact-based terrain summary
+      const distance = selectedRoute.actualDistance;
+      const elevGain = Math.round(selectedRoute.elevationGain || 0);
+      const elevLoss = Math.round(selectedRoute.elevationLoss || selectedRoute.elevationGain || 0);
+      
+      let terrainType = "flat";
+      if (elevGain > 100) terrainType = "hilly";
+      else if (elevGain > 50) terrainType = "undulating";
+      
+      const terrainSummary = `${distance.toFixed(1)}km ${terrainType} circuit with ${elevGain}m climb and ${elevLoss}m descent.`;
+      
+      // Calculate target pace if target time is set
+      let targetPace: string | undefined = undefined;
+      if (params.targetTime && distance > 0) {
+        const targetTime = params.targetTime;
+        const totalMinutes = (targetTime.hours || 0) * 60 + (targetTime.minutes || 0) + (targetTime.seconds || 0) / 60;
+        if (totalMinutes > 0) {
+          const paceMinPerKm = totalMinutes / distance;
+          const paceMins = Math.floor(paceMinPerKm);
+          const paceSecs = Math.round((paceMinPerKm - paceMins) * 60);
+          targetPace = `${paceMins}:${paceSecs.toString().padStart(2, '0')} min/km`;
+        }
+      }
+      
+      // Estimated time based on route data
+      let estimatedTime: string | undefined = undefined;
+      if (selectedRoute.estimatedTime) {
+        const mins = Math.floor(selectedRoute.estimatedTime);
+        const secs = Math.round((selectedRoute.estimatedTime - mins) * 60);
+        estimatedTime = `${mins}:${secs.toString().padStart(2, '0')}`;
+      }
+      
+      // Motivational statement
+      const motivationalStatements = [
+        "You've got this. One step at a time.",
+        "Trust your training and enjoy the run.",
+        "Every kilometre is progress. Let's go!",
+        "Today is your day. Make it count.",
+        "Focus, breathe, and run your best.",
+      ];
+      const coachAdvice = motivationalStatements[Math.floor(Math.random() * motivationalStatements.length)];
+
+      setPreRunSummary({
+        terrainSummary,
+        coachAdvice,
+        temperature: weatherData.temp,
+        conditions: weatherData.condition,
+        windSpeed: weatherData.windSpeed,
+        targetPace,
+        estimatedTime,
+      });
+      
+      speechQueue.enqueueCoach(coachAdvice);
     } catch (error) {
       console.error('Pre-run summary error:', error);
-      const selectedRoute = routes[selectedRouteIndex];
       const errorAdvice = "Remember to warm up and start at a comfortable pace!";
       setPreRunSummary({
-        weatherSummary: "Weather data unavailable",
         terrainSummary: `This ${selectedRoute?.actualDistance?.toFixed(1) || '?'}km route awaits you.`,
         coachAdvice: errorAdvice,
       });
@@ -810,33 +845,21 @@ export default function RoutePreviewScreen() {
               </View>
             ) : (
               <ScrollView style={styles.preRunScrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.preRunSection}>
-                  <View style={styles.preRunSectionHeader}>
-                    <View style={[styles.preRunSectionIcon, { backgroundColor: theme.primary + '20' }]}>
-                      <IconMap size={20} color={theme.primary} />
-                    </View>
-                    <Text style={styles.preRunSectionTitle}>Route Overview</Text>
-                  </View>
-                  <Text style={styles.preRunSectionText}>
-                    {selectedRoute?.actualDistance?.toFixed(1) || '--'}km {selectedRoute?.difficulty || 'moderate'} route with {Math.round(selectedRoute?.elevationGain || 0)}m elevation gain
-                  </Text>
-                </View>
-
                 {preRunSummary?.temperature !== undefined && (
                   <View style={styles.preRunSection}>
                     <View style={styles.preRunSectionHeader}>
-                      <View style={[styles.preRunSectionIcon, { backgroundColor: theme.warning + '20' }]}>
-                        <IconAlertCircle size={20} color={theme.warning} />
+                      <View style={[styles.preRunSectionIcon, { backgroundColor: theme.primary + '20' }]}>
+                        <IconAlertCircle size={20} color={theme.primary} />
                       </View>
-                      <Text style={styles.preRunSectionTitle}>Weather Conditions</Text>
+                      <Text style={styles.preRunSectionTitle}>Weather</Text>
                     </View>
-                    <Text style={styles.preRunSectionText}>
-                      {preRunSummary.weatherSummary}
-                    </Text>
                     <View style={styles.weatherStats}>
-                      <Text style={styles.weatherStatText}>{preRunSummary.temperature}°C</Text>
+                      <Text style={styles.weatherStatText}>{Math.round(preRunSummary.temperature)}°C</Text>
                       {preRunSummary.conditions && (
                         <Text style={styles.weatherStatText}>{preRunSummary.conditions}</Text>
+                      )}
+                      {preRunSummary.windSpeed !== undefined && (
+                        <Text style={styles.weatherStatText}>{preRunSummary.windSpeed} km/h wind</Text>
                       )}
                     </View>
                   </View>
@@ -847,20 +870,38 @@ export default function RoutePreviewScreen() {
                     <View style={[styles.preRunSectionIcon, { backgroundColor: theme.success + '20' }]}>
                       <IconMountain size={20} color={theme.success} />
                     </View>
-                    <Text style={styles.preRunSectionTitle}>Terrain Analysis</Text>
+                    <Text style={styles.preRunSectionTitle}>Route Summary</Text>
                   </View>
                   <Text style={styles.preRunSectionText}>
                     {preRunSummary?.terrainSummary || 'Loading terrain data...'}
                   </Text>
+                  {preRunSummary?.estimatedTime && (
+                    <Text style={[styles.preRunSectionText, { marginTop: 4, color: theme.textMuted }]}>
+                      Estimated time: {preRunSummary.estimatedTime} minutes
+                    </Text>
+                  )}
                 </View>
 
-                <View style={styles.preRunSection}>
-                  <View style={styles.preRunSectionHeader}>
-                    <View style={[styles.preRunSectionIcon, { backgroundColor: '#9C27B0' + '20' }]}>
-                      <IconBrain size={20} color="#9C27B0" />
+                {params.targetTime && (params.targetTime.hours > 0 || params.targetTime.minutes > 0 || params.targetTime.seconds > 0) && (
+                  <View style={styles.preRunSection}>
+                    <View style={styles.preRunSectionHeader}>
+                      <View style={[styles.preRunSectionIcon, { backgroundColor: theme.warning + '20' }]}>
+                        <IconTimer size={20} color={theme.warning} />
+                      </View>
+                      <Text style={styles.preRunSectionTitle}>Target</Text>
                     </View>
-                    <Text style={styles.preRunSectionTitle}>Coach Advice</Text>
+                    <Text style={styles.preRunSectionText}>
+                      Target time: {params.targetTime.hours > 0 ? `${params.targetTime.hours}h ` : ''}{params.targetTime.minutes}m {params.targetTime.seconds}s
+                    </Text>
+                    {preRunSummary?.targetPace && (
+                      <Text style={[styles.preRunSectionText, { marginTop: 4, color: theme.primary, fontWeight: '600' }]}>
+                        Required pace: {preRunSummary.targetPace}
+                      </Text>
+                    )}
                   </View>
+                )}
+
+                <View style={[styles.preRunSection, { backgroundColor: theme.primary + '15' }]}>
                   <Text style={styles.preRunCoachAdvice}>
                     "{preRunSummary?.coachAdvice || 'Focus on your breathing and enjoy the run!'}"
                   </Text>

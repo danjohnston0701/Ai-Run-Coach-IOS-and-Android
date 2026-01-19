@@ -1126,16 +1126,23 @@ export default function RunSessionScreen({
     speechQueue.enqueueSystem("Run started. Let's go!");
     
     // Speak first navigation instruction after a short delay
+    // Check both routeData and route params for turn instructions
+    const turnInstructions = routeData?.turnInstructions || route.params?.turnInstructions;
+    
     setTimeout(() => {
-      if (routeData?.turnInstructions && routeData.turnInstructions.length > 0) {
-        const firstTurn = routeData.turnInstructions[0];
+      if (turnInstructions && turnInstructions.length > 0) {
+        const firstTurn = turnInstructions[0];
         const distanceText = firstTurn.distance >= 1000 
           ? `${(firstTurn.distance / 1000).toFixed(1)} kilometers`
           : `${Math.round(firstTurn.distance)} meters`;
-        speechQueue.enqueueNavigation(`In ${distanceText}, ${firstTurn.instruction}`);
+        const instruction = firstTurn.instruction || 'Follow the route';
+        console.log('[Navigation] First instruction:', instruction, 'Distance:', distanceText);
+        speechQueue.enqueueNavigation(`In ${distanceText}, ${instruction}`);
+      } else {
+        console.log('[Navigation] No turn instructions available');
       }
     }, 2000);
-  }, [aiCoachEnabled, routeData, startTimer, startLocationTracking, startAutoSave, startDbSync]);
+  }, [aiCoachEnabled, routeData, route.params, startTimer, startLocationTracking, startAutoSave, startDbSync]);
 
   // Auto-start run when coming from pre-route summary with autoStart flag
   const autoStartTriggered = useRef(false);

@@ -34,7 +34,10 @@ interface PreRunSummaryModalProps {
     actualDistance?: number;
     difficulty?: string;
     elevationGain?: number;
+    elevationLoss?: number;
+    estimatedTime?: number;
     waypoints?: any[];
+    turnInstructions?: Array<{ instruction: string; distance: number }>;
   };
   startLocation: {
     lat: number;
@@ -42,16 +45,15 @@ interface PreRunSummaryModalProps {
   } | null;
   activityType: string;
   userId?: string;
+  targetTime?: { hours: number; minutes: number; seconds: number } | null;
 }
 
 interface PreRunSummary {
-  weatherSummary: string;
   terrainAnalysis: string;
   coachAdvice: string;
   firstTurnInstruction: string;
+  targetPace?: string;
   warnings: string[];
-  hydrationTip?: string;
-  warmUpSuggestion?: string;
 }
 
 export function PreRunSummaryModal({
@@ -62,6 +64,7 @@ export function PreRunSummaryModal({
   startLocation,
   activityType,
   userId,
+  targetTime,
 }: PreRunSummaryModalProps) {
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -87,28 +90,11 @@ export function PreRunSummaryModal({
     try {
       const baseUrl = getApiUrl();
 
-      const [weatherRes, summaryRes] = await Promise.all([
-        fetch(
-          `${baseUrl}/api/weather/current?lat=${startLocation?.lat}&lng=${startLocation?.lng}`,
-          { credentials: 'include' }
-        ),
-        fetch(`${baseUrl}/api/ai/run-summary`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            routeId: routeData.id,
-            distance: routeData.actualDistance,
-            difficulty: routeData.difficulty,
-            elevationGain: routeData.elevationGain,
-            activityType,
-            userId,
-            startLat: startLocation?.lat,
-            startLng: startLocation?.lng,
-            waypoints: routeData.waypoints?.slice(0, 3),
-          }),
-        }),
-      ]);
+      // Fetch real weather from Open-Meteo via our backend
+      const weatherRes = await fetch(
+        `${baseUrl}/api/weather/current?lat=${startLocation?.lat}&lng=${startLocation?.lng}`,
+        { credentials: 'include' }
+      );
 
       if (weatherRes.ok) {
         const weatherData = await weatherRes.json();
@@ -120,18 +106,55 @@ export function PreRunSummaryModal({
         });
       }
 
-      if (summaryRes.ok) {
-        const summaryData = await summaryRes.json();
-        setSummary(summaryData);
-      } else {
-        setSummary({
-          weatherSummary: 'Weather data unavailable',
-          terrainAnalysis: `${routeData.difficulty || 'Moderate'} route with ${routeData.elevationGain || 0}m elevation gain`,
-          coachAdvice: 'Start at a comfortable pace and listen to your body.',
-          firstTurnInstruction: routeData.waypoints?.[0]?.instruction || 'Follow the route',
-          warnings: [],
-        });
+      // Build fact-based summary locally (no AI needed)
+      const distance = routeData.actualDistance || 0;
+      const elevGain = Math.round(routeData.elevationGain || 0);
+      const elevLoss = Math.round(routeData.elevationLoss || routeData.elevationGain || 0);
+      
+      // Terrain type
+      let terrainType = "flat";
+      if (elevGain > 100) terrainType = "hilly";
+      else if (elevGain > 50) terrainType = "undulating";
+      
+      const terrainAnalysis = `${distance.toFixed(1)}km ${terrainType} circuit with ${elevGain}m climb and ${elevLoss}m descent.`;
+      
+      // Calculate target pace if target time is set
+      let targetPace: string | undefined = undefined;
+      if (targetTime && distance > 0) {
+        const totalMinutes = (targetTime.hours || 0) * 60 + (targetTime.minutes || 0) + (targetTime.seconds || 0) / 60;
+        if (totalMinutes > 0) {
+          const paceMinPerKm = totalMinutes / distance;
+          const paceMins = Math.floor(paceMinPerKm);
+          const paceSecs = Math.round((paceMinPerKm - paceMins) * 60);
+          targetPace = `${paceMins}:${paceSecs.toString().padStart(2, '0')} min/km`;
+        }
       }
+      
+      // Get first navigation instruction
+      const firstTurn = routeData.turnInstructions?.[0];
+      const firstTurnInstruction = firstTurn 
+        ? `${firstTurn.instruction} in ${firstTurn.distance >= 1000 
+            ? `${(firstTurn.distance / 1000).toFixed(1)}km` 
+            : `${Math.round(firstTurn.distance)}m`}`
+        : "Follow the highlighted route";
+      
+      // Motivational statement
+      const motivationalStatements = [
+        "You've got this. One step at a time.",
+        "Trust your training and enjoy the run.",
+        "Every kilometre is progress. Let's go!",
+        "Today is your day. Make it count.",
+        "Focus, breathe, and run your best.",
+      ];
+      const coachAdvice = motivationalStatements[Math.floor(Math.random() * motivationalStatements.length)];
+      
+      setSummary({
+        terrainAnalysis,
+        coachAdvice,
+        firstTurnInstruction,
+        targetPace,
+        warnings: [],
+      });
     } catch (err) {
       console.error('Pre-run summary error:', err);
       setError('Could not load summary. You can still start your run.');
@@ -204,12 +227,12 @@ export function PreRunSummaryModal({
                         {weather.windSpeed ? `${weather.windSpeed} km/h` : '--'}
                       </ThemedText>
                     </View>
+                    <View style={styles.weatherStat}>
+                      <ThemedText type="body" style={{ color: theme.textMuted }}>
+                        {weather.condition || '--'}
+                      </ThemedText>
+                    </View>
                   </View>
-                  {summary?.weatherSummary ? (
-                    <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: Spacing.sm }}>
-                      {summary.weatherSummary}
-                    </ThemedText>
-                  ) : null}
                 </View>
               ) : null}
 
@@ -217,13 +240,37 @@ export function PreRunSummaryModal({
                 <View style={styles.sectionHeader}>
                   <IconTrendingUp size={20} color={theme.accent} />
                   <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
-                    Terrain
+                    Route Summary
                   </ThemedText>
                 </View>
                 <ThemedText type="body" style={{ color: theme.textSecondary }}>
                   {summary?.terrainAnalysis || `${routeData.difficulty} difficulty`}
                 </ThemedText>
+                {routeData.estimatedTime ? (
+                  <ThemedText type="small" style={{ color: theme.textMuted, marginTop: Spacing.xs }}>
+                    Estimated time: {Math.floor(routeData.estimatedTime / 60)}:{(routeData.estimatedTime % 60).toString().padStart(2, '0')} minutes
+                  </ThemedText>
+                ) : null}
               </View>
+
+              {targetTime && (targetTime.hours > 0 || targetTime.minutes > 0 || targetTime.seconds > 0) ? (
+                <View style={[styles.section, { backgroundColor: theme.backgroundRoot }]}>
+                  <View style={styles.sectionHeader}>
+                    <IconNavigation size={20} color={theme.success} />
+                    <ThemedText type="h4" style={{ marginLeft: Spacing.sm }}>
+                      Target
+                    </ThemedText>
+                  </View>
+                  <ThemedText type="body" style={{ color: theme.textSecondary }}>
+                    Target time: {targetTime.hours > 0 ? `${targetTime.hours}h ` : ''}{targetTime.minutes}m {targetTime.seconds}s
+                  </ThemedText>
+                  {summary?.targetPace ? (
+                    <ThemedText type="body" style={{ color: theme.primary, marginTop: Spacing.xs, fontWeight: '600' }}>
+                      Required pace: {summary.targetPace}
+                    </ThemedText>
+                  ) : null}
+                </View>
+              ) : null}
 
               <View style={[styles.section, { backgroundColor: theme.backgroundRoot }]}>
                 <View style={styles.sectionHeader}>
@@ -239,11 +286,8 @@ export function PreRunSummaryModal({
 
               {summary?.coachAdvice ? (
                 <View style={[styles.section, { backgroundColor: theme.primary + '15' }]}>
-                  <ThemedText type="h4" style={{ color: theme.primary, marginBottom: Spacing.xs }}>
-                    Coach's Advice
-                  </ThemedText>
-                  <ThemedText type="body" style={{ color: theme.text }}>
-                    {summary.coachAdvice}
+                  <ThemedText type="body" style={{ color: theme.text, fontStyle: 'italic', textAlign: 'center' }}>
+                    "{summary.coachAdvice}"
                   </ThemedText>
                 </View>
               ) : null}
@@ -266,12 +310,6 @@ export function PreRunSummaryModal({
                     </ThemedText>
                   ))}
                 </View>
-              ) : null}
-
-              {summary?.hydrationTip ? (
-                <ThemedText type="small" style={{ color: theme.textMuted, marginTop: Spacing.md, textAlign: 'center' }}>
-                  {summary.hydrationTip}
-                </ThemedText>
               ) : null}
             </ScrollView>
           )}
