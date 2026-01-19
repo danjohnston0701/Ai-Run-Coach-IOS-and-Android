@@ -468,11 +468,14 @@ export default function ProfileScreen({ navigation }: any) {
   const sendFriendRequest = async (userId: string) => {
     try {
       const baseUrl = getApiUrl();
-      const response = await fetch(`${baseUrl}/api/friends/request`, {
+      const response = await fetch(`${baseUrl}/api/friend-requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ toUserId: userId }),
+        body: JSON.stringify({ 
+          requesterId: user?.id,
+          addresseeId: userId,
+        }),
       });
       if (response.ok) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -480,9 +483,13 @@ export default function ProfileScreen({ navigation }: any) {
         setShowSearchModal(false);
         setSearchQuery("");
         setSearchResults([]);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        Alert.alert("Error", data.message || data.error || "Failed to send friend request");
       }
     } catch (error) {
       console.log("Failed to send friend request:", error);
+      Alert.alert("Error", "Failed to send friend request");
     }
   };
 

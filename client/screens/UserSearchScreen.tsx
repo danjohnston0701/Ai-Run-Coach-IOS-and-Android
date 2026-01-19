@@ -88,10 +88,8 @@ export default function UserSearchScreen({ navigation }: any) {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          senderId: user?.id,
-          receiverId: targetUser.id,
-          fromUserId: user?.id,
-          toUserId: targetUser.id,
+          requesterId: user?.id,
+          addresseeId: targetUser.id,
         }),
       });
 
