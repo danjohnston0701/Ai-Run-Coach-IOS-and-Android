@@ -1,7 +1,8 @@
 import * as Speech from 'expo-speech';
 import { createAudioPlayer, AudioPlayer } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
-import { getApiUrl, getAuthToken } from './query-client';
+import { getApiUrl } from './query-client';
+import { getStoredToken } from './token-storage';
 
 export type SpeechDomain = 'coach' | 'navigation' | 'system';
 
@@ -134,7 +135,7 @@ class SpeechQueueManager {
 
     try {
       const baseUrl = getApiUrl();
-      const token = await getAuthToken();
+      const token = await getStoredToken();
       
       const response = await fetch(`${baseUrl}/api/coaching/pre-run-briefing-audio`, {
         method: 'POST',
@@ -200,7 +201,7 @@ class SpeechQueueManager {
 
     try {
       const baseUrl = getApiUrl();
-      const token = await getAuthToken();
+      const token = await getStoredToken();
       
       const response = await fetch(`${baseUrl}/api/tts/generate`, {
         method: 'POST',
