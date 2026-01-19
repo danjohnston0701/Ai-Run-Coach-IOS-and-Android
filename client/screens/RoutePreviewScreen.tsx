@@ -31,6 +31,7 @@ import Animated, {
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { getApiUrl } from '@/lib/query-client';
+import { getStoredToken } from '@/lib/token-storage';
 import {
   IconMap,
   IconMountain,
@@ -331,18 +332,25 @@ export default function RoutePreviewScreen() {
 
     try {
       const baseUrl = getApiUrl();
+      const token = await getStoredToken();
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(`${baseUrl}/api/routes/generate-options`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
+        headers,
         body: JSON.stringify({
           userId: user.id,
           startLat: currentLocation.lat,
           startLng: currentLocation.lng,
-          targetDistance: params.targetDistance,
+          distance: params.targetDistance,
           difficulty: params.difficulty || 'moderate',
+          activityType: params.activityType || 'run',
         }),
       });
 
@@ -361,11 +369,20 @@ export default function RoutePreviewScreen() {
         throw new Error('No routes were generated. Please try again.');
       }
 
-      // Transform routes to extract elevation data from nested object
+      // Transform routes to match expected interface
       const routesArray = rawRoutes.map((route: any) => ({
-        ...route,
+        id: route.id,
+        routeName: route.routeName || route.name || 'Route',
+        actualDistance: route.actualDistance || route.distance || 0,
+        difficulty: route.difficulty || 'moderate',
+        waypoints: route.waypoints || [],
+        polyline: route.polyline || '',
         elevationGain: route.elevationGain ?? route.elevation?.gain ?? route.elevation_gain ?? 0,
         elevationLoss: route.elevationLoss ?? route.elevation?.loss ?? route.elevation_loss ?? 0,
+        estimatedTime: route.estimatedTime || route.estimated_time || 0,
+        turnInstructions: route.turnInstructions || route.turn_instructions || [],
+        terrainType: route.terrainType || route.terrain_type || 'mixed',
+        description: route.description || '',
       }));
 
       setRoutes(routesArray);
@@ -373,7 +390,7 @@ export default function RoutePreviewScreen() {
       setGenerationProgress(100);
       
       setTimeout(() => {
-        fitMapToRoute(data[0]);
+        fitMapToRoute(routesArray[0]);
       }, 300);
     } catch (err: any) {
       console.error('Route generation error:', err);
