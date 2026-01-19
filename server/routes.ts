@@ -1712,6 +1712,151 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // OpenAI TTS endpoint - generates high-quality AI voice audio
+  app.post("/api/tts/generate", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { text, voice } = req.body;
+      
+      if (!text || text.trim().length === 0) {
+        return res.status(400).json({ error: "Text is required" });
+      }
+      
+      // Get user's voice preference
+      const user = await storage.getUser(req.user!.userId);
+      const userVoice = voice || (user?.coachGender === 'male' ? 'onyx' : 'nova');
+      
+      const aiService = await import("./ai-service");
+      const audioBuffer = await aiService.generateTTS(text, userVoice);
+      
+      // Return as base64 for mobile playback
+      const base64Audio = audioBuffer.toString('base64');
+      
+      res.json({
+        audio: base64Audio,
+        format: 'mp3',
+        voice: userVoice,
+      });
+    } catch (error: any) {
+      console.error("TTS generation error:", error);
+      res.status(500).json({ error: "Failed to generate audio" });
+    }
+  });
+
+  // Enhanced pre-run briefing with TTS audio
+  app.post("/api/coaching/pre-run-briefing-audio", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { text, distance, elevationGain, elevationLoss, difficulty, activityType, weather, targetPace, wellness: clientWellness } = req.body;
+      
+      // Get user's coach settings
+      const user = await storage.getUser(req.user!.userId);
+      const coachGender = user?.coachGender || 'female';
+      const voice = coachGender === 'male' ? 'onyx' : 'nova';
+      
+      // Build comprehensive briefing text if not provided
+      let briefingText = text;
+      
+      if (!briefingText) {
+        const parts: string[] = [];
+        
+        // Distance
+        if (distance) {
+          parts.push(`Today's ${activityType === 'walk' ? 'walk' : 'run'} is ${distance.toFixed(1)} kilometres.`);
+        }
+        
+        // Enhanced elevation insights
+        if (elevationGain && elevationGain > 0) {
+          const elevLoss = elevationLoss || elevationGain;
+          
+          if (elevationGain > 150) {
+            parts.push(`This is a challenging course with ${Math.round(elevationGain)} metres of climbing and ${Math.round(elevLoss)} metres of descent. Pace yourself on the uphills and use the downhills to recover. Save some energy for the bigger climbs.`);
+          } else if (elevationGain > 100) {
+            parts.push(`Expect ${Math.round(elevationGain)} metres of climbing with ${Math.round(elevLoss)} metres of descent. There are some challenging hills ahead. Shorten your stride on the climbs and lean slightly forward.`);
+          } else if (elevationGain > 50) {
+            parts.push(`You'll encounter ${Math.round(elevationGain)} metres of gentle elevation gain. Some rolling terrain ahead, nothing too demanding.`);
+          } else if (elevationGain > 20) {
+            parts.push(`Mostly flat with minor undulations of about ${Math.round(elevationGain)} metres total gain.`);
+          } else {
+            parts.push(`This route is essentially flat. Great for maintaining a consistent pace.`);
+          }
+        } else {
+          parts.push(`This is a flat route. Perfect for steady pacing.`);
+        }
+        
+        // Weather
+        if (weather) {
+          const temp = weather.temp || weather.temperature;
+          const condition = weather.condition?.toLowerCase() || '';
+          const windSpeed = weather.windSpeed || 0;
+          
+          if (condition.includes('rain')) {
+            parts.push(`It's ${temp} degrees with rain. Wear waterproof layers and watch for slippery surfaces.`);
+          } else if (condition.includes('cloud')) {
+            parts.push(`It's ${temp} degrees and overcast. Good conditions for running.`);
+          } else if (condition.includes('sun') || condition.includes('clear')) {
+            parts.push(`It's ${temp} degrees and sunny. Stay hydrated and consider sun protection.`);
+          } else {
+            parts.push(`Current temperature is ${temp} degrees.`);
+          }
+          
+          if (windSpeed > 20) {
+            parts.push(`Strong winds at ${windSpeed} kilometres per hour. Use it to your advantage on downwind sections.`);
+          } else if (windSpeed > 10) {
+            parts.push(`Light wind at ${windSpeed} kilometres per hour.`);
+          }
+        }
+        
+        // Target pace
+        if (targetPace) {
+          parts.push(`Your target pace is ${targetPace}.`);
+        }
+        
+        // Wellness data
+        const wellnessData = clientWellness || {};
+        if (wellnessData.readinessScore) {
+          if (wellnessData.readinessScore >= 80) {
+            parts.push(`Your body readiness is excellent at ${wellnessData.readinessScore}. You're primed for a great session.`);
+          } else if (wellnessData.readinessScore >= 60) {
+            parts.push(`Body readiness is ${wellnessData.readinessScore}. You're in good shape for this run.`);
+          } else if (wellnessData.readinessScore >= 40) {
+            parts.push(`Body readiness is ${wellnessData.readinessScore}. Consider taking it a bit easier today.`);
+          } else {
+            parts.push(`Body readiness is low at ${wellnessData.readinessScore}. Listen to your body and don't push too hard.`);
+          }
+        }
+        
+        if (wellnessData.bodyBattery) {
+          if (wellnessData.bodyBattery >= 70) {
+            parts.push(`Body battery is at ${wellnessData.bodyBattery}%. You've got plenty of energy.`);
+          } else if (wellnessData.bodyBattery >= 40) {
+            parts.push(`Body battery is at ${wellnessData.bodyBattery}%. Pace yourself wisely.`);
+          } else {
+            parts.push(`Body battery is low at ${wellnessData.bodyBattery}%. Consider a lighter effort.`);
+          }
+        }
+        
+        // Motivational close
+        parts.push(`Let's have a great ${activityType === 'walk' ? 'walk' : 'run'}. Remember to enjoy it!`);
+        
+        briefingText = parts.join(' ');
+      }
+      
+      // Generate TTS audio
+      const aiService = await import("./ai-service");
+      const audioBuffer = await aiService.generateTTS(briefingText, voice);
+      const base64Audio = audioBuffer.toString('base64');
+      
+      res.json({
+        audio: base64Audio,
+        format: 'mp3',
+        voice,
+        text: briefingText,
+      });
+    } catch (error: any) {
+      console.error("Pre-run briefing audio error:", error);
+      res.status(500).json({ error: "Failed to generate briefing audio" });
+    }
+  });
+
   // Wellness-aware coaching response during run
   app.post("/api/coaching/talk-to-coach", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
