@@ -1034,8 +1034,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const garminService = await import("./garmin-service");
       const state = `${req.user!.userId}_${Date.now()}`;
-      // Use fixed redirect URI to match Garmin Developer Portal exactly
-      const redirectUri = 'https://airuncoach.live/api/auth/garmin/callback';
+      // Use dynamic redirect URI based on request host
+      const baseUrl = `https://${req.get('host')}`;
+      const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
       
       const authUrl = garminService.getGarminAuthUrl(redirectUri, state);
       res.json({ authUrl, state });
@@ -1063,8 +1064,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = (state as string).split('_')[0];
       
       const garminService = await import("./garmin-service");
-      // Use fixed redirect URI to match Garmin Developer Portal exactly
-      const redirectUri = 'https://airuncoach.live/api/auth/garmin/callback';
+      // Use dynamic redirect URI based on request host
+      const baseUrl = `https://${req.get('host')}`;
+      const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
       
       const tokens = await garminService.exchangeGarminCode(
         code as string,
@@ -1098,8 +1100,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Redirect to website success page
-      res.redirect('https://airuncoach.live/connected-devices?success=garmin');
+      // Redirect to success page on the same host
+      res.redirect('/garmin-success.html');
     } catch (error: any) {
       console.error("Garmin callback error:", error);
       res.redirect(`/connected-devices?error=${encodeURIComponent(error.message)}`);
