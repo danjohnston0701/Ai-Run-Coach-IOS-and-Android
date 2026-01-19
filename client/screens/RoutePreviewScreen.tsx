@@ -571,6 +571,24 @@ export default function RoutePreviewScreen() {
         audioBriefingParts.push(`on flat terrain.`);
       }
       
+      // Weather conditions
+      if (weatherData.temp !== undefined) {
+        const temp = Math.round(weatherData.temp);
+        const condition = weatherData.condition?.toLowerCase() || '';
+        if (condition.includes('rain') || condition.includes('shower')) {
+          audioBriefingParts.push(`It's ${temp} degrees with rain. You might want to wear waterproof gear.`);
+        } else if (condition.includes('cloud')) {
+          audioBriefingParts.push(`It's ${temp} degrees and cloudy. Good conditions for running.`);
+        } else if (condition.includes('sun') || condition.includes('clear')) {
+          audioBriefingParts.push(`It's ${temp} degrees and sunny. Remember to stay hydrated.`);
+        } else {
+          audioBriefingParts.push(`It's ${temp} degrees outside.`);
+        }
+        if (weatherData.windSpeed && weatherData.windSpeed > 20) {
+          audioBriefingParts.push(`There's some wind at ${weatherData.windSpeed} kilometres per hour.`);
+        }
+      }
+      
       // Target pace (only if set)
       if (targetPaceForSpeech) {
         audioBriefingParts.push(`Your target pace is ${targetPaceForSpeech}.`);
@@ -971,11 +989,6 @@ export default function RoutePreviewScreen() {
                   <Text style={styles.preRunSectionText}>
                     {preRunSummary?.terrainSummary || 'Loading terrain data...'}
                   </Text>
-                  {preRunSummary?.estimatedTime && (
-                    <Text style={[styles.preRunSectionText, { marginTop: 4, color: theme.textMuted }]}>
-                      Estimated time: {preRunSummary.estimatedTime} minutes
-                    </Text>
-                  )}
                 </View>
 
                 {params.targetTime && (params.targetTime.hours > 0 || params.targetTime.minutes > 0 || params.targetTime.seconds > 0) && (
