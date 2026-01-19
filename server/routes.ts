@@ -1,6 +1,9 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
+import { eq, and, gte, desc } from "drizzle-orm";
 import { storage } from "./storage";
+import { db } from "./db";
+import { garminWellnessMetrics } from "@shared/schema";
 import { 
   generateToken, 
   hashPassword, 
@@ -784,7 +787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...run,
         ...req.body
       });
-      await storage.updateRun(req.params.id, { aiAnalysis: insights });
+      await storage.updateRun(req.params.id, { aiInsights: JSON.stringify(insights) });
       res.json(insights);
     } catch (error: any) {
       console.error("AI insights error:", error);
@@ -1223,12 +1226,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.user!.userId,
         distance: parsed.distance,
         duration: parsed.duration,
-        averagePace: parsed.averagePace ? `${Math.floor(parsed.averagePace)}:${Math.round((parsed.averagePace % 1) * 60).toString().padStart(2, '0')}` : undefined,
+        avgPace: parsed.averagePace ? `${Math.floor(parsed.averagePace)}:${Math.round((parsed.averagePace % 1) * 60).toString().padStart(2, '0')}` : undefined,
         elevationGain: parsed.elevationGain,
-        caloriesBurned: parsed.calories,
+        calories: parsed.calories,
         difficulty: 'moderate',
         gpsTrack: activityDetail.polyline ? { polyline: activityDetail.polyline } : undefined,
-        source: 'garmin',
       });
       
       // Store device data with the run
@@ -1248,6 +1250,255 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Garmin import activity error:", error);
       res.status(500).json({ error: "Failed to import Garmin activity" });
+    }
+  });
+
+  // Garmin Wellness Data - Sync comprehensive wellness metrics
+  app.post("/api/garmin/wellness/sync", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { date } = req.body;
+      const targetDate = date ? new Date(date) : new Date();
+      
+      const devices = await storage.getConnectedDevices(req.user!.userId);
+      const garminDevice = devices.find(d => d.deviceType === 'garmin' && d.isActive);
+      
+      if (!garminDevice || !garminDevice.accessToken) {
+        return res.status(400).json({ error: "Garmin not connected" });
+      }
+      
+      const garminService = await import("./garmin-service");
+      
+      // Get comprehensive wellness data
+      const wellness = await garminService.getGarminComprehensiveWellness(garminDevice.accessToken, targetDate);
+      
+      // Store in database
+      const dateStr = wellness.date;
+      
+      // Check if we already have data for this date
+      const existing = await db.query.garminWellnessMetrics.findFirst({
+        where: (metrics, { and, eq }) => and(
+          eq(metrics.userId, req.user!.userId),
+          eq(metrics.date, dateStr)
+        )
+      });
+      
+      const wellnessRecord = {
+        userId: req.user!.userId,
+        date: dateStr,
+        
+        // Sleep
+        totalSleepSeconds: wellness.sleep?.totalSleepSeconds,
+        deepSleepSeconds: wellness.sleep?.deepSleepSeconds,
+        lightSleepSeconds: wellness.sleep?.lightSleepSeconds,
+        remSleepSeconds: wellness.sleep?.remSleepSeconds,
+        awakeSleepSeconds: wellness.sleep?.awakeSleepSeconds,
+        sleepScore: wellness.sleep?.sleepScore,
+        sleepQuality: wellness.sleep?.sleepQuality,
+        
+        // Stress
+        averageStressLevel: wellness.stress?.averageStressLevel,
+        maxStressLevel: wellness.stress?.maxStressLevel,
+        stressDuration: wellness.stress?.stressDuration,
+        restDuration: wellness.stress?.restDuration,
+        stressQualifier: wellness.stress?.stressQualifier,
+        
+        // Body Battery
+        bodyBatteryHigh: wellness.bodyBattery?.highestValue,
+        bodyBatteryLow: wellness.bodyBattery?.lowestValue,
+        bodyBatteryCurrent: wellness.bodyBattery?.currentValue,
+        bodyBatteryCharged: wellness.bodyBattery?.chargedValue,
+        bodyBatteryDrained: wellness.bodyBattery?.drainedValue,
+        
+        // HRV
+        hrvWeeklyAvg: wellness.hrv?.weeklyAvg,
+        hrvLastNightAvg: wellness.hrv?.lastNightAvg,
+        hrvLastNight5MinHigh: wellness.hrv?.lastNight5MinHigh,
+        hrvStatus: wellness.hrv?.hrvStatus,
+        hrvFeedback: wellness.hrv?.feedbackPhrase,
+        
+        // Heart Rate
+        restingHeartRate: wellness.heartRate?.restingHeartRate,
+        minHeartRate: wellness.heartRate?.minHeartRate,
+        maxHeartRate: wellness.heartRate?.maxHeartRate,
+        averageHeartRate: wellness.heartRate?.averageHeartRate,
+        
+        // Readiness
+        readinessScore: wellness.readiness?.score,
+        readinessRecommendation: wellness.readiness?.recommendation,
+        
+        rawData: wellness,
+      };
+      
+      if (existing) {
+        // Update existing record
+        await db.update(garminWellnessMetrics)
+          .set({ ...wellnessRecord, syncedAt: new Date() })
+          .where(eq(garminWellnessMetrics.id, existing.id));
+      } else {
+        // Insert new record
+        await db.insert(garminWellnessMetrics).values(wellnessRecord);
+      }
+      
+      res.json({ success: true, wellness });
+    } catch (error: any) {
+      console.error("Garmin wellness sync error:", error);
+      res.status(500).json({ error: "Failed to sync Garmin wellness data" });
+    }
+  });
+
+  // Garmin Wellness Data - Get latest wellness data for a user
+  app.get("/api/garmin/wellness", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { date, days } = req.query;
+      const numDays = days ? parseInt(days as string) : 7;
+      
+      // Get wellness data from database
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - numDays);
+      const startDateStr = startDate.toISOString().split('T')[0];
+      
+      const metrics = await db.query.garminWellnessMetrics.findMany({
+        where: (m, { and, eq, gte }) => and(
+          eq(m.userId, req.user!.userId),
+          gte(m.date, startDateStr)
+        ),
+        orderBy: (m, { desc }) => [desc(m.date)],
+      });
+      
+      // Get the most recent for current readiness
+      const latest = metrics[0];
+      
+      res.json({
+        metrics,
+        latest,
+        currentReadiness: latest ? {
+          score: latest.readinessScore,
+          recommendation: latest.readinessRecommendation,
+          bodyBattery: latest.bodyBatteryCurrent,
+          sleepQuality: latest.sleepQuality,
+          stressLevel: latest.stressQualifier,
+          hrvStatus: latest.hrvStatus,
+        } : null,
+      });
+    } catch (error: any) {
+      console.error("Garmin wellness fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch Garmin wellness data" });
+    }
+  });
+
+  // Garmin Wellness Data - Get readiness for pre-run briefing
+  app.get("/api/garmin/readiness", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      // First, try to sync today's data
+      const devices = await storage.getConnectedDevices(req.user!.userId);
+      const garminDevice = devices.find(d => d.deviceType === 'garmin' && d.isActive);
+      
+      const today = new Date().toISOString().split('T')[0];
+      let todayWellness = await db.query.garminWellnessMetrics.findFirst({
+        where: (m, { and, eq }) => and(
+          eq(m.userId, req.user!.userId),
+          eq(m.date, today)
+        ),
+      });
+      
+      // If Garmin is connected and no data for today, try to sync
+      if (garminDevice?.accessToken && !todayWellness) {
+        try {
+          const garminService = await import("./garmin-service");
+          const wellness = await garminService.getGarminComprehensiveWellness(garminDevice.accessToken, new Date());
+          
+          // Store in database
+          await db.insert(garminWellnessMetrics).values({
+            userId: req.user!.userId,
+            date: today,
+            totalSleepSeconds: wellness.sleep?.totalSleepSeconds,
+            deepSleepSeconds: wellness.sleep?.deepSleepSeconds,
+            lightSleepSeconds: wellness.sleep?.lightSleepSeconds,
+            remSleepSeconds: wellness.sleep?.remSleepSeconds,
+            awakeSleepSeconds: wellness.sleep?.awakeSleepSeconds,
+            sleepScore: wellness.sleep?.sleepScore,
+            sleepQuality: wellness.sleep?.sleepQuality,
+            averageStressLevel: wellness.stress?.averageStressLevel,
+            maxStressLevel: wellness.stress?.maxStressLevel,
+            stressDuration: wellness.stress?.stressDuration,
+            restDuration: wellness.stress?.restDuration,
+            stressQualifier: wellness.stress?.stressQualifier,
+            bodyBatteryHigh: wellness.bodyBattery?.highestValue,
+            bodyBatteryLow: wellness.bodyBattery?.lowestValue,
+            bodyBatteryCurrent: wellness.bodyBattery?.currentValue,
+            bodyBatteryCharged: wellness.bodyBattery?.chargedValue,
+            bodyBatteryDrained: wellness.bodyBattery?.drainedValue,
+            hrvWeeklyAvg: wellness.hrv?.weeklyAvg,
+            hrvLastNightAvg: wellness.hrv?.lastNightAvg,
+            hrvLastNight5MinHigh: wellness.hrv?.lastNight5MinHigh,
+            hrvStatus: wellness.hrv?.hrvStatus,
+            hrvFeedback: wellness.hrv?.feedbackPhrase,
+            restingHeartRate: wellness.heartRate?.restingHeartRate,
+            minHeartRate: wellness.heartRate?.minHeartRate,
+            maxHeartRate: wellness.heartRate?.maxHeartRate,
+            averageHeartRate: wellness.heartRate?.averageHeartRate,
+            readinessScore: wellness.readiness?.score,
+            readinessRecommendation: wellness.readiness?.recommendation,
+            rawData: wellness,
+          });
+          
+          todayWellness = await db.query.garminWellnessMetrics.findFirst({
+            where: (m, { and, eq }) => and(
+              eq(m.userId, req.user!.userId),
+              eq(m.date, today)
+            ),
+          });
+        } catch (syncError) {
+          console.error("Failed to sync Garmin data for readiness:", syncError);
+        }
+      }
+      
+      // Get last 7 days for context
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const weekAgoStr = weekAgo.toISOString().split('T')[0];
+      
+      const recentMetrics = await db.query.garminWellnessMetrics.findMany({
+        where: (m, { and, eq, gte }) => and(
+          eq(m.userId, req.user!.userId),
+          gte(m.date, weekAgoStr)
+        ),
+        orderBy: (m, { desc }) => [desc(m.date)],
+      });
+      
+      // Calculate averages for context
+      const avgSleepHours = recentMetrics.length > 0
+        ? recentMetrics.reduce((sum, m) => sum + (m.totalSleepSeconds || 0), 0) / recentMetrics.length / 3600
+        : null;
+      
+      const avgBodyBattery = recentMetrics.length > 0
+        ? recentMetrics.reduce((sum, m) => sum + (m.bodyBatteryCurrent || 0), 0) / recentMetrics.length
+        : null;
+      
+      res.json({
+        garminConnected: !!garminDevice?.accessToken,
+        today: todayWellness ? {
+          readinessScore: todayWellness.readinessScore,
+          recommendation: todayWellness.readinessRecommendation,
+          sleepHours: todayWellness.totalSleepSeconds ? todayWellness.totalSleepSeconds / 3600 : null,
+          sleepQuality: todayWellness.sleepQuality,
+          sleepScore: todayWellness.sleepScore,
+          bodyBattery: todayWellness.bodyBatteryCurrent,
+          stressLevel: todayWellness.averageStressLevel,
+          stressQualifier: todayWellness.stressQualifier,
+          hrvStatus: todayWellness.hrvStatus,
+          hrvFeedback: todayWellness.hrvFeedback,
+          restingHeartRate: todayWellness.restingHeartRate,
+        } : null,
+        weeklyContext: {
+          avgSleepHours: avgSleepHours?.toFixed(1),
+          avgBodyBattery: avgBodyBattery?.toFixed(0),
+          daysWithData: recentMetrics.length,
+        },
+      });
+    } catch (error: any) {
+      console.error("Garmin readiness error:", error);
+      res.status(500).json({ error: "Failed to fetch readiness data" });
     }
   });
 

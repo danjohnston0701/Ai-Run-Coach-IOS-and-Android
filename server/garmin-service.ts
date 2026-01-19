@@ -287,6 +287,418 @@ export async function getGarminStressData(
 }
 
 /**
+ * Fetch detailed sleep data with sleep stages
+ */
+export async function getGarminSleepDetails(
+  accessToken: string,
+  date: Date
+): Promise<any> {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+  
+  const params = new URLSearchParams({
+    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
+    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
+  });
+  
+  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/sleeps?${params}`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Garmin sleep details: ${response.status}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Fetch Body Battery data
+ */
+export async function getGarminBodyBattery(
+  accessToken: string,
+  date: Date
+): Promise<any> {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+  
+  const params = new URLSearchParams({
+    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
+    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
+  });
+  
+  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/bodyBattery?${params}`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Garmin Body Battery: ${response.status}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Fetch HRV (Heart Rate Variability) data
+ */
+export async function getGarminHRVData(
+  accessToken: string,
+  date: Date
+): Promise<any> {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+  
+  const params = new URLSearchParams({
+    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
+    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
+  });
+  
+  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/hrv?${params}`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Garmin HRV data: ${response.status}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Fetch Respiration data
+ */
+export async function getGarminRespirationData(
+  accessToken: string,
+  date: Date
+): Promise<any> {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+  
+  const params = new URLSearchParams({
+    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
+    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
+  });
+  
+  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/respiration?${params}`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Garmin respiration data: ${response.status}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Fetch Pulse Ox (SpO2) data
+ */
+export async function getGarminPulseOx(
+  accessToken: string,
+  date: Date
+): Promise<any> {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+  
+  const params = new URLSearchParams({
+    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
+    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
+  });
+  
+  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/pulseOx?${params}`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Garmin Pulse Ox: ${response.status}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Fetch user stats including VO2 Max
+ */
+export async function getGarminUserStats(
+  accessToken: string
+): Promise<any> {
+  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/userStats`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Garmin user stats: ${response.status}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Fetch comprehensive wellness summary for a date range
+ * Combines sleep, stress, Body Battery, HRV, and activity readiness
+ */
+export async function getGarminComprehensiveWellness(
+  accessToken: string,
+  date: Date
+): Promise<{
+  date: string;
+  sleep: {
+    totalSleepSeconds: number;
+    deepSleepSeconds: number;
+    lightSleepSeconds: number;
+    remSleepSeconds: number;
+    awakeSleepSeconds: number;
+    sleepScore: number;
+    sleepQuality: string;
+  } | null;
+  stress: {
+    averageStressLevel: number;
+    maxStressLevel: number;
+    stressDuration: number;
+    restDuration: number;
+    activityDuration: number;
+    stressQualifier: string;
+  } | null;
+  bodyBattery: {
+    highestValue: number;
+    lowestValue: number;
+    currentValue: number;
+    chargedValue: number;
+    drainedValue: number;
+  } | null;
+  hrv: {
+    weeklyAvg: number;
+    lastNightAvg: number;
+    lastNight5MinHigh: number;
+    hrvStatus: string;
+    feedbackPhrase: string;
+  } | null;
+  heartRate: {
+    restingHeartRate: number;
+    minHeartRate: number;
+    maxHeartRate: number;
+    averageHeartRate: number;
+  } | null;
+  readiness: {
+    score: number;
+    recommendation: string;
+  };
+}> {
+  const dateStr = date.toISOString().split('T')[0];
+  
+  // Fetch all data in parallel
+  const [sleepData, stressData, bodyBatteryData, hrvData, heartRateData] = await Promise.allSettled([
+    getGarminSleepDetails(accessToken, date),
+    getGarminStressData(accessToken, date),
+    getGarminBodyBattery(accessToken, date),
+    getGarminHRVData(accessToken, date),
+    getGarminHeartRateData(accessToken, date),
+  ]);
+  
+  // Parse sleep data
+  let sleep = null;
+  if (sleepData.status === 'fulfilled' && sleepData.value?.length > 0) {
+    const s = sleepData.value[0];
+    const totalSleep = s.durationInSeconds || 0;
+    sleep = {
+      totalSleepSeconds: totalSleep,
+      deepSleepSeconds: s.deepSleepDurationInSeconds || 0,
+      lightSleepSeconds: s.lightSleepDurationInSeconds || 0,
+      remSleepSeconds: s.remSleepInSeconds || 0,
+      awakeSleepSeconds: s.awakeDurationInSeconds || 0,
+      sleepScore: s.sleepScores?.overall?.value || 0,
+      sleepQuality: getSleepQuality(totalSleep / 3600),
+    };
+  }
+  
+  // Parse stress data
+  let stress = null;
+  if (stressData.status === 'fulfilled' && stressData.value?.length > 0) {
+    const st = stressData.value[0];
+    stress = {
+      averageStressLevel: st.averageStressLevel || 0,
+      maxStressLevel: st.maxStressLevel || 0,
+      stressDuration: st.stressDuration || 0,
+      restDuration: st.restDuration || 0,
+      activityDuration: st.activityDuration || 0,
+      stressQualifier: getStressQualifier(st.averageStressLevel || 0),
+    };
+  }
+  
+  // Parse Body Battery data
+  let bodyBattery = null;
+  if (bodyBatteryData.status === 'fulfilled' && bodyBatteryData.value?.length > 0) {
+    const bb = bodyBatteryData.value[0];
+    bodyBattery = {
+      highestValue: bb.bodyBatteryHigh || 0,
+      lowestValue: bb.bodyBatteryLow || 0,
+      currentValue: bb.bodyBatteryMostRecentValue || 0,
+      chargedValue: bb.bodyBatteryChargedValue || 0,
+      drainedValue: bb.bodyBatteryDrainedValue || 0,
+    };
+  }
+  
+  // Parse HRV data
+  let hrv = null;
+  if (hrvData.status === 'fulfilled' && hrvData.value?.length > 0) {
+    const h = hrvData.value[0];
+    hrv = {
+      weeklyAvg: h.weeklyAvg || 0,
+      lastNightAvg: h.lastNightAvg || 0,
+      lastNight5MinHigh: h.lastNight5MinHigh || 0,
+      hrvStatus: h.status || 'unknown',
+      feedbackPhrase: h.feedbackPhrase || '',
+    };
+  }
+  
+  // Parse heart rate data
+  let heartRate = null;
+  if (heartRateData.status === 'fulfilled' && heartRateData.value?.length > 0) {
+    const hr = heartRateData.value[0];
+    heartRate = {
+      restingHeartRate: hr.restingHeartRate || 0,
+      minHeartRate: hr.minHeartRate || 0,
+      maxHeartRate: hr.maxHeartRate || 0,
+      averageHeartRate: hr.averageHeartRate || 0,
+    };
+  }
+  
+  // Calculate overall readiness score
+  const readiness = calculateReadinessScore(sleep, stress, bodyBattery, hrv);
+  
+  return {
+    date: dateStr,
+    sleep,
+    stress,
+    bodyBattery,
+    hrv,
+    heartRate,
+    readiness,
+  };
+}
+
+/**
+ * Helper: Get sleep quality description
+ */
+function getSleepQuality(hours: number): string {
+  if (hours >= 8) return 'Excellent';
+  if (hours >= 7) return 'Good';
+  if (hours >= 6) return 'Fair';
+  if (hours >= 5) return 'Poor';
+  return 'Very Poor';
+}
+
+/**
+ * Helper: Get stress qualifier
+ */
+function getStressQualifier(level: number): string {
+  if (level <= 25) return 'Resting';
+  if (level <= 50) return 'Low';
+  if (level <= 75) return 'Medium';
+  return 'High';
+}
+
+/**
+ * Helper: Calculate readiness score based on wellness metrics
+ */
+function calculateReadinessScore(
+  sleep: any,
+  stress: any,
+  bodyBattery: any,
+  hrv: any
+): { score: number; recommendation: string } {
+  let score = 50; // Base score
+  let factors: string[] = [];
+  
+  // Sleep contribution (0-25 points)
+  if (sleep) {
+    const sleepHours = sleep.totalSleepSeconds / 3600;
+    if (sleepHours >= 8) {
+      score += 25;
+    } else if (sleepHours >= 7) {
+      score += 20;
+    } else if (sleepHours >= 6) {
+      score += 10;
+    } else {
+      factors.push('low sleep');
+    }
+  } else {
+    factors.push('no sleep data');
+  }
+  
+  // Stress contribution (0-15 points)
+  if (stress) {
+    if (stress.averageStressLevel <= 25) {
+      score += 15;
+    } else if (stress.averageStressLevel <= 50) {
+      score += 10;
+    } else if (stress.averageStressLevel > 75) {
+      score -= 10;
+      factors.push('high stress');
+    }
+  }
+  
+  // Body Battery contribution (0-10 points)
+  if (bodyBattery) {
+    if (bodyBattery.currentValue >= 75) {
+      score += 10;
+    } else if (bodyBattery.currentValue >= 50) {
+      score += 5;
+    } else if (bodyBattery.currentValue < 25) {
+      score -= 5;
+      factors.push('low energy');
+    }
+  }
+  
+  // HRV contribution
+  if (hrv && hrv.hrvStatus === 'BALANCED') {
+    score += 5;
+  } else if (hrv && hrv.hrvStatus === 'LOW') {
+    score -= 5;
+    factors.push('HRV below baseline');
+  }
+  
+  // Clamp score
+  score = Math.max(0, Math.min(100, score));
+  
+  // Generate recommendation
+  let recommendation: string;
+  if (score >= 80) {
+    recommendation = 'You are well-rested and ready for a challenging workout!';
+  } else if (score >= 60) {
+    recommendation = 'Good readiness for a moderate intensity run.';
+  } else if (score >= 40) {
+    recommendation = 'Consider a lighter recovery run today.';
+  } else {
+    recommendation = `Your body needs recovery. ${factors.length > 0 ? `Factors: ${factors.join(', ')}` : ''}`;
+  }
+  
+  return { score, recommendation };
+}
+
+/**
  * Fetch user profile info
  */
 export async function getGarminUserProfile(accessToken: string): Promise<any> {
@@ -366,8 +778,15 @@ export default {
   getGarminActivityDetail,
   getGarminDailySummary,
   getGarminSleepData,
+  getGarminSleepDetails,
   getGarminHeartRateData,
   getGarminStressData,
+  getGarminBodyBattery,
+  getGarminHRVData,
+  getGarminRespirationData,
+  getGarminPulseOx,
+  getGarminUserStats,
+  getGarminComprehensiveWellness,
   getGarminUserProfile,
   parseGarminActivity,
 };

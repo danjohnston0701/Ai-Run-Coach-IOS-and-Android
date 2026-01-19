@@ -316,6 +316,58 @@ export const userCoupons = pgTable("user_coupons", {
   expiresAt: timestamp("expires_at"),
 });
 
+// Garmin Wellness Metrics table (sleep, stress, Body Battery, HRV, etc.)
+export const garminWellnessMetrics = pgTable("garmin_wellness_metrics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  
+  // Sleep metrics
+  totalSleepSeconds: integer("total_sleep_seconds"),
+  deepSleepSeconds: integer("deep_sleep_seconds"),
+  lightSleepSeconds: integer("light_sleep_seconds"),
+  remSleepSeconds: integer("rem_sleep_seconds"),
+  awakeSleepSeconds: integer("awake_sleep_seconds"),
+  sleepScore: integer("sleep_score"),
+  sleepQuality: text("sleep_quality"),
+  
+  // Stress metrics
+  averageStressLevel: integer("average_stress_level"),
+  maxStressLevel: integer("max_stress_level"),
+  stressDuration: integer("stress_duration"), // seconds
+  restDuration: integer("rest_duration"), // seconds
+  stressQualifier: text("stress_qualifier"),
+  
+  // Body Battery metrics
+  bodyBatteryHigh: integer("body_battery_high"),
+  bodyBatteryLow: integer("body_battery_low"),
+  bodyBatteryCurrent: integer("body_battery_current"),
+  bodyBatteryCharged: integer("body_battery_charged"),
+  bodyBatteryDrained: integer("body_battery_drained"),
+  
+  // HRV metrics
+  hrvWeeklyAvg: real("hrv_weekly_avg"),
+  hrvLastNightAvg: real("hrv_last_night_avg"),
+  hrvLastNight5MinHigh: real("hrv_last_night_5min_high"),
+  hrvStatus: text("hrv_status"),
+  hrvFeedback: text("hrv_feedback"),
+  
+  // Heart rate metrics
+  restingHeartRate: integer("resting_heart_rate"),
+  minHeartRate: integer("min_heart_rate"),
+  maxHeartRate: integer("max_heart_rate"),
+  averageHeartRate: integer("average_heart_rate"),
+  
+  // Readiness
+  readinessScore: integer("readiness_score"),
+  readinessRecommendation: text("readiness_recommendation"),
+  
+  // Raw data for debugging
+  rawData: jsonb("raw_data"),
+  
+  syncedAt: timestamp("synced_at").defaultNow(),
+});
+
 // Device Data table (for Garmin, Samsung, Apple, Coros, Strava data)
 export const deviceData = pgTable("device_data", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -383,3 +435,4 @@ export type RouteRating = typeof routeRatings.$inferSelect;
 export type RunAnalysis = typeof runAnalyses.$inferSelect;
 export type DeviceData = typeof deviceData.$inferSelect;
 export type ConnectedDevice = typeof connectedDevices.$inferSelect;
+export type GarminWellnessMetric = typeof garminWellnessMetrics.$inferSelect;
