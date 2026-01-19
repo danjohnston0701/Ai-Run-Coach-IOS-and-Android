@@ -1464,16 +1464,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("[Wellness Sync] Record to insert/update:", JSON.stringify(wellnessRecord, null, 2));
       console.log("[Wellness Sync] Existing record:", existing ? existing.id : "none");
       
-      if (existing) {
-        // Update existing record
-        await db.update(garminWellnessMetrics)
-          .set({ ...wellnessRecord, syncedAt: new Date() })
-          .where(eq(garminWellnessMetrics.id, existing.id));
-        console.log("[Wellness Sync] Updated existing record:", existing.id);
-      } else {
-        // Insert new record
-        const result = await db.insert(garminWellnessMetrics).values(wellnessRecord);
-        console.log("[Wellness Sync] Inserted new record");
+      try {
+        if (existing) {
+          // Update existing record
+          await db.update(garminWellnessMetrics)
+            .set({ ...wellnessRecord, syncedAt: new Date() })
+            .where(eq(garminWellnessMetrics.id, existing.id));
+          console.log("[Wellness Sync] Updated existing record:", existing.id);
+        } else {
+          // Insert new record
+          await db.insert(garminWellnessMetrics).values(wellnessRecord);
+          console.log("[Wellness Sync] Inserted new record");
+        }
+      } catch (dbError: any) {
+        console.error("[Wellness Sync] Database error:", dbError.message);
+        // If update failed (record doesn't exist), try insert
+        if (existing) {
+          console.log("[Wellness Sync] Update failed, trying insert...");
+          await db.insert(garminWellnessMetrics).values(wellnessRecord);
+          console.log("[Wellness Sync] Insert after failed update succeeded");
+        } else {
+          throw dbError;
+        }
       }
       
       res.json({ success: true, wellness });
