@@ -100,16 +100,16 @@ export async function exchangeGarminCode(
   }
   
   // Garmin requires client_id and client_secret in the POST body (not Basic Auth)
-  const tokenParams = {
-    grant_type: 'authorization_code',
-    code: code,
-    redirect_uri: redirectUri,
-    code_verifier: codeVerifier,
-    client_id: GARMIN_CLIENT_ID!,
-    client_secret: GARMIN_CLIENT_SECRET!,
-  };
-  
-  const bodyParams = new URLSearchParams(tokenParams);
+  // Build the form body manually to ensure proper encoding
+  const formParts = [
+    `grant_type=authorization_code`,
+    `code=${encodeURIComponent(code)}`,
+    `redirect_uri=${encodeURIComponent(redirectUri)}`,
+    `code_verifier=${encodeURIComponent(codeVerifier)}`,
+    `client_id=${encodeURIComponent(GARMIN_CLIENT_ID!)}`,
+    `client_secret=${encodeURIComponent(GARMIN_CLIENT_SECRET!)}`,
+  ];
+  const formBody = formParts.join('&');
   
   console.log('=== GARMIN TOKEN EXCHANGE ===');
   console.log('Token URL:', GARMIN_TOKEN_URL);
@@ -119,8 +119,8 @@ export async function exchangeGarminCode(
   console.log('Code verifier:', codeVerifier);
   console.log('Code verifier length:', codeVerifier.length);
   console.log('Client ID:', GARMIN_CLIENT_ID);
-  console.log('Client Secret length:', GARMIN_CLIENT_SECRET?.length);
-  console.log('Request body:', bodyParams.toString());
+  console.log('Client Secret (first 5 chars):', GARMIN_CLIENT_SECRET?.substring(0, 5));
+  console.log('Request body:', formBody);
   console.log('==============================');
   
   const response = await fetch(GARMIN_TOKEN_URL, {
@@ -128,7 +128,7 @@ export async function exchangeGarminCode(
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: bodyParams,
+    body: formBody,
   });
   
   if (!response.ok) {
