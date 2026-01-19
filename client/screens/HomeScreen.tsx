@@ -44,6 +44,8 @@ import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
 import { getStoredToken } from "@/lib/token-storage";
 
+import appIcon from "../../assets/images/icon.png";
+
 interface Goal {
   id: number;
   title: string;
@@ -417,6 +419,11 @@ export default function HomeScreen({ navigation }: any) {
         />
       }
     >
+      {/* App Logo */}
+      <View style={styles.logoContainer}>
+        <Image source={appIcon} style={styles.appLogo} />
+      </View>
+
       {/* Welcome Header */}
       <View style={styles.welcomeSection}>
         <View style={styles.welcomeText}>
@@ -812,6 +819,15 @@ export default function HomeScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  logoContainer: {
+    alignItems: "center",
+    marginBottom: Spacing.lg,
+  },
+  appLogo: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
   },
   welcomeSection: {
     flexDirection: "row",
