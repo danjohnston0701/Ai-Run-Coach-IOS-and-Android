@@ -70,6 +70,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Colors, Spacing, BorderRadius, Typography } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
+import { getStoredToken } from "@/lib/token-storage";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { GpsPoint } from "@/lib/types";
 
