@@ -1208,6 +1208,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
           tokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+          lastSyncAt: new Date(),
         });
       }
       

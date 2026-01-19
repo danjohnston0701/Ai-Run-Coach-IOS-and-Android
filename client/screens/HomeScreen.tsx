@@ -439,6 +439,50 @@ export default function HomeScreen({ navigation }: any) {
         </Pressable>
       </View>
 
+      {/* Garmin Connection Indicator */}
+      <Pressable 
+        onPress={() => navigation.navigate("ProfileTab", { screen: "ConnectedDevices" })}
+        style={[
+          styles.garminIndicator, 
+          { 
+            backgroundColor: garminStatus.isConnected 
+              ? theme.success + "15" 
+              : theme.backgroundSecondary,
+            borderColor: garminStatus.isConnected 
+              ? theme.success + "40" 
+              : theme.border,
+          }
+        ]}
+      >
+        <View style={styles.garminLeft}>
+          <View style={[
+            styles.garminIconContainer, 
+            { backgroundColor: garminStatus.isConnected ? theme.success + "20" : theme.backgroundSecondary }
+          ]}>
+            <IconWatch size={18} color={garminStatus.isConnected ? theme.success : theme.textMuted} />
+          </View>
+          <View style={styles.garminInfo}>
+            <View style={styles.garminTitleRow}>
+              <ThemedText type="body" style={{ fontWeight: "600" }}>
+                {garminStatus.isConnected ? "Garmin Connected" : "Connect Garmin"}
+              </ThemedText>
+              {garminStatus.isConnected ? (
+                <View style={[styles.connectedBadge, { backgroundColor: theme.success + "20" }]}>
+                  <IconCheck size={10} color={theme.success} />
+                </View>
+              ) : null}
+            </View>
+            <ThemedText type="small" style={{ color: theme.textMuted }}>
+              {garminStatus.isConnected 
+                ? `Last sync: ${formatLastSync(garminStatus.lastSyncAt)}`
+                : "Tap to connect your watch"
+              }
+            </ThemedText>
+          </View>
+        </View>
+        <IconChevronRight size={16} color={theme.textMuted} />
+      </Pressable>
+
       {/* Goal Card */}
       <Pressable onPress={() => navigation.navigate("GoalsTab")}>
         <Card style={[styles.goalCard, { borderColor: theme.border }]}>
@@ -495,50 +539,6 @@ export default function HomeScreen({ navigation }: any) {
           </ThemedText>
         </View>
       </View>
-
-      {/* Garmin Connection Indicator */}
-      <Pressable 
-        onPress={() => navigation.navigate("ProfileTab", { screen: "ConnectedDevices" })}
-        style={[
-          styles.garminIndicator, 
-          { 
-            backgroundColor: garminStatus.isConnected 
-              ? theme.success + "15" 
-              : theme.backgroundSecondary,
-            borderColor: garminStatus.isConnected 
-              ? theme.success + "40" 
-              : theme.border,
-          }
-        ]}
-      >
-        <View style={styles.garminLeft}>
-          <View style={[
-            styles.garminIconContainer, 
-            { backgroundColor: garminStatus.isConnected ? theme.success + "20" : theme.backgroundSecondary }
-          ]}>
-            <IconWatch size={18} color={garminStatus.isConnected ? theme.success : theme.textMuted} />
-          </View>
-          <View style={styles.garminInfo}>
-            <View style={styles.garminTitleRow}>
-              <ThemedText type="body" style={{ fontWeight: "600" }}>
-                {garminStatus.isConnected ? "Garmin Connected" : "Connect Garmin"}
-              </ThemedText>
-              {garminStatus.isConnected ? (
-                <View style={[styles.connectedBadge, { backgroundColor: theme.success + "20" }]}>
-                  <IconCheck size={10} color={theme.success} />
-                </View>
-              ) : null}
-            </View>
-            <ThemedText type="small" style={{ color: theme.textMuted }}>
-              {garminStatus.isConnected 
-                ? `Last sync: ${formatLastSync(garminStatus.lastSyncAt)}`
-                : "Tap to connect your watch"
-              }
-            </ThemedText>
-          </View>
-        </View>
-        <IconChevronRight size={16} color={theme.textMuted} />
-      </Pressable>
 
       {/* Location Card - hidden on native when permission granted (device GPS is more accurate) */}
       {(Platform.OS === "web" || !locationPermissionGranted) ? (
