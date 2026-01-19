@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
 export interface CoachingContext {
   distance?: number;
@@ -169,4 +170,158 @@ function buildCoachingSystemPrompt(context: CoachingContext): string {
   }
   
   return prompt;
+}
+
+export interface RouteGenerationParams {
+  startLat: number;
+  startLng: number;
+  distance: number;
+  difficulty: string;
+  activityType?: string;
+  terrainPreference?: string;
+  avoidHills?: boolean;
+}
+
+export interface GeneratedRoute {
+  id: string;
+  name: string;
+  distance: number;
+  difficulty: string;
+  startLat: number;
+  startLng: number;
+  endLat: number;
+  endLng: number;
+  waypoints: { lat: number; lng: number }[];
+  elevation: number;
+  elevationGain: number;
+  estimatedTime: number;
+  terrainType: string;
+  polyline: string;
+  description: string;
+}
+
+export async function generateRouteOptions(params: RouteGenerationParams): Promise<GeneratedRoute[]> {
+  const { startLat, startLng, distance, difficulty, activityType = 'run' } = params;
+  
+  // Generate 2-3 route options using AI to suggest waypoints
+  const prompt = `Generate 3 different running route options starting from coordinates (${startLat}, ${startLng}).
+Target distance: ${distance}km
+Difficulty: ${difficulty}
+Activity: ${activityType}
+
+For each route, provide:
+1. A creative name
+2. 3-5 waypoint coordinates that create a loop back to start
+3. Estimated elevation gain (in meters)
+4. Terrain description (trail, road, mixed, park)
+5. Brief description
+
+Respond in JSON format:
+{
+  "routes": [
+    {
+      "name": "Route Name",
+      "waypoints": [{"lat": 51.5, "lng": -0.1}, ...],
+      "elevationGain": 50,
+      "terrainType": "mixed",
+      "description": "Brief description"
+    }
+  ]
+}`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "You are a running route planner. Generate realistic waypoints near the starting location that create approximately the requested distance as a loop. Respond only with valid JSON." },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 1000,
+      temperature: 0.8,
+    });
+
+    const content = completion.choices[0].message.content || "{}";
+    const parsed = JSON.parse(content.replace(/```json\n?|\n?```/g, ''));
+    
+    const generatedRoutes: GeneratedRoute[] = [];
+    
+    for (let i = 0; i < (parsed.routes || []).length; i++) {
+      const route = parsed.routes[i];
+      const waypoints = route.waypoints || [];
+      
+      // Get directions from Google Maps to get actual polyline and distance
+      const directionsData = await getGoogleDirections(startLat, startLng, waypoints);
+      
+      const routeId = `route_${Date.now()}_${i}`;
+      generatedRoutes.push({
+        id: routeId,
+        name: route.name || `Route ${i + 1}`,
+        distance: directionsData.distance || distance,
+        difficulty: difficulty,
+        startLat: startLat,
+        startLng: startLng,
+        endLat: startLat,
+        endLng: startLng,
+        waypoints: waypoints,
+        elevation: route.elevationGain || 0,
+        elevationGain: route.elevationGain || 0,
+        estimatedTime: Math.round((directionsData.distance || distance) * (activityType === 'walk' ? 12 : 6)),
+        terrainType: route.terrainType || 'mixed',
+        polyline: directionsData.polyline || '',
+        description: route.description || ''
+      });
+    }
+    
+    return generatedRoutes;
+  } catch (error) {
+    console.error("Route generation error:", error);
+    // Return a simple fallback route
+    return [{
+      id: `route_${Date.now()}`,
+      name: "Quick Route",
+      distance: distance,
+      difficulty: difficulty,
+      startLat: startLat,
+      startLng: startLng,
+      endLat: startLat,
+      endLng: startLng,
+      waypoints: [],
+      elevation: 0,
+      elevationGain: 0,
+      estimatedTime: Math.round(distance * 6),
+      terrainType: "road",
+      polyline: "",
+      description: "A simple out-and-back route"
+    }];
+  }
+}
+
+async function getGoogleDirections(startLat: number, startLng: number, waypoints: { lat: number; lng: number }[]): Promise<{ distance: number; polyline: string }> {
+  if (!GOOGLE_MAPS_API_KEY || waypoints.length === 0) {
+    return { distance: 0, polyline: '' };
+  }
+
+  try {
+    const origin = `${startLat},${startLng}`;
+    const destination = origin; // Loop back
+    const waypointStr = waypoints.map(w => `${w.lat},${w.lng}`).join('|');
+    
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&waypoints=${waypointStr}&mode=walking&key=${GOOGLE_MAPS_API_KEY}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+      const totalDistance = route.legs.reduce((sum: number, leg: any) => sum + leg.distance.value, 0) / 1000;
+      return {
+        distance: Math.round(totalDistance * 10) / 10,
+        polyline: route.overview_polyline?.points || ''
+      };
+    }
+  } catch (error) {
+    console.error("Google Directions API error:", error);
+  }
+  
+  return { distance: 0, polyline: '' };
 }

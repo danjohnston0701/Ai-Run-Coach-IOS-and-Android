@@ -306,14 +306,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/routes/generate-options", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // For route generation, we'll proxy to the production API that has OpenAI integration
-      const response = await fetch("https://airuncoach.live/api/routes/generate-options", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
+      const { startLat, startLng, distance, difficulty, activityType, terrainPreference, avoidHills } = req.body;
+      
+      if (!startLat || !startLng || !distance) {
+        return res.status(400).json({ error: "Missing required fields: startLat, startLng, distance" });
+      }
+      
+      const aiService = await import("./ai-service");
+      const routes = await aiService.generateRouteOptions({
+        startLat: parseFloat(startLat),
+        startLng: parseFloat(startLng),
+        distance: parseFloat(distance),
+        difficulty: difficulty || 'moderate',
+        activityType: activityType || 'run',
+        terrainPreference,
+        avoidHills
       });
-      const data = await response.json();
-      res.json(data);
+      
+      res.json({ routes });
     } catch (error: any) {
       console.error("Generate routes error:", error);
       res.status(500).json({ error: "Failed to generate routes" });
