@@ -1097,7 +1097,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const baseUrl = `https://${req.get('host')}`;
       const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
       
+      console.log("=== GARMIN OAUTH DEBUG ===");
+      console.log("Request host:", req.get('host'));
+      console.log("Base URL:", baseUrl);
+      console.log("Redirect URI being sent:", redirectUri);
+      console.log("App redirect (after auth):", appRedirect);
+      console.log("State data:", stateData);
+      
       const authUrl = garminService.getGarminAuthUrl(redirectUri, state);
+      console.log("Full auth URL:", authUrl);
+      console.log("=========================");
+      
       res.json({ authUrl, state });
     } catch (error: any) {
       console.error("Garmin auth initiation error:", error);
@@ -1107,6 +1117,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Garmin OAuth callback
   app.get("/api/auth/garmin/callback", async (req: Request, res: Response) => {
+    console.log("=== GARMIN CALLBACK RECEIVED ===");
+    console.log("Query params:", req.query);
+    console.log("Full URL:", req.originalUrl);
+    console.log("================================");
     try {
       const { code, state, error } = req.query;
       
