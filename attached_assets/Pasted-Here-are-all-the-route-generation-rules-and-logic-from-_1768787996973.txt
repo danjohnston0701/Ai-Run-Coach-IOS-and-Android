@@ -1,0 +1,337 @@
+Here are all the route generation rules and logic from the codebase:
+
+Route Generation Complete Rules & Logic
+1. Base Radius Calculation
+// Base radius determines the geographic spread of waypoints
+// Previously used: targetDistance / (2 * Math.PI) = ~1.6km for 10km (too small)
+// Current formula: targetDistance / 2.0 = 5km radius for 10km route
+const baseRadius = targetDistance / 2.0;
+2. Map Footprint Calculation
+The footprint is the diagonal span of the route - the distance from the southwest corner to the northeast corner of the bounding box:
+
+function getRouteFootprint(polyline: string): number {
+  const points = decodePolyline(polyline);
+  if (points.length < 2) return 0;
+  
+  let minLat = Infinity, maxLat = -Infinity;
+  let minLng = Infinity, maxLng = -Infinity;
+  
+  for (const p of points) {
+    minLat = Math.min(minLat, p.lat);
+    maxLat = Math.max(maxLat, p.lat);
+    minLng = Math.min(minLng, p.lng);
+    maxLng = Math.max(maxLng, p.lng);
+  }
+  
+  return getDistanceKm({ lat: minLat, lng: minLng }, { lat: maxLat, lng: maxLng });
+}
+3. Dead-End / Backtrack Detection
+Detects when a route doubles back on itself. Excludes first/last 300m to allow legitimate shared access streets:
+
+function calculateBacktrackRatio(polyline: string): number {
+  const points = decodePolyline(polyline);
+  if (points.length < 10) return 0;
+  
+  // Calculate cumulative distances
+  const distances: number[] = [0];
+  for (let i = 1; i < points.length; i++) {
+    distances.push(distances[i-1] + getDistanceKm(points[i-1], points[i]));
+  }
+  const totalDistance = distances[distances.length - 1];
+  const excludeDistance = 0.3; // 300m in km
+  
+  // Find indices to skip first and last 300m
+  let startIdx = 0;
+  let endIdx = points.length - 1;
+  for (let i = 0; i < distances.length; i++) {
+    if (distances[i] >= excludeDistance) {
+      startIdx = i;
+      break;
+    }
+  }
+  for (let i = distances.length - 1; i >= 0; i--) {
+    if (totalDistance - distances[i] >= excludeDistance) {
+      endIdx = i;
+      break;
+    }
+  }
+  
+  // If route too short, analyze full route
+  if (endIdx <= startIdx + 5) {
+    startIdx = 0;
+    endIdx = points.length - 1;
+  }
+  
+  const gridSize = 0.0003; // ~30m grid for detection
+  const directedSegments: string[] = [];
+  
+  // Create directed segments for middle portion only
+  for (let i = startIdx; i < endIdx; i++) {
+    const g1 = `${Math.round(points[i].lat / gridSize)},${Math.round(points[i].lng / gridSize)}`;
+    const g2 = `${Math.round(points[i+1].lat / gridSize)},${Math.round(points[i+1].lng / gridSize)}`;
+    if (g1 !== g2) {
+      directedSegments.push(`${g1}->${g2}`);
+    }
+  }
+  
+  if (directedSegments.length === 0) return 0;
+  
+  // Count segments that have their reverse also in the route
+  const segmentSet = new Set(directedSegments);
+  let backtrackCount = 0;
+  
+  for (const seg of directedSegments) {
+    const parts = seg.split('->');
+    const reverse = `${parts[1]}->${parts[0]}`;
+    if (segmentSet.has(reverse)) {
+      backtrackCount++;
+    }
+  }
+  
+  return backtrackCount / directedSegments.length; // 0-1 ratio
+}
+4. Angular Spread (Circuit Criteria)
+Measures how many degrees around the start point the route covers. A true circuit should cover at least 180-240 degrees:
+
+function calculateAngularSpread(polyline: string, startLat: number, startLng: number): number {
+  const points = decodePolyline(polyline);
+  if (points.length < 5) return 0;
+  
+  const bearings: number[] = [];
+  for (const point of points) {
+    const dLat = point.lat - startLat;
+    const dLng = point.lng - startLng;
+    if (Math.abs(dLat) < 0.0001 && Math.abs(dLng) < 0.0001) continue; // Skip points at start
+    
+    const bearing = Math.atan2(dLng, dLat) * 180 / Math.PI;
+    const normalizedBearing = ((bearing % 360) + 360) % 360;
+    bearings.push(normalizedBearing);
+  }
+  
+  if (bearings.length < 3) return 0;
+  
+  // Count unique 30-degree sectors covered
+  const sectors = new Set<number>();
+  for (const bearing of bearings) {
+    sectors.add(Math.floor(bearing / 30));
+  }
+  
+  return sectors.size * 30; // Returns 0-360 degrees
+}
+5. Circuit Validation
+Combines backtrack ratio and angular spread to determine if a route is a genuine circuit:
+
+function isGenuineCircuit(polyline: string, startLat: number, startLng: number): { 
+  valid: boolean; 
+  backtrackRatio: number; 
+  angularSpread: number 
+} {
+  const backtrackRatio = calculateBacktrackRatio(polyline);
+  const angularSpread = calculateAngularSpread(polyline, startLat, startLng);
+  
+  // THRESHOLDS:
+  // - Maximum 35% backtracking
+  // - Minimum 180 degrees angular coverage
+  const valid = angularSpread >= 180 && backtrackRatio <= 0.35;
+  
+  return { valid, backtrackRatio, angularSpread };
+}
+6. Route Overlap/Similarity Detection
+Prevents generating multiple routes that are too similar:
+
+function getRouteSegments(polyline: string): Set<string> {
+  const points = decodePolyline(polyline);
+  const segments = new Set<string>();
+  const gridSize = 0.0005; // ~50m grid
+  
+  for (let i = 0; i < points.length - 1; i++) {
+    const g1 = `${Math.round(points[i].lat / gridSize)},${Math.round(points[i].lng / gridSize)}`;
+    const g2 = `${Math.round(points[i+1].lat / gridSize)},${Math.round(points[i+1].lng / gridSize)}`;
+    if (g1 !== g2) {
+      segments.add([g1, g2].sort().join("->"));
+    }
+  }
+  
+  return segments;
+}
+function calculateRouteOverlap(polyline1: string, polyline2: string): number {
+  const seg1 = getRouteSegments(polyline1);
+  const seg2 = getRouteSegments(polyline2);
+  
+  if (seg1.size === 0 || seg2.size === 0) return 0;
+  
+  let overlap = 0;
+  seg1.forEach(s => {
+    if (seg2.has(s)) overlap++;
+  });
+  
+  return overlap / Math.min(seg1.size, seg2.size); // 0-1 ratio
+}
+// THRESHOLD: Routes with >40% overlap are rejected as "too similar"
+7. Geometric Template Patterns (24 Templates)
+Uses bearing and radius to project waypoints in various patterns:
+
+function projectPoint(lat: number, lng: number, bearingDegrees: number, distanceKm: number): { lat: number; lng: number } {
+  const R = 6371; // Earth radius km
+  const lat1 = toRadians(lat);
+  const lng1 = toRadians(lng);
+  const bearing = toRadians(bearingDegrees);
+  const d = distanceKm / R;
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
+  );
+  const lng2 = lng1 + Math.atan2(
+    Math.sin(bearing) * Math.sin(d) * Math.cos(lat1),
+    Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+  );
+  return { lat: toDegrees(lat2), lng: toDegrees(lng2) };
+}
+// Templates include:
+// 1. North Loop (330°, 30°, 90° bearings at 1.2x, 1.4x, 0.8x radius)
+// 2. South Loop (150°, 210°, 270° bearings)
+// 3. East Loop (45°, 90°, 135° bearings)
+// 4. West Loop (225°, 270°, 315° bearings)
+// 5. Clockwise Square (0°, 90°, 180°, 270° at 1.4x radius)
+// 6. Counter-clockwise Square (270°, 180°, 90°, 0°)
+// 7. NE-SW Diagonal (45°, 225° at 1.8x radius)
+// 8. NW-SE Diagonal (315°, 135°)
+// 9. Pentagon (0°, 72°, 144°, 216°, 288° at 1.3x)
+// 10. Figure-8 NS
+// 11. Figure-8 EW
+// 12. North Reach (extended north)
+// 13. South Reach (extended south)
+// 14. Hexagon (6 points at 60° intervals)
+// 15. East Heavy (asymmetric)
+// 16. West Heavy (asymmetric)
+// 17. Triangle North
+// 18. Triangle South
+// 19. Octagon Circuit (8 points at 45° intervals)
+// 20. Large Octagon
+// 21. North-South Circuit (6 points)
+// 22. East-West Circuit (6 points)
+// 23. Cloverleaf (8 points alternating far/near)
+// 24. Diamond Extended (8 points)
+8. Trail-Based Templates
+Uses actual nearby parks/trails as waypoints:
+
+function generateTrailBasedTemplates(startLat, startLng, targetDistance, places) {
+  const baseRadius = targetDistance / 4;
+  
+  // Filter places between 200m and 2x radius from start
+  const nearbyPlaces = places.filter(p => {
+    const dist = getDistanceKm({ lat: startLat, lng: startLng }, { lat: p.lat, lng: p.lng });
+    return dist > 0.2 && dist < baseRadius * 2;
+  });
+  
+  // Create 2-waypoint and 3-waypoint templates using nearby places
+  // ...
+}
+9. Route Calibration (Distance Scaling)
+Iteratively scales waypoints to hit target distance within tolerance:
+
+async function calibrateRoute(startLat, startLng, baseWaypoints, targetDistance, optimize) {
+  let scale = 1.0;
+  let minScale = 0.2;
+  let maxScale = 12.0; // Wide range for variety
+  
+  let bestResult = null;
+  let bestError = Infinity;
+  
+  for (let i = 0; i < 5; i++) { // 5 iterations
+    // Scale waypoints from center
+    const scaledWaypoints = baseWaypoints.map(wp => ({
+      lat: startLat + (wp.lat - startLat) * scale,
+      lng: startLng + (wp.lng - startLng) * scale
+    }));
+    
+    const result = await fetchRoute(origin, scaledWaypoints, optimize);
+    
+    if (!result.success) {
+      maxScale = scale;
+      scale = (minScale + maxScale) / 2;
+      continue;
+    }
+    
+    const error = Math.abs(result.distance - targetDistance) / targetDistance;
+    
+    if (error < bestError) {
+      bestError = error;
+      bestResult = { waypoints: scaledWaypoints, result };
+    }
+    
+    // THRESHOLD: Accept if within 20% of target
+    if (error < 0.20) {
+      return { waypoints: scaledWaypoints, result };
+    }
+    
+    // Binary search adjustment
+    if (result.distance < targetDistance) {
+      minScale = scale;
+    } else {
+      maxScale = scale;
+    }
+    scale = (minScale + maxScale) / 2;
+  }
+  
+  // Return best if within 35% tolerance
+  return (bestResult && bestError < 0.35) ? bestResult : null;
+}
+10. Progressive Relaxation Thresholds
+Route selection uses progressively lenient filters:
+
+// STRICT PASS (first priority):
+const backtrackThresholds = [0.10, 0.15, 0.20, 0.25]; // 10%, 15%, 20%, 25% max
+const minAngularSpread = 150; // degrees
+// RELAXED FALLBACK (if fewer than 3 routes):
+const relaxedBacktrackThresholds = [0.30, 0.35, 0.40]; // 30%, 35%, 40%
+const relaxedAngularSpread = 120; // degrees
+// Route similarity threshold
+const maxOverlap = 0.40; // 40% - reject if more similar than this
+// Target: Generate 3-5 diverse routes
+11. Major Road Detection
+const MAJOR_ROAD_KEYWORDS = ['highway', 'hwy', 'motorway', 'expressway', 'freeway', 'interstate', 'turnpike'];
+function containsMajorRoads(instructions: string[]): boolean {
+  for (const instruction of instructions) {
+    const lower = instruction.toLowerCase();
+    for (const keyword of MAJOR_ROAD_KEYWORDS) {
+      if (lower.includes(keyword)) return true;
+    }
+  }
+  return false;
+}
+12. Difficulty Assignment
+// Base difficulty from route characteristics
+let difficulty: "easy" | "moderate" | "hard";
+if (backtrackRatio <= 0.25 && !hasMajorRoads) {
+  difficulty = "easy";
+} else {
+  difficulty = "moderate";
+}
+// Major roads bump to moderate
+if (hasMajorRoads && difficulty === "easy") {
+  difficulty = "moderate";
+}
+// ELEVATION ADJUSTMENT (after fetching elevation):
+if (elevation.gain > 100 && difficulty === "easy") {
+  difficulty = "moderate";
+}
+if (elevation.gain > 200) {
+  difficulty = "hard";
+}
+13. Google Directions API Call
+const url = `https://maps.googleapis.com/maps/api/directions/json?` +
+  `origin=${origin.lat},${origin.lng}` +
+  `&destination=${origin.lat},${origin.lng}` + // Loop back to start
+  `&waypoints=${optimizeParam}${waypointsStr}` +
+  `&mode=walking` +
+  `&avoid=highways` +
+  `&key=${GOOGLE_MAPS_API_KEY}`;
+Summary of Key Thresholds
+Metric	Strict	Relaxed	Purpose
+Max Backtrack Ratio	25%	40%	Dead-end avoidance
+Min Angular Spread	150°	120°	Circuit validation
+Max Route Overlap	40%	40%	Route diversity
+Distance Tolerance	20%	35%	Target distance matching
+Elevation for Hard	>200m gain	-	Difficulty
+Elevation for Moderate	>100m gain	-	Difficulty
+This is the complete route generation logic. Let me know if you need any clarification on specific parts.
