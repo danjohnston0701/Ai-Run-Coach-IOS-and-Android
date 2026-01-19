@@ -99,11 +99,12 @@ export async function exchangeGarminCode(
     throw new Error('Invalid state - PKCE code verifier not found for nonce: ' + nonce);
   }
   
+  // Use Basic Auth for token exchange (required by Garmin)
+  const basicAuth = Buffer.from(`${GARMIN_CLIENT_ID}:${GARMIN_CLIENT_SECRET}`).toString('base64');
+  
   const tokenParams = {
     grant_type: 'authorization_code',
     code: code,
-    client_id: GARMIN_CLIENT_ID!,
-    client_secret: GARMIN_CLIENT_SECRET!,
     redirect_uri: redirectUri,
     code_verifier: codeVerifier,
   };
@@ -115,12 +116,14 @@ export async function exchangeGarminCode(
   console.log('Code verifier length:', codeVerifier.length);
   console.log('Client ID present:', !!GARMIN_CLIENT_ID);
   console.log('Client Secret present:', !!GARMIN_CLIENT_SECRET);
+  console.log('Using Basic Auth:', 'Yes');
   console.log('==============================');
   
   const response = await fetch(GARMIN_TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${basicAuth}`,
     },
     body: new URLSearchParams(tokenParams),
   });
@@ -149,16 +152,18 @@ export async function refreshGarminToken(refreshToken: string): Promise<{
   refreshToken: string;
   expiresIn: number;
 }> {
+  // Use Basic Auth for token refresh (required by Garmin)
+  const basicAuth = Buffer.from(`${GARMIN_CLIENT_ID}:${GARMIN_CLIENT_SECRET}`).toString('base64');
+  
   const response = await fetch(GARMIN_TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${basicAuth}`,
     },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      client_id: GARMIN_CLIENT_ID!,
-      client_secret: GARMIN_CLIENT_SECRET!,
     }),
   });
   
