@@ -17,7 +17,8 @@ import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { Colors, Spacing } from '../constants/theme';
-import { getApiUrl, getStoredToken } from '../lib/query-client';
+import { getApiUrl } from '../lib/query-client';
+import { getStoredToken } from '../lib/token-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { useRoute } from '@react-navigation/native';
 
