@@ -9,7 +9,18 @@ const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/toke
 const GARMIN_API_BASE = 'https://apis.garmin.com';
 
 // Store PKCE code verifiers temporarily (in production, use Redis or database)
-const codeVerifiers = new Map<string, string>();
+// Key is a simple nonce to avoid URL encoding issues
+const codeVerifiers = new Map<string, { verifier: string; timestamp: number }>();
+
+// Clean up old verifiers (older than 10 minutes)
+function cleanupOldVerifiers() {
+  const now = Date.now();
+  for (const [key, data] of codeVerifiers.entries()) {
+    if (now - data.timestamp > 10 * 60 * 1000) {
+      codeVerifiers.delete(key);
+    }
+  }
+}
 
 /**
  * Generate PKCE code verifier and challenge
@@ -24,13 +35,38 @@ function generatePKCE(): { codeVerifier: string; codeChallenge: string } {
 }
 
 /**
+ * Store code verifier for a given nonce
+ */
+export function storeCodeVerifier(nonce: string, codeVerifier: string): void {
+  cleanupOldVerifiers();
+  codeVerifiers.set(nonce, { verifier: codeVerifier, timestamp: Date.now() });
+  console.log(`[Garmin] Stored code verifier for nonce: ${nonce}, total stored: ${codeVerifiers.size}`);
+}
+
+/**
+ * Retrieve and remove code verifier for a given nonce
+ */
+export function getAndRemoveCodeVerifier(nonce: string): string | null {
+  console.log(`[Garmin] Looking up code verifier for nonce: ${nonce}`);
+  console.log(`[Garmin] Available nonces: ${Array.from(codeVerifiers.keys()).join(', ')}`);
+  const data = codeVerifiers.get(nonce);
+  if (data) {
+    codeVerifiers.delete(nonce);
+    console.log(`[Garmin] Found and removed code verifier for nonce: ${nonce}`);
+    return data.verifier;
+  }
+  console.log(`[Garmin] Code verifier NOT found for nonce: ${nonce}`);
+  return null;
+}
+
+/**
  * Generate the Garmin OAuth authorization URL
  */
-export function getGarminAuthUrl(redirectUri: string, state: string): string {
+export function getGarminAuthUrl(redirectUri: string, state: string, nonce: string): string {
   const { codeVerifier, codeChallenge } = generatePKCE();
   
-  // Store the code verifier for later token exchange
-  codeVerifiers.set(state, codeVerifier);
+  // Store the code verifier using the simple nonce as key
+  storeCodeVerifier(nonce, codeVerifier);
   
   const params = new URLSearchParams({
     client_id: GARMIN_CLIENT_ID!,
@@ -51,20 +87,17 @@ export function getGarminAuthUrl(redirectUri: string, state: string): string {
 export async function exchangeGarminCode(
   code: string,
   redirectUri: string,
-  state: string
+  nonce: string
 ): Promise<{
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
   athleteId?: string;
 }> {
-  const codeVerifier = codeVerifiers.get(state);
+  const codeVerifier = getAndRemoveCodeVerifier(nonce);
   if (!codeVerifier) {
-    throw new Error('Invalid state - PKCE code verifier not found');
+    throw new Error('Invalid state - PKCE code verifier not found for nonce: ' + nonce);
   }
-  
-  // Clean up the code verifier
-  codeVerifiers.delete(state);
   
   const tokenParams = {
     grant_type: 'authorization_code',
@@ -78,6 +111,7 @@ export async function exchangeGarminCode(
   console.log('=== GARMIN TOKEN EXCHANGE ===');
   console.log('Token URL:', GARMIN_TOKEN_URL);
   console.log('Redirect URI:', redirectUri);
+  console.log('Nonce:', nonce);
   console.log('Code verifier length:', codeVerifier.length);
   console.log('Client ID present:', !!GARMIN_CLIENT_ID);
   console.log('Client Secret present:', !!GARMIN_CLIENT_SECRET);

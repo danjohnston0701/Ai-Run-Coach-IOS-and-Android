@@ -1090,8 +1090,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const garminService = await import("./garmin-service");
       // Get app_redirect from query params (sent by mobile app)
       const appRedirect = req.query.app_redirect as string || 'airuncoach://connected-devices';
-      // Encode userId and appRedirect in state (base64 encoded JSON)
-      const stateData = { userId: req.user!.userId, appRedirect, timestamp: Date.now() };
+      // Generate a simple nonce for PKCE verifier lookup (avoids URL encoding issues)
+      const nonce = Date.now().toString() + Math.random().toString(36).substring(2, 10);
+      // Encode userId, appRedirect, and nonce in state (base64 encoded JSON)
+      const stateData = { userId: req.user!.userId, appRedirect, nonce };
       const state = Buffer.from(JSON.stringify(stateData)).toString('base64');
       // Use dynamic redirect URI based on request host
       // Ensure we always include port 5000 for the callback
@@ -1108,9 +1110,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("Base URL:", baseUrl);
       console.log("Redirect URI being sent:", redirectUri);
       console.log("App redirect (after auth):", appRedirect);
+      console.log("Nonce for PKCE:", nonce);
       console.log("State data:", stateData);
       
-      const authUrl = garminService.getGarminAuthUrl(redirectUri, state);
+      const authUrl = garminService.getGarminAuthUrl(redirectUri, state, nonce);
       console.log("Full auth URL:", authUrl);
       console.log("=========================");
       
@@ -1130,20 +1133,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { code, state, error } = req.query;
       
-      // Decode state to get userId and appRedirect
-      let stateData: { userId: string; appRedirect: string; timestamp: number } | null = null;
+      // Decode state to get userId, appRedirect, and nonce
+      let stateData: { userId: string; appRedirect: string; nonce: string } | null = null;
       let appRedirectUrl = 'airuncoach://connected-devices';
       let userId = '';
+      let nonce = '';
       
       try {
         stateData = JSON.parse(Buffer.from(state as string, 'base64').toString('utf-8'));
         appRedirectUrl = stateData?.appRedirect || appRedirectUrl;
         userId = stateData?.userId || '';
-        console.log("Garmin callback - decoded state:", { userId, appRedirect: appRedirectUrl });
+        nonce = stateData?.nonce || '';
+        console.log("Garmin callback - decoded state:", { userId, appRedirect: appRedirectUrl, nonce });
       } catch (e) {
-        // Fallback for old state format (userId_timestamp)
-        userId = (state as string).split('_')[0];
-        console.log("Garmin callback - legacy state format, userId:", userId);
+        console.error("Garmin callback - failed to decode state:", e);
+        const errorUrl = appRedirectUrl.includes('?') 
+          ? `${appRedirectUrl}&garmin=error&message=invalid_state`
+          : `${appRedirectUrl}?garmin=error&message=invalid_state`;
+        return res.redirect(errorUrl);
       }
       
       if (error) {
@@ -1154,7 +1161,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.redirect(errorUrl);
       }
       
-      if (!code || !state) {
+      if (!code || !state || !nonce) {
+        console.error("Garmin callback - missing params:", { code: !!code, state: !!state, nonce: !!nonce });
         const errorUrl = appRedirectUrl.includes('?') 
           ? `${appRedirectUrl}&garmin=error&message=missing_params`
           : `${appRedirectUrl}?garmin=error&message=missing_params`;
@@ -1174,7 +1182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tokens = await garminService.exchangeGarminCode(
         code as string,
         redirectUri,
-        state as string
+        nonce
       );
       
       // Check if device already connected
