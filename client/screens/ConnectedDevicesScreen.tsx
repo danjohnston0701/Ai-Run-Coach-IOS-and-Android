@@ -32,6 +32,15 @@ const theme = {
 
 type DeviceType = 'apple' | 'samsung' | 'garmin' | 'coros' | 'strava';
 
+interface GarminWellnessData {
+  sleepHours?: number;
+  sleepQuality?: string;
+  bodyBattery?: number;
+  stressQualifier?: string;
+  hrvStatus?: string;
+  readinessScore?: number;
+}
+
 interface DeviceInfo {
   type: DeviceType;
   name: string;
@@ -110,6 +119,8 @@ export default function ConnectedDevicesScreen() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [connectingDevice, setConnectingDevice] = useState<DeviceType | null>(null);
+  const [syncingWellness, setSyncingWellness] = useState(false);
+  const [garminWellness, setGarminWellness] = useState<GarminWellnessData | null>(null);
   
   // BLE Heart Rate
   const {
@@ -157,6 +168,59 @@ export default function ConnectedDevicesScreen() {
       queryClient.invalidateQueries({ queryKey: ['/api/connected-devices'] });
     },
   });
+
+  // Sync Garmin wellness data
+  const handleSyncWellness = useCallback(async () => {
+    setSyncingWellness(true);
+    try {
+      const token = await getStoredToken();
+      const baseUrl = getApiUrl();
+      
+      // Sync wellness data from Garmin
+      const syncResponse = await fetch(`${baseUrl}/api/garmin/wellness/sync`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!syncResponse.ok) {
+        throw new Error('Failed to sync wellness data');
+      }
+      
+      const syncResult = await syncResponse.json();
+      
+      // Get today's wellness data
+      const today = new Date().toISOString().split('T')[0];
+      const wellnessResponse = await fetch(`${baseUrl}/api/garmin/wellness/${today}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (wellnessResponse.ok) {
+        const data = await wellnessResponse.json();
+        if (data.wellness) {
+          setGarminWellness({
+            sleepHours: data.wellness.totalSleepSeconds ? data.wellness.totalSleepSeconds / 3600 : undefined,
+            sleepQuality: data.wellness.sleepQuality,
+            bodyBattery: data.wellness.bodyBatteryCurrent,
+            stressQualifier: data.wellness.stressQualifier,
+            hrvStatus: data.wellness.hrvStatus,
+            readinessScore: data.wellness.readinessScore,
+          });
+        }
+      }
+      
+      Alert.alert('Success', `Wellness data synced! ${syncResult.message || ''}`);
+    } catch (error: any) {
+      console.error('Wellness sync error:', error);
+      Alert.alert('Error', error.message || 'Failed to sync wellness data');
+    } finally {
+      setSyncingWellness(false);
+    }
+  }, []);
 
   const handleConnect = useCallback(async (device: DeviceInfo) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -371,40 +435,93 @@ export default function ConnectedDevicesScreen() {
                   )}
                 </View>
 
-                <Pressable
-                  style={[
-                    styles.connectButton,
-                    connected && styles.disconnectButton,
-                    !device.supported && styles.buttonDisabled,
-                  ]}
-                  onPress={() => {
-                    if (connected && connectedDevice) {
-                      handleDisconnect(connectedDevice.id, device.name);
-                    } else {
-                      handleConnect(device);
-                    }
-                  }}
-                  disabled={!device.supported || isConnecting}
-                >
-                  {isConnecting ? (
-                    <ActivityIndicator size="small" color={theme.text} />
-                  ) : (
-                    <>
-                      <Feather 
-                        name={connected ? "x" : "link"} 
-                        size={16} 
-                        color={connected ? theme.error : theme.text} 
-                      />
-                      <Text style={[styles.buttonText, connected && styles.disconnectText]}>
-                        {!device.supported 
-                          ? `Not available on ${Platform.OS === 'ios' ? 'iOS' : 'Android'}`
-                          : connected 
-                            ? 'Disconnect' 
-                            : 'Connect'}
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
+                {/* Garmin Wellness Data Display */}
+                {device.type === 'garmin' && connected && garminWellness ? (
+                  <View style={styles.wellnessContainer}>
+                    <Text style={styles.wellnessTitle}>Today's Wellness</Text>
+                    <View style={styles.wellnessGrid}>
+                      {garminWellness.readinessScore !== undefined ? (
+                        <View style={styles.wellnessItem}>
+                          <Text style={styles.wellnessValue}>{garminWellness.readinessScore}</Text>
+                          <Text style={styles.wellnessLabel}>Readiness</Text>
+                        </View>
+                      ) : null}
+                      {garminWellness.bodyBattery !== undefined ? (
+                        <View style={styles.wellnessItem}>
+                          <Text style={styles.wellnessValue}>{garminWellness.bodyBattery}%</Text>
+                          <Text style={styles.wellnessLabel}>Body Battery</Text>
+                        </View>
+                      ) : null}
+                      {garminWellness.sleepHours !== undefined ? (
+                        <View style={styles.wellnessItem}>
+                          <Text style={styles.wellnessValue}>{garminWellness.sleepHours.toFixed(1)}h</Text>
+                          <Text style={styles.wellnessLabel}>Sleep</Text>
+                        </View>
+                      ) : null}
+                      {garminWellness.stressQualifier ? (
+                        <View style={styles.wellnessItem}>
+                          <Text style={styles.wellnessValue}>{garminWellness.stressQualifier}</Text>
+                          <Text style={styles.wellnessLabel}>Stress</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : null}
+
+                <View style={styles.buttonRow}>
+                  {/* Sync Wellness Button for Garmin */}
+                  {device.type === 'garmin' && connected ? (
+                    <Pressable
+                      style={[styles.syncButton, syncingWellness && styles.buttonDisabled]}
+                      onPress={handleSyncWellness}
+                      disabled={syncingWellness}
+                    >
+                      {syncingWellness ? (
+                        <ActivityIndicator size="small" color={theme.primary} />
+                      ) : (
+                        <>
+                          <Feather name="refresh-cw" size={16} color={theme.primary} />
+                          <Text style={styles.syncButtonText}>Sync Wellness</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  ) : null}
+
+                  <Pressable
+                    style={[
+                      styles.connectButton,
+                      connected && styles.disconnectButton,
+                      !device.supported && styles.buttonDisabled,
+                    ]}
+                    onPress={() => {
+                      if (connected && connectedDevice) {
+                        handleDisconnect(connectedDevice.id, device.name);
+                      } else {
+                        handleConnect(device);
+                      }
+                    }}
+                    disabled={!device.supported || isConnecting}
+                  >
+                    {isConnecting ? (
+                      <ActivityIndicator size="small" color={theme.text} />
+                    ) : (
+                      <>
+                        <Feather 
+                          name={connected ? "x" : "link"} 
+                          size={16} 
+                          color={connected ? theme.error : theme.text} 
+                        />
+                        <Text style={[styles.buttonText, connected && styles.disconnectText]}>
+                          {!device.supported 
+                            ? `Not available on ${Platform.OS === 'ios' ? 'iOS' : 'Android'}`
+                            : connected 
+                              ? 'Disconnect' 
+                              : 'Connect'}
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
               </View>
             );
           })}
@@ -811,5 +928,58 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.primary,
     lineHeight: 18,
+  },
+  wellnessContainer: {
+    backgroundColor: theme.surfaceLight,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  wellnessTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.text,
+    marginBottom: 10,
+  },
+  wellnessGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+  },
+  wellnessItem: {
+    alignItems: 'center',
+    minWidth: 70,
+    marginBottom: 4,
+  },
+  wellnessValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: theme.primary,
+  },
+  wellnessLabel: {
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  syncButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    gap: 8,
+  },
+  syncButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.primary,
   },
 });
