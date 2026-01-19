@@ -230,7 +230,16 @@ export default function ConnectedDevicesScreen() {
       setConnectingDevice(device.type);
       try {
         const token = await getStoredToken();
-        const response = await fetch(new URL('/api/auth/garmin', getApiUrl()).toString(), {
+        
+        // Create the redirect URL for the OAuth callback to use
+        const appRedirectUrl = Linking.createURL('/connected-devices');
+        console.log('Garmin OAuth redirect URL:', appRedirectUrl);
+        
+        // Pass the app redirect URL when initiating OAuth so it's encoded in state
+        const authEndpoint = new URL('/api/auth/garmin', getApiUrl());
+        authEndpoint.searchParams.set('app_redirect', appRedirectUrl);
+        
+        const response = await fetch(authEndpoint.toString(), {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -245,7 +254,7 @@ export default function ConnectedDevicesScreen() {
         // Open Garmin OAuth in browser
         const result = await WebBrowser.openAuthSessionAsync(
           authUrl,
-          Linking.createURL('/connected-devices')
+          appRedirectUrl
         );
         
         if (result.type === 'success') {

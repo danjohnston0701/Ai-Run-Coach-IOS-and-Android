@@ -1088,7 +1088,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/auth/garmin", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const garminService = await import("./garmin-service");
-      const state = `${req.user!.userId}_${Date.now()}`;
+      // Get app_redirect from query params (sent by mobile app)
+      const appRedirect = req.query.app_redirect as string || 'airuncoach://connected-devices';
+      // Encode userId and appRedirect in state (base64 encoded JSON)
+      const stateData = { userId: req.user!.userId, appRedirect, timestamp: Date.now() };
+      const state = Buffer.from(JSON.stringify(stateData)).toString('base64');
       // Use dynamic redirect URI based on request host
       const baseUrl = `https://${req.get('host')}`;
       const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
@@ -1106,17 +1110,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { code, state, error } = req.query;
       
+      // Decode state to get userId and appRedirect
+      let stateData: { userId: string; appRedirect: string; timestamp: number } | null = null;
+      let appRedirectUrl = 'airuncoach://connected-devices';
+      let userId = '';
+      
+      try {
+        stateData = JSON.parse(Buffer.from(state as string, 'base64').toString('utf-8'));
+        appRedirectUrl = stateData?.appRedirect || appRedirectUrl;
+        userId = stateData?.userId || '';
+        console.log("Garmin callback - decoded state:", { userId, appRedirect: appRedirectUrl });
+      } catch (e) {
+        // Fallback for old state format (userId_timestamp)
+        userId = (state as string).split('_')[0];
+        console.log("Garmin callback - legacy state format, userId:", userId);
+      }
+      
       if (error) {
         console.error("Garmin OAuth error:", error);
-        return res.redirect(`/connected-devices?error=${encodeURIComponent(error as string)}`);
+        const errorUrl = appRedirectUrl.includes('?') 
+          ? `${appRedirectUrl}&garmin=error&message=${encodeURIComponent(error as string)}`
+          : `${appRedirectUrl}?garmin=error&message=${encodeURIComponent(error as string)}`;
+        return res.redirect(errorUrl);
       }
       
       if (!code || !state) {
-        return res.redirect('/connected-devices?error=missing_params');
+        const errorUrl = appRedirectUrl.includes('?') 
+          ? `${appRedirectUrl}&garmin=error&message=missing_params`
+          : `${appRedirectUrl}?garmin=error&message=missing_params`;
+        return res.redirect(errorUrl);
       }
-      
-      // Extract userId from state
-      const userId = (state as string).split('_')[0];
       
       const garminService = await import("./garmin-service");
       // Use dynamic redirect URI based on request host
@@ -1155,11 +1178,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Redirect to success page
-      res.redirect('/garmin-success');
+      // Redirect back to mobile app with success
+      const successUrl = appRedirectUrl.includes('?') 
+        ? `${appRedirectUrl}&garmin=success` 
+        : `${appRedirectUrl}?garmin=success`;
+      console.log("Garmin OAuth successful, redirecting to:", successUrl);
+      res.redirect(successUrl);
     } catch (error: any) {
       console.error("Garmin callback error:", error);
-      res.redirect(`/connected-devices?error=${encodeURIComponent(error.message)}`);
+      // Fallback redirect - decode state if possible to get appRedirect
+      let fallbackRedirect = 'airuncoach://connected-devices';
+      try {
+        const { state } = req.query;
+        if (state) {
+          const stateData = JSON.parse(Buffer.from(state as string, 'base64').toString('utf-8'));
+          fallbackRedirect = stateData?.appRedirect || fallbackRedirect;
+        }
+      } catch (e) { /* ignore */ }
+      const errorUrl = fallbackRedirect.includes('?') 
+        ? `${fallbackRedirect}&garmin=error&message=${encodeURIComponent(error.message)}`
+        : `${fallbackRedirect}?garmin=error&message=${encodeURIComponent(error.message)}`;
+      res.redirect(errorUrl);
     }
   });
 
