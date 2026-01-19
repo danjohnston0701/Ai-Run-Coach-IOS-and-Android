@@ -36,6 +36,9 @@ The project is organized into `/client` (React Native frontend), `/server` (Expr
 - **Heart Rate Zones**: Zone 1 (0-60% max) Recovery, Zone 2 (60-70%) Aerobic, Zone 3 (70-80%) Tempo, Zone 4 (80-90%) Threshold, Zone 5 (90-100%) Maximum. Max HR calculated as 220 - age.
 
 ## Recent Changes (January 2026)
+- **Garmin OAuth Integration**: Full OAuth 2.0 with PKCE authentication flow for Garmin Connect. Endpoints: `/api/auth/garmin` (initiate), `/api/auth/garmin/callback` (callback), `/api/garmin/sync` (sync activities), `/api/garmin/health-summary` (health data), `/api/garmin/import-activity` (import runs). Works in Expo Go via WebBrowser.openAuthSessionAsync.
+- Garmin service (server/garmin-service.ts) supports: activity sync, health summaries, heart rate data, stress data, sleep data, running dynamics, VO2 max, training effect
+- Updated ConnectedDevicesScreen to use real OAuth for Garmin (opens browser auth flow)
 - Integrated core run utilities (speechQueue, cadenceDetector, gpsWatchdog, navigationEngine) into RunSessionScreen
 - Added RouteRatingModal component that triggers after completing route-based runs
 - Enhanced RunInsightsScreen with structured AI analysis display (highlights, struggles, PBs, improvement tips)

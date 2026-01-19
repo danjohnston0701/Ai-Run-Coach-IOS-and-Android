@@ -1024,6 +1024,233 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==================== GARMIN OAUTH ENDPOINTS ====================
+  
+  // Initiate Garmin OAuth flow
+  app.get("/api/auth/garmin", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const garminService = await import("./garmin-service");
+      const state = `${req.user!.userId}_${Date.now()}`;
+      const baseUrl = `https://${req.get('host')}`;
+      const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
+      
+      const authUrl = garminService.getGarminAuthUrl(redirectUri, state);
+      res.json({ authUrl, state });
+    } catch (error: any) {
+      console.error("Garmin auth initiation error:", error);
+      res.status(500).json({ error: "Failed to initiate Garmin authorization" });
+    }
+  });
+
+  // Garmin OAuth callback
+  app.get("/api/auth/garmin/callback", async (req: Request, res: Response) => {
+    try {
+      const { code, state, error } = req.query;
+      
+      if (error) {
+        console.error("Garmin OAuth error:", error);
+        return res.redirect(`/connected-devices?error=${encodeURIComponent(error as string)}`);
+      }
+      
+      if (!code || !state) {
+        return res.redirect('/connected-devices?error=missing_params');
+      }
+      
+      // Extract userId from state
+      const userId = (state as string).split('_')[0];
+      
+      const garminService = await import("./garmin-service");
+      const baseUrl = `https://${req.get('host')}`;
+      const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
+      
+      const tokens = await garminService.exchangeGarminCode(
+        code as string,
+        redirectUri,
+        state as string
+      );
+      
+      // Check if device already connected
+      const existingDevices = await storage.getConnectedDevices(userId);
+      const existingGarmin = existingDevices.find(d => d.deviceType === 'garmin' && d.isActive);
+      
+      if (existingGarmin) {
+        // Update existing device with new tokens
+        await storage.updateConnectedDevice(existingGarmin.id, {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          tokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+          deviceId: tokens.athleteId,
+          lastSyncAt: new Date(),
+        });
+      } else {
+        // Create new connected device
+        await storage.createConnectedDevice({
+          userId,
+          deviceType: 'garmin',
+          deviceName: 'Garmin Watch',
+          deviceId: tokens.athleteId,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          tokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+        });
+      }
+      
+      // Redirect to success page
+      res.redirect('/connected-devices?success=garmin');
+    } catch (error: any) {
+      console.error("Garmin callback error:", error);
+      res.redirect(`/connected-devices?error=${encodeURIComponent(error.message)}`);
+    }
+  });
+
+  // Sync activities from Garmin
+  app.post("/api/garmin/sync", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const devices = await storage.getConnectedDevices(req.user!.userId);
+      const garminDevice = devices.find(d => d.deviceType === 'garmin' && d.isActive);
+      
+      if (!garminDevice || !garminDevice.accessToken) {
+        return res.status(400).json({ error: "Garmin not connected" });
+      }
+      
+      const garminService = await import("./garmin-service");
+      
+      // Refresh token if needed
+      let accessToken = garminDevice.accessToken;
+      if (garminDevice.tokenExpiresAt && new Date(garminDevice.tokenExpiresAt) < new Date()) {
+        const newTokens = await garminService.refreshGarminToken(garminDevice.refreshToken!);
+        accessToken = newTokens.accessToken;
+        
+        await storage.updateConnectedDevice(garminDevice.id, {
+          accessToken: newTokens.accessToken,
+          refreshToken: newTokens.refreshToken,
+          tokenExpiresAt: new Date(Date.now() + newTokens.expiresIn * 1000),
+        });
+      }
+      
+      // Fetch recent activities (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const activities = await garminService.getGarminActivities(accessToken, thirtyDaysAgo);
+      
+      // Update last sync time
+      await storage.updateConnectedDevice(garminDevice.id, { lastSyncAt: new Date() });
+      
+      res.json({ 
+        success: true, 
+        activitiesFound: activities.length,
+        activities: activities.map(garminService.parseGarminActivity)
+      });
+    } catch (error: any) {
+      console.error("Garmin sync error:", error);
+      res.status(500).json({ error: "Failed to sync Garmin data" });
+    }
+  });
+
+  // Get Garmin health summary for coaching context
+  app.get("/api/garmin/health-summary", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const devices = await storage.getConnectedDevices(req.user!.userId);
+      const garminDevice = devices.find(d => d.deviceType === 'garmin' && d.isActive);
+      
+      if (!garminDevice || !garminDevice.accessToken) {
+        return res.status(400).json({ error: "Garmin not connected" });
+      }
+      
+      const garminService = await import("./garmin-service");
+      
+      // Refresh token if needed
+      let accessToken = garminDevice.accessToken;
+      if (garminDevice.tokenExpiresAt && new Date(garminDevice.tokenExpiresAt) < new Date()) {
+        const newTokens = await garminService.refreshGarminToken(garminDevice.refreshToken!);
+        accessToken = newTokens.accessToken;
+        
+        await storage.updateConnectedDevice(garminDevice.id, {
+          accessToken: newTokens.accessToken,
+          refreshToken: newTokens.refreshToken,
+          tokenExpiresAt: new Date(Date.now() + newTokens.expiresIn * 1000),
+        });
+      }
+      
+      const today = new Date();
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      // Fetch various health metrics in parallel
+      const [dailySummary, heartRateData, stressData] = await Promise.all([
+        garminService.getGarminDailySummary(accessToken, today).catch(() => null),
+        garminService.getGarminHeartRateData(accessToken, today).catch(() => null),
+        garminService.getGarminStressData(accessToken, today).catch(() => null),
+      ]);
+      
+      res.json({
+        dailySummary,
+        heartRateData,
+        stressData,
+        lastSyncAt: garminDevice.lastSyncAt,
+      });
+    } catch (error: any) {
+      console.error("Garmin health summary error:", error);
+      res.status(500).json({ error: "Failed to get Garmin health summary" });
+    }
+  });
+
+  // Import a specific Garmin activity as a run
+  app.post("/api/garmin/import-activity", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { activityId } = req.body;
+      
+      if (!activityId) {
+        return res.status(400).json({ error: "activityId is required" });
+      }
+      
+      const devices = await storage.getConnectedDevices(req.user!.userId);
+      const garminDevice = devices.find(d => d.deviceType === 'garmin' && d.isActive);
+      
+      if (!garminDevice || !garminDevice.accessToken) {
+        return res.status(400).json({ error: "Garmin not connected" });
+      }
+      
+      const garminService = await import("./garmin-service");
+      
+      // Get detailed activity
+      const activityDetail = await garminService.getGarminActivityDetail(garminDevice.accessToken, activityId);
+      const parsed = garminService.parseGarminActivity(activityDetail);
+      
+      // Create a run record from the Garmin activity
+      const run = await storage.createRun({
+        userId: req.user!.userId,
+        distance: parsed.distance,
+        duration: parsed.duration,
+        averagePace: parsed.averagePace ? `${Math.floor(parsed.averagePace)}:${Math.round((parsed.averagePace % 1) * 60).toString().padStart(2, '0')}` : undefined,
+        elevationGain: parsed.elevationGain,
+        caloriesBurned: parsed.calories,
+        difficulty: 'moderate',
+        gpsTrack: activityDetail.polyline ? { polyline: activityDetail.polyline } : undefined,
+        source: 'garmin',
+      });
+      
+      // Store device data with the run
+      await storage.createDeviceData({
+        userId: req.user!.userId,
+        runId: run.id,
+        deviceType: 'garmin',
+        activityId: parsed.activityId,
+        vo2Max: parsed.vo2Max,
+        trainingEffect: parsed.trainingEffect,
+        recoveryTime: parsed.recoveryTime ? parsed.recoveryTime * 60 : undefined, // Convert to hours
+        caloriesBurned: parsed.calories,
+        rawData: activityDetail,
+      });
+      
+      res.json({ success: true, run, activity: parsed });
+    } catch (error: any) {
+      console.error("Garmin import activity error:", error);
+      res.status(500).json({ error: "Failed to import Garmin activity" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

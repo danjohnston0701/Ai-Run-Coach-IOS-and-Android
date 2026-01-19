@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,9 +14,12 @@ import { Feather } from '@expo/vector-icons';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import { Colors, Spacing } from '../constants/theme';
-import { getApiUrl } from '../lib/query-client';
+import { getApiUrl, getStoredToken } from '../lib/query-client';
 import { useAuth } from '../contexts/AuthContext';
+import { useRoute } from '@react-navigation/native';
 
 const theme = {
   ...Colors.dark,
@@ -63,11 +66,11 @@ const SUPPORTED_DEVICES: DeviceInfo[] = [
     type: 'garmin',
     name: 'Garmin',
     icon: 'activity',
-    description: 'Connect via Garmin Connect for real-time HR streaming and post-run sync',
-    realTimeHR: true,
+    description: 'Connect via Garmin Connect OAuth for activity sync and health data',
+    realTimeHR: false, // Real-time requires companion app
     postRunSync: true,
     supported: true,
-    requiresDevBuild: true,
+    requiresDevBuild: false, // OAuth works in Expo Go
   },
   {
     type: 'coros',
@@ -144,7 +147,45 @@ export default function ConnectedDevicesScreen() {
   const handleConnect = useCallback(async (device: DeviceInfo) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
-    if (device.requiresDevBuild) {
+    // Garmin uses OAuth - open browser for authorization
+    if (device.type === 'garmin') {
+      setConnectingDevice(device.type);
+      try {
+        const token = await getStoredToken();
+        const response = await fetch(new URL('/api/auth/garmin', getApiUrl()).toString(), {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to initiate Garmin authorization');
+        }
+        
+        const { authUrl } = await response.json();
+        
+        // Open Garmin OAuth in browser
+        const result = await WebBrowser.openAuthSessionAsync(
+          authUrl,
+          Linking.createURL('/connected-devices')
+        );
+        
+        if (result.type === 'success') {
+          // Refresh the connected devices list
+          queryClient.invalidateQueries({ queryKey: ['/api/connected-devices'] });
+          Alert.alert('Success', 'Garmin connected successfully! Your activities will now sync.');
+        }
+      } catch (error: any) {
+        console.error('Garmin OAuth error:', error);
+        Alert.alert('Error', error.message || 'Failed to connect to Garmin');
+      } finally {
+        setConnectingDevice(null);
+      }
+      return;
+    }
+    
+    // Apple Watch and Samsung require development build for native access
+    if (device.type === 'apple' || device.type === 'samsung') {
       Alert.alert(
         'Development Build Required',
         `Connecting to ${device.name} requires native device access that's not available in Expo Go.\n\nThis feature will work when the app is published to the App Store or Google Play.`,
@@ -169,6 +210,7 @@ export default function ConnectedDevicesScreen() {
       return;
     }
     
+    // COROS and Strava - simple API connection
     setConnectingDevice(device.type);
     try {
       await connectMutation.mutateAsync(device.type);
@@ -178,7 +220,7 @@ export default function ConnectedDevicesScreen() {
     } finally {
       setConnectingDevice(null);
     }
-  }, [connectMutation]);
+  }, [connectMutation, queryClient]);
 
   const handleDisconnect = useCallback(async (deviceId: string, deviceName: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
