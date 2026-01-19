@@ -42,6 +42,7 @@ import {
   IconSearch,
   IconX,
   IconSettings,
+  IconHeart,
 } from "@/components/icons/AppIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
@@ -902,6 +903,14 @@ export default function ProfileScreen({ navigation }: any) {
           Settings
         </ThemedText>
         <Card style={styles.menuCard}>
+          <MenuItem
+            icon={<IconHeart size={18} color={theme.error} />}
+            label="Connected Devices"
+            value="Watches & fitness trackers"
+            onPress={() => navigation.navigate("ConnectedDevices")}
+            color={theme.error}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <MenuItem
             icon={<IconCreditCard size={18} color={theme.warning} />}
             label="Subscription"

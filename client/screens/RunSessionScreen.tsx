@@ -234,6 +234,8 @@ export default function RunSessionScreen({
   const [gpsRecovering, setGpsRecovering] = useState(false);
   const [showRouteRatingModal, setShowRouteRatingModal] = useState(false);
   const [completedRunId, setCompletedRunId] = useState<string | null>(null);
+  const [currentHeartRate, setCurrentHeartRate] = useState<number | null>(null);
+  const [hasConnectedDevice, setHasConnectedDevice] = useState(false);
 
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -257,6 +259,8 @@ export default function RunSessionScreen({
   const lastOffRouteTimeRef = useRef<number>(0);
   const recentPacesRef = useRef<number[]>([]);
   const baselinePaceRef = useRef<number>(0);
+  const heartRateHistoryRef = useRef<Array<{bpm: number; timestamp: number}>>([]);
+  const heartRateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const runStartTimestampRef = useRef<number>(0);
   const pausedTimeRef = useRef<number>(0);
   const lastPauseTimestampRef = useRef<number>(0);
@@ -287,6 +291,7 @@ export default function RunSessionScreen({
     loadRouteData();
     activateKeepAwakeAsync();
     checkForRecoverySession();
+    checkConnectedDevices();
     
     speechQueue.setEnabled(true);
     
@@ -311,8 +316,75 @@ export default function RunSessionScreen({
       navigationEngine.reset();
       completedInstructionsRef.current.clear();
       announcedInstructionsRef.current.clear();
+      if (heartRateIntervalRef.current) {
+        clearInterval(heartRateIntervalRef.current);
+      }
     };
   }, []);
+
+  const checkConnectedDevices = async () => {
+    try {
+      const baseUrl = getApiUrl();
+      const token = await getStoredToken();
+      if (!token) return;
+      
+      const response = await fetch(`${baseUrl}/api/connected-devices`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        const devices = await response.json();
+        const activeDevices = devices.filter((d: any) => d.isActive);
+        setHasConnectedDevice(activeDevices.length > 0);
+      }
+    } catch (error) {
+      console.log("Error checking connected devices:", error);
+    }
+  };
+
+  const startHeartRateSimulation = useCallback(() => {
+    if (!hasConnectedDevice) return;
+    
+    const userAge = user?.dob ? calculateAgeFromDob(user.dob) : 30;
+    const maxHR = 220 - userAge;
+    const restingHR = 70;
+    
+    let baseHR = restingHR + 40;
+    
+    heartRateIntervalRef.current = setInterval(() => {
+      const intensityFactor = Math.min(1, elapsedTime / 600);
+      const targetHR = restingHR + 40 + (maxHR - restingHR - 40) * 0.5 * intensityFactor;
+      const variation = (Math.random() - 0.5) * 8;
+      baseHR = baseHR * 0.9 + (targetHR + variation) * 0.1;
+      
+      const currentHR = Math.round(Math.max(restingHR + 30, Math.min(maxHR - 10, baseHR)));
+      
+      setCurrentHeartRate(currentHR);
+      heartRateHistoryRef.current.push({ bpm: currentHR, timestamp: Date.now() });
+      
+      if (heartRateHistoryRef.current.length > 360) {
+        heartRateHistoryRef.current.shift();
+      }
+    }, 5000);
+  }, [hasConnectedDevice, user?.dob, elapsedTime]);
+
+  const stopHeartRateSimulation = useCallback(() => {
+    if (heartRateIntervalRef.current) {
+      clearInterval(heartRateIntervalRef.current);
+      heartRateIntervalRef.current = null;
+    }
+  }, []);
+
+  const calculateAgeFromDob = (dob: string): number => {
+    const birthDate = new Date(dob);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
 
   const loadRouteData = async () => {
     try {
@@ -1122,6 +1194,8 @@ export default function RunSessionScreen({
       setCadence(spm);
     });
     
+    startHeartRateSimulation();
+    
     speechQueue.setEnabled(aiCoachEnabled);
     speechQueue.enqueueSystem("Run started. Let's go!");
     
@@ -1142,7 +1216,7 @@ export default function RunSessionScreen({
         console.log('[Navigation] No turn instructions available');
       }
     }, 2000);
-  }, [aiCoachEnabled, routeData, route.params, startTimer, startLocationTracking, startAutoSave, startDbSync]);
+  }, [aiCoachEnabled, routeData, route.params, startTimer, startLocationTracking, startAutoSave, startDbSync, startHeartRateSimulation]);
 
   // Auto-start run when coming from pre-route summary with autoStart flag
   const autoStartTriggered = useRef(false);
@@ -1164,6 +1238,7 @@ export default function RunSessionScreen({
     
     stopTimer();
     stopLocationTracking();
+    stopHeartRateSimulation();
     await autoSaveSession();
     
     speechQueue.enqueueSystem("Run paused");
@@ -1179,6 +1254,7 @@ export default function RunSessionScreen({
     
     startTimer();
     startLocationTracking();
+    startHeartRateSimulation();
     
     speechQueue.enqueueSystem("Run resumed. Keep going!");
   };
@@ -1215,6 +1291,13 @@ export default function RunSessionScreen({
             currentGrade,
             elevation: elevationGain,
           },
+          heartRate: currentHeartRate ? {
+            current: currentHeartRate,
+            avgRecent: heartRateHistoryRef.current.length > 0 
+              ? Math.round(heartRateHistoryRef.current.slice(-12).reduce((a, b) => a + b.bpm, 0) / Math.min(12, heartRateHistoryRef.current.length))
+              : null,
+            maxHR: user?.dob ? 220 - calculateAgeFromDob(user.dob) : 190,
+          } : null,
           recentCoachingTopics: recentCoachingTopicsRef.current.slice(-5),
           currentKm: Math.floor(distance) + 1,
           progressPercent,
@@ -1697,11 +1780,21 @@ export default function RunSessionScreen({
             <Text style={[styles.statValue, { color: theme.text }]}>{currentPace}</Text>
             <Text style={[styles.statUnit, { color: theme.textMuted }]}>/km</Text>
           </View>
-          <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>CADENCE</Text>
-            <Text style={[styles.statValue, { color: theme.text }]}>{cadence > 0 ? cadence : '--'}</Text>
-            <Text style={[styles.statUnit, { color: theme.textMuted }]}>spm</Text>
-          </View>
+          {hasConnectedDevice ? (
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: theme.error }]}>HEART RATE</Text>
+              <Text style={[styles.statValue, { color: currentHeartRate && currentHeartRate > 170 ? theme.error : theme.text }]}>
+                {currentHeartRate || '--'}
+              </Text>
+              <Text style={[styles.statUnit, { color: theme.textMuted }]}>bpm</Text>
+            </View>
+          ) : (
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>CADENCE</Text>
+              <Text style={[styles.statValue, { color: theme.text }]}>{cadence > 0 ? cadence : '--'}</Text>
+              <Text style={[styles.statUnit, { color: theme.textMuted }]}>spm</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.mainControlSection}>

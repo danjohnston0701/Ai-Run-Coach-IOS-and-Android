@@ -1,0 +1,251 @@
+Based on the project goal and existing schema, here's a summary of the watch device integration plan:
+
+Watch Device Integration Summary
+Overview
+The mobile app will integrate with popular fitness watch platforms to receive real-time heart rate data during runs and sync additional health metrics. This enhances AI coaching with heart rate-aware advice.
+
+Supported Platforms
+Platform	SDK/Method	Real-Time HR	Post-Run Sync
+Garmin	Garmin Connect IQ / Health SDK	✅	✅
+Samsung	Samsung Health SDK	✅	✅
+Apple	HealthKit	✅	✅
+Coros	Coros API (web-based OAuth)	❌	✅
+Strava	Strava API (OAuth)	❌	✅
+Database Schema (Already Created)
+// shared/schema.ts
+export const garminData = pgTable("garmin_data", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  runId: varchar("run_id").references(() => runs.id),
+  activityId: text("activity_id"),        // External activity ID from device
+  heartRateZones: jsonb("heart_rate_zones"), // Zone breakdown
+  vo2Max: real("vo2_max"),                 // Fitness level metric
+  trainingEffect: real("training_effect"), // Garmin-specific
+  recoveryTime: integer("recovery_time"),  // Hours until recovered
+  stressLevel: integer("stress_level"),    // 0-100
+  bodyBattery: integer("body_battery"),    // 0-100
+  rawData: jsonb("raw_data"),              // Full device response
+  syncedAt: timestamp("synced_at").defaultNow(),
+});
+Integration Architecture
+1. Real-Time Heart Rate During Run
+Goal: Display live heart rate on the Run Session screen and feed it to AI coaching.
+
+// React Native implementation pattern
+import { useEffect, useState, useRef } from 'react';
+// Heart rate data structure
+interface HeartRateReading {
+  bpm: number;
+  timestamp: number;
+  source: 'garmin' | 'samsung' | 'apple' | 'manual';
+  confidence?: number; // 0-1 quality score
+}
+// State in RunSession
+const [currentHeartRate, setCurrentHeartRate] = useState<number | null>(null);
+const heartRateHistoryRef = useRef<HeartRateReading[]>([]);
+// Calculate heart rate zones based on user's max HR (220 - age, or custom)
+function getHeartRateZone(bpm: number, maxHR: number): {
+  zone: 1 | 2 | 3 | 4 | 5;
+  name: string;
+  color: string;
+} {
+  const percent = (bpm / maxHR) * 100;
+  
+  if (percent < 60) return { zone: 1, name: 'Recovery', color: '#3B82F6' };
+  if (percent < 70) return { zone: 2, name: 'Fat Burn', color: '#22C55E' };
+  if (percent < 80) return { zone: 3, name: 'Aerobic', color: '#EAB308' };
+  if (percent < 90) return { zone: 4, name: 'Threshold', color: '#F97316' };
+  return { zone: 5, name: 'Max Effort', color: '#EF4444' };
+}
+2. Platform-Specific Implementation
+Apple HealthKit (iOS)
+// Using react-native-health
+import AppleHealthKit, { HealthValue } from 'react-native-health';
+const permissions = {
+  permissions: {
+    read: [
+      AppleHealthKit.Constants.Permissions.HeartRate,
+      AppleHealthKit.Constants.Permissions.DistanceWalkingRunning,
+      AppleHealthKit.Constants.Permissions.StepCount,
+      AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
+    ],
+  },
+};
+// Initialize
+AppleHealthKit.initHealthKit(permissions, (error) => {
+  if (error) console.log('HealthKit init error:', error);
+});
+// Subscribe to real-time heart rate updates
+function subscribeToHeartRate(onReading: (hr: number) => void) {
+  AppleHealthKit.setObserver({ type: 'HeartRate' });
+  
+  // Poll for latest reading every 5 seconds during run
+  const interval = setInterval(() => {
+    AppleHealthKit.getHeartRateSamples(
+      { startDate: new Date(Date.now() - 10000).toISOString() },
+      (err, results: HealthValue[]) => {
+        if (results && results.length > 0) {
+          const latest = results[results.length - 1];
+          onReading(latest.value);
+        }
+      }
+    );
+  }, 5000);
+  
+  return () => clearInterval(interval);
+}
+Samsung Health (Android)
+// Using Samsung Health SDK for Android
+// Note: Requires Samsung Health app installed on device
+import { NativeModules } from 'react-native';
+const { SamsungHealthModule } = NativeModules;
+async function initSamsungHealth() {
+  const connected = await SamsungHealthModule.connect();
+  if (connected) {
+    await SamsungHealthModule.requestPermissions([
+      'com.samsung.health.heart_rate',
+      'com.samsung.health.exercise',
+    ]);
+  }
+}
+function subscribeToHeartRate(onReading: (hr: number) => void) {
+  SamsungHealthModule.startHeartRateMonitoring((reading: { bpm: number }) => {
+    onReading(reading.bpm);
+  });
+  
+  return () => SamsungHealthModule.stopHeartRateMonitoring();
+}
+Garmin Connect IQ
+// Garmin uses Bluetooth connection via Connect IQ SDK
+// Companion app pattern - watch sends data to phone
+import { NativeModules, NativeEventEmitter } from 'react-native';
+const { GarminConnectModule } = NativeModules;
+const garminEmitter = new NativeEventEmitter(GarminConnectModule);
+async function connectGarminWatch() {
+  const devices = await GarminConnectModule.scanForDevices();
+  if (devices.length > 0) {
+    await GarminConnectModule.connect(devices[0].id);
+  }
+}
+function subscribeToHeartRate(onReading: (hr: number) => void) {
+  const subscription = garminEmitter.addListener('heartRate', (event) => {
+    onReading(event.bpm);
+  });
+  
+  GarminConnectModule.startHeartRateStreaming();
+  
+  return () => {
+    subscription.remove();
+    GarminConnectModule.stopHeartRateStreaming();
+  };
+}
+3. AI Coaching Integration
+Heart rate data feeds into AI coaching prompts:
+
+// Include in coaching context
+const coachingContext = {
+  // ... existing context
+  heartRate: {
+    current: currentHeartRate,
+    zone: getHeartRateZone(currentHeartRate, userMaxHR),
+    avgThisKm: calculateAvgHR(heartRateHistoryRef.current, lastKmStartTime),
+    trend: getHRTrend(heartRateHistoryRef.current), // 'rising' | 'stable' | 'falling'
+  }
+};
+// AI prompt addition
+const hrPromptSection = `
+HEART RATE DATA:
+- Current: ${heartRate.current} bpm (Zone ${heartRate.zone.zone}: ${heartRate.zone.name})
+- Average this km: ${heartRate.avgThisKm} bpm
+- Trend: ${heartRate.trend}
+Use heart rate to guide coaching:
+- Zone 1-2: Runner is comfortable, can push harder if desired
+- Zone 3: Good aerobic effort, sustainable
+- Zone 4: Working hard, may need encouragement or form reminders
+- Zone 5: Maximum effort, only appropriate for sprints or final push
+`;
+4. Post-Run Sync & Storage
+After run completion, sync detailed metrics from the watch:
+
+// API endpoint
+// POST /api/garmin-data/sync
+{
+  userId: string;
+  runId: string;
+  activityId?: string;  // From device
+  heartRateZones: {
+    zone1Minutes: number;
+    zone2Minutes: number;
+    zone3Minutes: number;
+    zone4Minutes: number;
+    zone5Minutes: number;
+  };
+  vo2Max?: number;
+  trainingEffect?: number;  // 1.0 - 5.0
+  recoveryTime?: number;    // Hours
+  stressLevel?: number;     // 0-100
+  bodyBattery?: number;     // 0-100
+  rawData?: object;         // Full response for debugging
+}
+5. Run Insights Enhancement
+Display device data in Run Insights page:
+
+interface EnhancedRunMetrics {
+  // Existing
+  distance: number;
+  duration: number;
+  avgPace: string;
+  
+  // Device-enhanced
+  avgHeartRate?: number;
+  maxHeartRate?: number;
+  heartRateZones?: {
+    zone1: { minutes: number; percent: number };
+    zone2: { minutes: number; percent: number };
+    zone3: { minutes: number; percent: number };
+    zone4: { minutes: number; percent: number };
+    zone5: { minutes: number; percent: number };
+  };
+  caloriesBurned?: number;
+  vo2Max?: number;
+  trainingEffect?: number;
+  recoveryTimeHours?: number;
+}
+6. Connection UI Flow
+Settings > Connected Devices page
+User taps "Connect Watch"
+Shows available platforms (Apple, Samsung, Garmin)
+Platform-specific auth/pairing flow
+Connection status stored in user profile
+During run, automatically attempts connection
+// User profile extension
+interface UserProfile {
+  // ... existing fields
+  connectedDevices?: {
+    apple?: { connected: boolean; lastSync?: string };
+    samsung?: { connected: boolean; deviceName?: string };
+    garmin?: { connected: boolean; deviceId?: string };
+    strava?: { connected: boolean; athleteId?: string };
+    coros?: { connected: boolean; userId?: string };
+  };
+}
+7. Fallback Behavior
+If no watch connected:
+
+Heart rate field hidden on Run Session
+AI coaching uses pace/distance/elevation only
+Post-run insights show "Connect a device for heart rate data" prompt
+8. Required NPM Packages (React Native)
+{
+  "react-native-health": "^1.16.0",           // Apple HealthKit
+  "react-native-samsung-health": "^0.3.0",     // Samsung Health
+  "react-native-ble-plx": "^2.0.0",            // Bluetooth for Garmin
+  "@react-native-async-storage/async-storage": "^1.19.0"
+}
+9. Privacy Considerations
+Request only necessary permissions
+Explain why health data is needed before requesting
+Allow users to disconnect at any time
+Health data never shared with third parties
+Clear data retention policy in privacy settings
+This covers the planned watch device integration. The existing garmin_data table handles storage, and the patterns above show how to implement real-time streaming and post-run sync across all three platforms

@@ -2,11 +2,12 @@ import {
   users, friends, friendRequests, runs, routes, goals, 
   notifications, notificationPreferences, liveRunSessions,
   groupRuns, groupRunParticipants, events, routeRatings, runAnalyses,
+  connectedDevices, deviceData,
   type User, type InsertUser, type Run, type InsertRun,
   type Route, type InsertRoute, type Goal, type InsertGoal,
   type Friend, type FriendRequest, type Notification, type NotificationPreference,
   type LiveRunSession, type GroupRun, type GroupRunParticipant, type Event,
-  type RouteRating, type RunAnalysis
+  type RouteRating, type RunAnalysis, type ConnectedDevice, type DeviceData
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, or, and, desc, ilike, sql } from "drizzle-orm";
@@ -84,6 +85,17 @@ export interface IStorage {
   // Run Analysis
   getRunAnalysis(runId: string): Promise<RunAnalysis | undefined>;
   createRunAnalysis(runId: string, analysis: any): Promise<RunAnalysis>;
+  
+  // Connected Devices
+  getConnectedDevices(userId: string): Promise<ConnectedDevice[]>;
+  getConnectedDevice(id: string): Promise<ConnectedDevice | undefined>;
+  createConnectedDevice(data: any): Promise<ConnectedDevice>;
+  updateConnectedDevice(id: string, data: Partial<ConnectedDevice>): Promise<ConnectedDevice | undefined>;
+  deleteConnectedDevice(id: string): Promise<void>;
+  
+  // Device Data
+  getDeviceDataByRun(runId: string): Promise<DeviceData[]>;
+  createDeviceData(data: any): Promise<DeviceData>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -390,6 +402,40 @@ export class DatabaseStorage implements IStorage {
   async createRunAnalysis(runId: string, analysis: any): Promise<RunAnalysis> {
     const [newAnalysis] = await db.insert(runAnalyses).values({ runId, analysis }).returning();
     return newAnalysis;
+  }
+
+  // Connected Devices
+  async getConnectedDevices(userId: string): Promise<ConnectedDevice[]> {
+    return db.select().from(connectedDevices).where(eq(connectedDevices.userId, userId));
+  }
+
+  async getConnectedDevice(id: string): Promise<ConnectedDevice | undefined> {
+    const [device] = await db.select().from(connectedDevices).where(eq(connectedDevices.id, id));
+    return device || undefined;
+  }
+
+  async createConnectedDevice(data: any): Promise<ConnectedDevice> {
+    const [device] = await db.insert(connectedDevices).values(data).returning();
+    return device;
+  }
+
+  async updateConnectedDevice(id: string, data: Partial<ConnectedDevice>): Promise<ConnectedDevice | undefined> {
+    const [device] = await db.update(connectedDevices).set(data).where(eq(connectedDevices.id, id)).returning();
+    return device || undefined;
+  }
+
+  async deleteConnectedDevice(id: string): Promise<void> {
+    await db.update(connectedDevices).set({ isActive: false }).where(eq(connectedDevices.id, id));
+  }
+
+  // Device Data
+  async getDeviceDataByRun(runId: string): Promise<DeviceData[]> {
+    return db.select().from(deviceData).where(eq(deviceData.runId, runId));
+  }
+
+  async createDeviceData(data: any): Promise<DeviceData> {
+    const [deviceDataRow] = await db.insert(deviceData).values(data).returning();
+    return deviceDataRow;
   }
 }
 

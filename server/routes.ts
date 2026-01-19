@@ -918,6 +918,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==================== CONNECTED DEVICES ENDPOINTS ====================
+  
+  app.get("/api/connected-devices", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const devices = await storage.getConnectedDevices(req.user!.userId);
+      res.json(devices);
+    } catch (error: any) {
+      console.error("Get connected devices error:", error);
+      res.status(500).json({ error: "Failed to get connected devices" });
+    }
+  });
+
+  app.post("/api/connected-devices", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { deviceType, deviceName, deviceId } = req.body;
+      
+      if (!deviceType) {
+        return res.status(400).json({ error: "deviceType is required" });
+      }
+      
+      // Check if device already connected
+      const existing = await storage.getConnectedDevices(req.user!.userId);
+      const existingDevice = existing.find(d => d.deviceType === deviceType && d.isActive);
+      
+      if (existingDevice) {
+        return res.status(400).json({ error: "Device already connected" });
+      }
+      
+      const device = await storage.createConnectedDevice({
+        userId: req.user!.userId,
+        deviceType,
+        deviceName: deviceName || `${deviceType.charAt(0).toUpperCase() + deviceType.slice(1)} Device`,
+        deviceId,
+      });
+      
+      res.status(201).json(device);
+    } catch (error: any) {
+      console.error("Connect device error:", error);
+      res.status(500).json({ error: "Failed to connect device" });
+    }
+  });
+
+  app.delete("/api/connected-devices/:id", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const device = await storage.getConnectedDevice(req.params.id);
+      
+      if (!device) {
+        return res.status(404).json({ error: "Device not found" });
+      }
+      
+      if (device.userId !== req.user!.userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      
+      await storage.deleteConnectedDevice(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Disconnect device error:", error);
+      res.status(500).json({ error: "Failed to disconnect device" });
+    }
+  });
+
+  // Sync device data (for post-run sync from watches)
+  app.post("/api/device-data/sync", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { runId, deviceType, heartRateZones, vo2Max, trainingEffect, recoveryTime, stressLevel, bodyBattery, caloriesBurned, rawData } = req.body;
+      
+      const deviceData = await storage.createDeviceData({
+        userId: req.user!.userId,
+        runId,
+        deviceType,
+        heartRateZones,
+        vo2Max,
+        trainingEffect,
+        recoveryTime,
+        stressLevel,
+        bodyBattery,
+        caloriesBurned,
+        rawData,
+      });
+      
+      // Update connected device lastSyncAt
+      const devices = await storage.getConnectedDevices(req.user!.userId);
+      const device = devices.find(d => d.deviceType === deviceType && d.isActive);
+      if (device) {
+        await storage.updateConnectedDevice(device.id, { lastSyncAt: new Date() });
+      }
+      
+      res.json(deviceData);
+    } catch (error: any) {
+      console.error("Sync device data error:", error);
+      res.status(500).json({ error: "Failed to sync device data" });
+    }
+  });
+
+  // Get device data for a run
+  app.get("/api/runs/:id/device-data", async (req: Request, res: Response) => {
+    try {
+      const deviceData = await storage.getDeviceDataByRun(req.params.id);
+      res.json(deviceData);
+    } catch (error: any) {
+      console.error("Get device data error:", error);
+      res.status(500).json({ error: "Failed to get device data" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

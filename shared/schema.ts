@@ -316,6 +316,40 @@ export const userCoupons = pgTable("user_coupons", {
   expiresAt: timestamp("expires_at"),
 });
 
+// Device Data table (for Garmin, Samsung, Apple, Coros, Strava data)
+export const deviceData = pgTable("device_data", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  runId: varchar("run_id").references(() => runs.id),
+  deviceType: text("device_type").notNull(), // 'garmin' | 'samsung' | 'apple' | 'coros' | 'strava'
+  activityId: text("activity_id"), // External activity ID from device
+  heartRateZones: jsonb("heart_rate_zones"), // Zone breakdown { zone1Minutes, zone2Minutes, etc }
+  vo2Max: real("vo2_max"), // Fitness level metric
+  trainingEffect: real("training_effect"), // 1.0 - 5.0
+  recoveryTime: integer("recovery_time"), // Hours until recovered
+  stressLevel: integer("stress_level"), // 0-100
+  bodyBattery: integer("body_battery"), // 0-100
+  restingHeartRate: integer("resting_heart_rate"),
+  caloriesBurned: integer("calories_burned"),
+  rawData: jsonb("raw_data"), // Full device response for debugging
+  syncedAt: timestamp("synced_at").defaultNow(),
+});
+
+// Connected Devices table
+export const connectedDevices = pgTable("connected_devices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  deviceType: text("device_type").notNull(), // 'garmin' | 'samsung' | 'apple' | 'coros' | 'strava'
+  deviceName: text("device_name"),
+  deviceId: text("device_id"), // External device/athlete ID
+  accessToken: text("access_token"), // Encrypted OAuth token
+  refreshToken: text("refresh_token"), // Encrypted refresh token
+  tokenExpiresAt: timestamp("token_expires_at"),
+  lastSyncAt: timestamp("last_sync_at"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertRunSchema = createInsertSchema(runs).omit({ id: true, completedAt: true });
@@ -347,3 +381,5 @@ export type GroupRunParticipant = typeof groupRunParticipants.$inferSelect;
 export type Event = typeof events.$inferSelect;
 export type RouteRating = typeof routeRatings.$inferSelect;
 export type RunAnalysis = typeof runAnalyses.$inferSelect;
+export type DeviceData = typeof deviceData.$inferSelect;
+export type ConnectedDevice = typeof connectedDevices.$inferSelect;
