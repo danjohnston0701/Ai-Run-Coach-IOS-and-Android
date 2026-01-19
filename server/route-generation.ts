@@ -461,6 +461,13 @@ async function fetchElevationForRoute(encodedPolyline: string): Promise<Elevatio
   }
 }
 
+interface CandidateRoute {
+  template: TemplatePattern;
+  calibrated: CalibratedRoute;
+  backtrackRatio: number;
+  angularSpread: number;
+}
+
 export async function generateRouteOptions(
   startLat: number,
   startLng: number,
@@ -473,95 +480,94 @@ export async function generateRouteOptions(
   const templates = getGeometricTemplates();
   const shuffledTemplates = templates.sort(() => Math.random() - 0.5);
   
-  const validRoutes: GeneratedRoute[] = [];
   const MIN_ROUTES = 3;
   const MAX_ROUTES = 5;
   const maxOverlap = 0.40;
   
-  const backtrackThresholds = [0.05, 0.08, 0.12, 0.15, 0.20];
-  const angularSpreadThresholds = [180, 150, 120];
+  const candidates: CandidateRoute[] = [];
   
-  for (let relaxLevel = 0; relaxLevel < backtrackThresholds.length && validRoutes.length < MAX_ROUTES; relaxLevel++) {
-    const currentBacktrackMax = backtrackThresholds[relaxLevel];
-    const currentAngularMin = angularSpreadThresholds[Math.min(relaxLevel, angularSpreadThresholds.length - 1)];
-    
-    console.log(`[RouteGen] Pass ${relaxLevel + 1}: backtrack max ${(currentBacktrackMax * 100).toFixed(0)}%, angular min ${currentAngularMin}°`);
-    
-    for (const template of shuffledTemplates) {
-      if (validRoutes.length >= MAX_ROUTES) break;
+  console.log(`[RouteGen] Evaluating ${shuffledTemplates.length} templates...`);
+  
+  for (const template of shuffledTemplates) {
+    try {
+      const baseWaypoints = generateTemplateWaypoints(startLat, startLng, baseRadius, template);
+      const calibrated = await calibrateRoute(startLat, startLng, baseWaypoints, targetDistanceKm);
       
-      const alreadyUsed = validRoutes.some(r => r.templateName === template.name);
-      if (alreadyUsed) continue;
+      if (!calibrated || !calibrated.result.polyline) continue;
       
-      try {
-        const baseWaypoints = generateTemplateWaypoints(startLat, startLng, baseRadius, template);
-        const calibrated = await calibrateRoute(startLat, startLng, baseWaypoints, targetDistanceKm);
-        
-        if (!calibrated || !calibrated.result.polyline) continue;
-        
-        const { backtrackRatio, angularSpread } = isGenuineCircuit(
-          calibrated.result.polyline,
-          startLat,
-          startLng
-        );
-        
-        if (backtrackRatio > currentBacktrackMax || angularSpread < currentAngularMin) {
-          if (relaxLevel === 0) {
-            console.log(`[RouteGen] ${template.name} rejected: backtrack=${(backtrackRatio * 100).toFixed(1)}%, angular=${angularSpread}°`);
-          }
-          continue;
-        }
-        
-        let isTooSimilar = false;
-        for (const existing of validRoutes) {
-          const overlap = calculateRouteOverlap(calibrated.result.polyline, existing.polyline);
-          if (overlap > maxOverlap) {
-            isTooSimilar = true;
-            break;
-          }
-        }
-        
-        if (isTooSimilar) {
-          console.log(`[RouteGen] ${template.name} rejected: too similar to existing route`);
-          continue;
-        }
-        
-        const instructions = calibrated.result.instructions || [];
-        const hasMajorRoads = containsMajorRoads(instructions);
-        const elevation = await fetchElevationForRoute(calibrated.result.polyline);
-        const difficulty = assignDifficulty(backtrackRatio, hasMajorRoads, elevation.gain);
-        
-        const route: GeneratedRoute = {
-          id: `route_${Date.now()}_${validRoutes.length}`,
-          name: `${template.name} Route`,
-          distance: calibrated.result.distance!,
-          duration: calibrated.result.duration!,
-          polyline: calibrated.result.polyline,
-          waypoints: calibrated.waypoints,
-          difficulty,
-          elevationGain: elevation.gain,
-          elevationLoss: elevation.loss,
-          instructions,
-          backtrackRatio,
-          angularSpread,
-          templateName: template.name,
-        };
-        
-        validRoutes.push(route);
-        console.log(`[RouteGen] Added ${template.name}: ${route.distance.toFixed(2)}km, backtrack=${(backtrackRatio * 100).toFixed(1)}%, climb=${elevation.gain}m, descent=${elevation.loss}m`);
-        
-      } catch (error) {
-        console.error(`[RouteGen] Error with template ${template.name}:`, error);
-      }
-    }
-    
-    if (validRoutes.length >= MIN_ROUTES) {
-      console.log(`[RouteGen] Found ${validRoutes.length} routes at relaxation level ${relaxLevel + 1}`);
-      break;
+      const { backtrackRatio, angularSpread } = isGenuineCircuit(
+        calibrated.result.polyline,
+        startLat,
+        startLng
+      );
+      
+      candidates.push({
+        template,
+        calibrated,
+        backtrackRatio,
+        angularSpread,
+      });
+      
+      console.log(`[RouteGen] Candidate ${template.name}: backtrack=${(backtrackRatio * 100).toFixed(1)}%, angular=${angularSpread}°`);
+      
+    } catch (error) {
+      console.error(`[RouteGen] Error with template ${template.name}:`, error);
     }
   }
   
-  console.log(`[RouteGen] Generated ${validRoutes.length} valid routes (min: ${MIN_ROUTES}, max: ${MAX_ROUTES})`);
+  candidates.sort((a, b) => a.backtrackRatio - b.backtrackRatio);
+  
+  console.log(`[RouteGen] Found ${candidates.length} candidates, selecting best ${MIN_ROUTES}-${MAX_ROUTES} routes...`);
+  
+  const validRoutes: GeneratedRoute[] = [];
+  const usedTemplates = new Set<string>();
+  
+  for (const candidate of candidates) {
+    if (validRoutes.length >= MAX_ROUTES) break;
+    
+    if (usedTemplates.has(candidate.template.name)) continue;
+    
+    let isTooSimilar = false;
+    for (const existing of validRoutes) {
+      const overlap = calculateRouteOverlap(candidate.calibrated.result.polyline!, existing.polyline);
+      if (overlap > maxOverlap) {
+        isTooSimilar = true;
+        break;
+      }
+    }
+    
+    if (isTooSimilar) {
+      console.log(`[RouteGen] ${candidate.template.name} rejected: too similar to existing route`);
+      continue;
+    }
+    
+    const instructions = candidate.calibrated.result.instructions || [];
+    const hasMajorRoads = containsMajorRoads(instructions);
+    const elevation = await fetchElevationForRoute(candidate.calibrated.result.polyline!);
+    const difficulty = assignDifficulty(candidate.backtrackRatio, hasMajorRoads, elevation.gain);
+    
+    const route: GeneratedRoute = {
+      id: `route_${Date.now()}_${validRoutes.length}`,
+      name: `${candidate.template.name} Route`,
+      distance: candidate.calibrated.result.distance!,
+      duration: candidate.calibrated.result.duration!,
+      polyline: candidate.calibrated.result.polyline!,
+      waypoints: candidate.calibrated.waypoints,
+      difficulty,
+      elevationGain: elevation.gain,
+      elevationLoss: elevation.loss,
+      instructions,
+      backtrackRatio: candidate.backtrackRatio,
+      angularSpread: candidate.angularSpread,
+      templateName: candidate.template.name,
+    };
+    
+    validRoutes.push(route);
+    usedTemplates.add(candidate.template.name);
+    console.log(`[RouteGen] Selected ${candidate.template.name}: ${route.distance.toFixed(2)}km, backtrack=${(candidate.backtrackRatio * 100).toFixed(1)}%, climb=${elevation.gain}m`);
+  }
+  
+  console.log(`[RouteGen] Generated ${validRoutes.length} routes (target: ${MIN_ROUTES}-${MAX_ROUTES})`);
   
   return validRoutes.slice(0, MAX_ROUTES);
 }
