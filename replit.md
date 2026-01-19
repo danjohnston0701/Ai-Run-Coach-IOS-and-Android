@@ -11,7 +11,7 @@ Preferred communication style: Simple, everyday language.
 The application is built with Expo SDK 54 and React Native 0.81, targeting iOS, Android, and web. It uses React Navigation v7 for navigation with a nested structure (root stack > bottom tab navigator > individual stack navigators per tab). State management leverages TanStack React Query for server state and React hooks for local state. Styling is handled with React Native StyleSheet, incorporating a custom theme system that supports dark mode. Animations are powered by Reanimated, and haptic feedback by expo-haptics. Authentication is token-based, stored securely.
 
 ### Backend Connection
-The production API is hosted at `https://airuncoach.live`. The backend uses an Express server to proxy requests to the production API. All API communication is JSON-based, and authentication is session-based, storing `userId` in `AsyncStorage` after login.
+The backend uses an Express server running on port 5000 that connects directly to a Neon PostgreSQL database (configured via EXTERNAL_DATABASE_URL). All API communication is JSON-based with JWT-based authentication for proper mobile support. JWT tokens are stored securely in expo-secure-store (mobile) or localStorage (web) and sent via Authorization Bearer headers. The mobile app uses EXPO_PUBLIC_DOMAIN:5000 for API requests.
 
 ### Project Structure
 The project is organized into `/client` (React Native frontend), `/server` (Express backend proxy), `/shared` (shared schema definitions using Drizzle ORM and Zod), and `/assets` (static assets).
@@ -49,7 +49,7 @@ The project is organized into `/client` (React Native frontend), `/server` (Expr
 - Added detailed debug logging for friend request operations
 
 ## Known Limitations
-- **Session-based Authentication on Mobile**: The production API at airuncoach.live uses session-based (cookie) authentication. This works well in web browsers but has limitations on native mobile apps where cookies don't persist the same way. Some API endpoints (friends, goals, runs) may return HTML error pages instead of JSON when called from mobile without a valid session. A future enhancement would be to implement token-based authentication in the production API to better support mobile apps.
+- **Hot Module Reload during Development**: During development, Metro's hot module reload may reset component state when code changes are made. This is normal development behavior and does not affect the production experience.
 
 ## External Dependencies
 - **Google Maps**: Used for route generation and mapping.
