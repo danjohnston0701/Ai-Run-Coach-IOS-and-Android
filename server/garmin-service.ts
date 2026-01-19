@@ -99,31 +99,31 @@ export async function exchangeGarminCode(
     throw new Error('Invalid state - PKCE code verifier not found for nonce: ' + nonce);
   }
   
-  // Use Basic Auth for token exchange (required by Garmin)
-  const basicAuth = Buffer.from(`${GARMIN_CLIENT_ID}:${GARMIN_CLIENT_SECRET}`).toString('base64');
-  
+  // Garmin requires client_id and client_secret in the POST body (not Basic Auth)
   const tokenParams = {
     grant_type: 'authorization_code',
     code: code,
     redirect_uri: redirectUri,
     code_verifier: codeVerifier,
+    client_id: GARMIN_CLIENT_ID!,
+    client_secret: GARMIN_CLIENT_SECRET!,
   };
   
   console.log('=== GARMIN TOKEN EXCHANGE ===');
   console.log('Token URL:', GARMIN_TOKEN_URL);
   console.log('Redirect URI:', redirectUri);
   console.log('Nonce:', nonce);
+  console.log('Code:', code);
+  console.log('Code verifier:', codeVerifier);
   console.log('Code verifier length:', codeVerifier.length);
-  console.log('Client ID present:', !!GARMIN_CLIENT_ID);
+  console.log('Client ID:', GARMIN_CLIENT_ID);
   console.log('Client Secret present:', !!GARMIN_CLIENT_SECRET);
-  console.log('Using Basic Auth:', 'Yes');
   console.log('==============================');
   
   const response = await fetch(GARMIN_TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${basicAuth}`,
     },
     body: new URLSearchParams(tokenParams),
   });
@@ -152,18 +152,17 @@ export async function refreshGarminToken(refreshToken: string): Promise<{
   refreshToken: string;
   expiresIn: number;
 }> {
-  // Use Basic Auth for token refresh (required by Garmin)
-  const basicAuth = Buffer.from(`${GARMIN_CLIENT_ID}:${GARMIN_CLIENT_SECRET}`).toString('base64');
-  
+  // Garmin requires client_id and client_secret in the POST body
   const response = await fetch(GARMIN_TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${basicAuth}`,
     },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
+      client_id: GARMIN_CLIENT_ID!,
+      client_secret: GARMIN_CLIENT_SECRET!,
     }),
   });
   
