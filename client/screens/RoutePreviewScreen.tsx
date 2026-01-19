@@ -32,6 +32,7 @@ import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { getApiUrl } from '@/lib/query-client';
 import { getStoredToken } from '@/lib/token-storage';
+import { speechQueue } from '@/lib/speechQueue';
 import {
   IconMap,
   IconMountain,
@@ -457,28 +458,34 @@ export default function RoutePreviewScreen() {
 
       if (response.ok) {
         const data = await response.json();
+        const advice = data.coachAdvice || "Take it easy at the start and find your rhythm. Good luck!";
         setPreRunSummary({
           weatherSummary: data.weatherSummary || "Weather data unavailable",
           terrainSummary: data.terrainSummary || `This ${selectedRoute.actualDistance.toFixed(1)}km route has ${Math.round(selectedRoute.elevationGain)}m elevation gain.`,
-          coachAdvice: data.coachAdvice || "Take it easy at the start and find your rhythm. Good luck!",
+          coachAdvice: advice,
           temperature: data.temperature,
           conditions: data.conditions,
         });
+        speechQueue.enqueueCoach(advice);
       } else {
+        const fallbackAdvice = "Focus on maintaining a steady pace and stay hydrated. You've got this!";
         setPreRunSummary({
           weatherSummary: "Weather data unavailable",
           terrainSummary: `This ${selectedRoute.actualDistance.toFixed(1)}km ${selectedRoute.difficulty} route has ${Math.round(selectedRoute.elevationGain)}m elevation gain and ${Math.round(selectedRoute.elevationLoss)}m loss.`,
-          coachAdvice: "Focus on maintaining a steady pace and stay hydrated. You've got this!",
+          coachAdvice: fallbackAdvice,
         });
+        speechQueue.enqueueCoach(fallbackAdvice);
       }
     } catch (error) {
       console.error('Pre-run summary error:', error);
       const selectedRoute = routes[selectedRouteIndex];
+      const errorAdvice = "Remember to warm up and start at a comfortable pace!";
       setPreRunSummary({
         weatherSummary: "Weather data unavailable",
         terrainSummary: `This ${selectedRoute?.actualDistance?.toFixed(1) || '?'}km route awaits you.`,
-        coachAdvice: "Remember to warm up and start at a comfortable pace!",
+        coachAdvice: errorAdvice,
       });
+      speechQueue.enqueueCoach(errorAdvice);
     } finally {
       setLoadingSummary(false);
     }

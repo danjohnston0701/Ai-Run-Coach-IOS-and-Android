@@ -652,9 +652,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/ai/run-summary", async (req: Request, res: Response) => {
     try {
-      const aiService = await import("./ai-service");
-      const summary = await aiService.generateRunSummary(req.body);
-      res.json(summary);
+      const { lat, lng, distance, elevationGain, elevationLoss, difficulty, activityType } = req.body;
+      
+      let weatherData = null;
+      try {
+        const weatherRes = await fetch(`https://airuncoach.live/api/weather/current?lat=${lat}&lng=${lng}`);
+        if (weatherRes.ok) {
+          weatherData = await weatherRes.json();
+        }
+      } catch (e) {
+        console.log("Weather fetch failed, continuing without weather");
+      }
+      
+      const terrainDesc = elevationGain > 50 
+        ? `hilly terrain with ${Math.round(elevationGain)}m of climbing` 
+        : `mostly flat terrain with ${Math.round(elevationGain || 0)}m elevation change`;
+      
+      const weatherSummary = weatherData?.temp 
+        ? `${Math.round(weatherData.temp)}°C and ${weatherData.condition || 'clear'}. ${weatherData.windSpeed > 15 ? 'Windy conditions - adjust your effort.' : 'Good conditions for running.'}`
+        : "Weather data unavailable.";
+      
+      const coachAdvice = difficulty === 'hard'
+        ? `This is a challenging ${distance?.toFixed(1) || '?'}km ${activityType || 'run'} with significant hills. Start conservatively and save energy for the climbs. Remember to take shorter strides on uphills.`
+        : difficulty === 'moderate'
+        ? `A solid ${distance?.toFixed(1) || '?'}km ${activityType || 'run'} ahead. Find a comfortable rhythm early and stay consistent. Focus on your breathing and enjoy the route.`
+        : `A nice ${distance?.toFixed(1) || '?'}km ${activityType || 'run'} on easier terrain. Perfect opportunity to work on your form and pace. Stay relaxed and have fun!`;
+      
+      res.json({
+        weatherSummary,
+        terrainSummary: `This ${distance?.toFixed(1) || '?'}km ${difficulty || 'moderate'} route features ${terrainDesc}. Elevation loss is ${Math.round(elevationLoss || elevationGain || 0)}m.`,
+        coachAdvice,
+        temperature: weatherData?.temp,
+        conditions: weatherData?.condition,
+      });
     } catch (error: any) {
       console.error("AI run summary error:", error);
       res.status(500).json({ error: "Failed to get run summary" });
