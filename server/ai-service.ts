@@ -447,3 +447,270 @@ async function getGoogleDirections(startLat: number, startLng: number, waypoints
   
   return { distance: 0, polyline: '' };
 }
+
+/**
+ * Wellness-aware pre-run coaching that incorporates Garmin data
+ */
+export interface WellnessContext {
+  sleepHours?: number;
+  sleepQuality?: string;
+  sleepScore?: number;
+  bodyBattery?: number;
+  stressLevel?: number;
+  stressQualifier?: string;
+  hrvStatus?: string;
+  hrvFeedback?: string;
+  restingHeartRate?: number;
+  readinessScore?: number;
+  readinessRecommendation?: string;
+}
+
+export async function generateWellnessAwarePreRunBriefing(params: {
+  distance: number;
+  elevationGain: number;
+  difficulty: string;
+  activityType: string;
+  weather: any;
+  coachName: string;
+  coachTone: string;
+  wellness: WellnessContext;
+}): Promise<{
+  briefing: string;
+  intensityAdvice: string;
+  warnings: string[];
+  readinessInsight: string;
+}> {
+  const { distance, elevationGain, difficulty, activityType, weather, coachName, coachTone, wellness } = params;
+  
+  const weatherInfo = weather 
+    ? `Weather: ${weather.temp || weather.temperature || 'N/A'}°C, ${weather.condition || 'clear'}, wind ${weather.windSpeed || 0} km/h.`
+    : 'Weather data unavailable.';
+  
+  // Build wellness context string
+  let wellnessContext = '';
+  if (wellness.sleepHours !== undefined) {
+    wellnessContext += `\n- Sleep: ${wellness.sleepHours.toFixed(1)} hours (${wellness.sleepQuality || 'N/A'})`;
+    if (wellness.sleepScore) wellnessContext += `, score: ${wellness.sleepScore}/100`;
+  }
+  if (wellness.bodyBattery !== undefined) {
+    wellnessContext += `\n- Body Battery: ${wellness.bodyBattery}/100`;
+  }
+  if (wellness.stressLevel !== undefined) {
+    wellnessContext += `\n- Stress: ${wellness.stressQualifier || 'N/A'} (${wellness.stressLevel}/100)`;
+  }
+  if (wellness.hrvStatus) {
+    wellnessContext += `\n- HRV Status: ${wellness.hrvStatus}`;
+    if (wellness.hrvFeedback) wellnessContext += ` - ${wellness.hrvFeedback}`;
+  }
+  if (wellness.restingHeartRate) {
+    wellnessContext += `\n- Resting HR: ${wellness.restingHeartRate} bpm`;
+  }
+  if (wellness.readinessScore !== undefined) {
+    wellnessContext += `\n- Overall Readiness: ${wellness.readinessScore}/100`;
+  }
+  
+  const prompt = `You are ${coachName}, an AI running coach. Your coaching style is ${coachTone}.
+
+Generate a personalized pre-run briefing that considers the runner's current wellness state from their Garmin data.
+
+ROUTE:
+- Distance: ${distance?.toFixed(1) || '?'}km
+- Difficulty: ${difficulty}
+- Elevation gain: ${Math.round(elevationGain || 0)}m
+- ${weatherInfo}
+
+CURRENT WELLNESS STATUS (from Garmin):${wellnessContext || '\n- No wellness data available'}
+
+Based on this data, provide:
+1. A brief personalized briefing (2-3 sentences) that acknowledges their current state
+2. Specific intensity advice based on their readiness/recovery
+3. Any warnings if their wellness indicators suggest caution
+4. A readiness insight explaining how their body data affects today's run
+
+Respond as JSON with fields: briefing, intensityAdvice, warnings (array), readinessInsight`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: `You are ${coachName}, a ${coachTone} running coach who uses biometric data for personalized coaching. Respond only with valid JSON.` },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 400,
+      temperature: 0.7,
+    });
+
+    const content = completion.choices[0].message.content || "{}";
+    const parsed = JSON.parse(content.replace(/```json\n?|\n?```/g, ''));
+    
+    return {
+      briefing: parsed.briefing || "Ready for your run! Let's get started.",
+      intensityAdvice: parsed.intensityAdvice || "Listen to your body today.",
+      warnings: parsed.warnings || [],
+      readinessInsight: parsed.readinessInsight || "Your body is ready for this run.",
+    };
+  } catch (error) {
+    console.error("Error generating wellness-aware briefing:", error);
+    return {
+      briefing: "Ready for your run! Take it easy at the start and find your rhythm.",
+      intensityAdvice: "Start conservatively and adjust based on how you feel.",
+      warnings: [],
+      readinessInsight: "Listen to your body and adjust intensity as needed.",
+    };
+  }
+}
+
+/**
+ * Enhanced coaching context that includes wellness data
+ */
+export interface EnhancedCoachingContext extends CoachingContext {
+  wellness?: WellnessContext;
+  targetHeartRateZone?: number;
+}
+
+export async function getWellnessAwareCoachingResponse(
+  message: string, 
+  context: EnhancedCoachingContext
+): Promise<string> {
+  const systemPrompt = buildEnhancedCoachingSystemPrompt(context);
+  
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: message }
+    ],
+    max_tokens: 150,
+    temperature: 0.7,
+  });
+
+  return completion.choices[0].message.content || "Keep going, you're doing great!";
+}
+
+function buildEnhancedCoachingSystemPrompt(context: EnhancedCoachingContext): string {
+  let prompt = buildCoachingSystemPrompt(context);
+  
+  // Add wellness context if available
+  if (context.wellness) {
+    const w = context.wellness;
+    let wellnessInfo = '\n\nRUNNER WELLNESS CONTEXT (from Garmin):';
+    
+    if (w.readinessScore !== undefined) {
+      wellnessInfo += `\n- Today's readiness: ${w.readinessScore}/100`;
+    }
+    if (w.bodyBattery !== undefined) {
+      wellnessInfo += `\n- Body Battery: ${w.bodyBattery}/100`;
+    }
+    if (w.sleepQuality) {
+      wellnessInfo += `\n- Last night's sleep: ${w.sleepQuality}`;
+    }
+    if (w.stressQualifier) {
+      wellnessInfo += `\n- Current stress: ${w.stressQualifier}`;
+    }
+    if (w.hrvStatus) {
+      wellnessInfo += `\n- HRV status: ${w.hrvStatus}`;
+    }
+    
+    prompt += wellnessInfo;
+    prompt += '\n\nUse this wellness data to personalize your coaching. If readiness is low, encourage an easier effort. If Body Battery is high, they may be able to push harder.';
+  }
+  
+  // Add heart rate zone guidance if available
+  if (context.targetHeartRateZone) {
+    prompt += `\n\nTARGET HR ZONE: Zone ${context.targetHeartRateZone}. `;
+    switch (context.targetHeartRateZone) {
+      case 1: prompt += 'Recovery zone - keep it very easy.'; break;
+      case 2: prompt += 'Aerobic zone - conversational pace.'; break;
+      case 3: prompt += 'Tempo zone - comfortably hard.'; break;
+      case 4: prompt += 'Threshold zone - hard but sustainable.'; break;
+      case 5: prompt += 'Maximum zone - very hard, short intervals.'; break;
+    }
+    
+    if (context.heartRate) {
+      const currentZone = getHeartRateZone(context.heartRate, 220 - 30); // Assume age 30 for now
+      if (currentZone > context.targetHeartRateZone) {
+        prompt += ' Runner is ABOVE target zone - encourage them to slow down.';
+      } else if (currentZone < context.targetHeartRateZone) {
+        prompt += ' Runner is BELOW target zone - they can push a bit harder if they feel good.';
+      }
+    }
+  }
+  
+  return prompt;
+}
+
+function getHeartRateZone(hr: number, maxHr: number): number {
+  const percent = (hr / maxHr) * 100;
+  if (percent < 60) return 1;
+  if (percent < 70) return 2;
+  if (percent < 80) return 3;
+  if (percent < 90) return 4;
+  return 5;
+}
+
+/**
+ * Generate real-time coaching message based on current HR and wellness context
+ */
+export async function generateHeartRateCoaching(params: {
+  currentHR: number;
+  avgHR: number;
+  maxHR: number;
+  targetZone?: number;
+  elapsedMinutes: number;
+  coachName: string;
+  coachTone: string;
+  wellness?: WellnessContext;
+}): Promise<string> {
+  const { currentHR, avgHR, maxHR, targetZone, elapsedMinutes, coachName, coachTone, wellness } = params;
+  
+  const currentZone = getHeartRateZone(currentHR, maxHR);
+  const percentMax = Math.round((currentHR / maxHR) * 100);
+  
+  const zoneNames = ['', 'Recovery', 'Aerobic', 'Tempo', 'Threshold', 'Maximum'];
+  
+  let wellnessContext = '';
+  if (wellness) {
+    if (wellness.bodyBattery !== undefined && wellness.bodyBattery < 30) {
+      wellnessContext = 'Their Body Battery is low today. ';
+    }
+    if (wellness.sleepQuality === 'Poor' || wellness.sleepQuality === 'Very Poor') {
+      wellnessContext += 'They had poor sleep last night. ';
+    }
+    if (wellness.hrvStatus === 'LOW') {
+      wellnessContext += 'HRV is below baseline. ';
+    }
+  }
+  
+  const prompt = `You are ${coachName}, a ${coachTone} running coach giving real-time heart rate guidance.
+
+Current stats (${elapsedMinutes} minutes into run):
+- Heart Rate: ${currentHR} bpm (${percentMax}% of max)
+- Current Zone: Zone ${currentZone} (${zoneNames[currentZone]})
+- Average HR: ${avgHR} bpm
+${targetZone ? `- Target Zone: Zone ${targetZone} (${zoneNames[targetZone]})` : ''}
+${wellnessContext ? `\nWellness context: ${wellnessContext}` : ''}
+
+Give a brief (1-2 sentences) heart rate coaching tip. ${
+  targetZone && currentZone !== targetZone 
+    ? currentZone > targetZone 
+      ? 'They need to slow down to hit their target zone.' 
+      : 'They can pick up the pace if feeling good.'
+    : ''
+}`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: `You are ${coachName}, giving brief real-time HR coaching. Keep it to 1-2 short sentences.` },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 60,
+      temperature: 0.7,
+    });
+
+    return completion.choices[0].message.content || `Heart rate at ${currentHR}, Zone ${currentZone}. Keep it steady!`;
+  } catch {
+    return `Heart rate at ${currentHR} bpm, Zone ${currentZone}. ${currentZone > 3 ? 'Consider easing up.' : 'Looking good!'}`;
+  }
+}

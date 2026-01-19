@@ -1502,6 +1502,160 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Wellness-aware pre-run briefing with Garmin data
+  app.post("/api/coaching/pre-run-briefing", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { distance, elevationGain, difficulty, activityType, weather } = req.body;
+      
+      // Get user's coach settings
+      const user = await storage.getUser(req.user!.userId);
+      const coachName = user?.coachName || 'Coach';
+      const coachTone = user?.coachTone || 'encouraging';
+      
+      // Get today's wellness data
+      const today = new Date().toISOString().split('T')[0];
+      let wellness: any = {};
+      
+      const todayWellness = await db.query.garminWellnessMetrics.findFirst({
+        where: (m, { and, eq }) => and(
+          eq(m.userId, req.user!.userId),
+          eq(m.date, today)
+        ),
+      });
+      
+      if (todayWellness) {
+        wellness = {
+          sleepHours: todayWellness.totalSleepSeconds ? todayWellness.totalSleepSeconds / 3600 : undefined,
+          sleepQuality: todayWellness.sleepQuality,
+          sleepScore: todayWellness.sleepScore,
+          bodyBattery: todayWellness.bodyBatteryCurrent,
+          stressLevel: todayWellness.averageStressLevel,
+          stressQualifier: todayWellness.stressQualifier,
+          hrvStatus: todayWellness.hrvStatus,
+          hrvFeedback: todayWellness.hrvFeedback,
+          restingHeartRate: todayWellness.restingHeartRate,
+          readinessScore: todayWellness.readinessScore,
+          readinessRecommendation: todayWellness.readinessRecommendation,
+        };
+      }
+      
+      // Generate wellness-aware briefing
+      const aiService = await import("./ai-service");
+      const briefing = await aiService.generateWellnessAwarePreRunBriefing({
+        distance: distance || 5,
+        elevationGain: elevationGain || 0,
+        difficulty: difficulty || 'moderate',
+        activityType: activityType || 'run',
+        weather,
+        coachName,
+        coachTone,
+        wellness,
+      });
+      
+      res.json({
+        ...briefing,
+        wellness,
+        garminConnected: Object.keys(wellness).length > 0,
+      });
+    } catch (error: any) {
+      console.error("Pre-run briefing error:", error);
+      res.status(500).json({ error: "Failed to generate pre-run briefing" });
+    }
+  });
+
+  // Wellness-aware coaching response during run
+  app.post("/api/coaching/talk-to-coach", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { message, context } = req.body;
+      
+      // Get user's coach settings
+      const user = await storage.getUser(req.user!.userId);
+      const coachName = user?.coachName || 'Coach';
+      const coachTone = user?.coachTone || 'encouraging';
+      
+      // Get today's wellness data if not provided in context
+      if (!context.wellness) {
+        const today = new Date().toISOString().split('T')[0];
+        const todayWellness = await db.query.garminWellnessMetrics.findFirst({
+          where: (m, { and, eq }) => and(
+            eq(m.userId, req.user!.userId),
+            eq(m.date, today)
+          ),
+        });
+        
+        if (todayWellness) {
+          context.wellness = {
+            bodyBattery: todayWellness.bodyBatteryCurrent,
+            sleepQuality: todayWellness.sleepQuality,
+            stressQualifier: todayWellness.stressQualifier,
+            hrvStatus: todayWellness.hrvStatus,
+            readinessScore: todayWellness.readinessScore,
+          };
+        }
+      }
+      
+      // Add coach settings to context
+      context.coachTone = coachTone;
+      context.coachName = coachName;
+      
+      const aiService = await import("./ai-service");
+      const response = await aiService.getWellnessAwareCoachingResponse(message, context);
+      
+      res.json({ response });
+    } catch (error: any) {
+      console.error("Talk to coach error:", error);
+      res.status(500).json({ error: "Failed to get coaching response" });
+    }
+  });
+
+  // Heart rate zone coaching
+  app.post("/api/coaching/hr-coaching", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { currentHR, avgHR, maxHR, targetZone, elapsedMinutes } = req.body;
+      
+      // Get user's coach settings
+      const user = await storage.getUser(req.user!.userId);
+      const coachName = user?.coachName || 'Coach';
+      const coachTone = user?.coachTone || 'encouraging';
+      
+      // Get today's wellness for context
+      const today = new Date().toISOString().split('T')[0];
+      let wellness: any = undefined;
+      
+      const todayWellness = await db.query.garminWellnessMetrics.findFirst({
+        where: (m, { and, eq }) => and(
+          eq(m.userId, req.user!.userId),
+          eq(m.date, today)
+        ),
+      });
+      
+      if (todayWellness) {
+        wellness = {
+          bodyBattery: todayWellness.bodyBatteryCurrent,
+          sleepQuality: todayWellness.sleepQuality,
+          hrvStatus: todayWellness.hrvStatus,
+        };
+      }
+      
+      const aiService = await import("./ai-service");
+      const response = await aiService.generateHeartRateCoaching({
+        currentHR,
+        avgHR,
+        maxHR: maxHR || 190,
+        targetZone,
+        elapsedMinutes: elapsedMinutes || 0,
+        coachName,
+        coachTone,
+        wellness,
+      });
+      
+      res.json({ response });
+    } catch (error: any) {
+      console.error("HR coaching error:", error);
+      res.status(500).json({ error: "Failed to get HR coaching" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;
