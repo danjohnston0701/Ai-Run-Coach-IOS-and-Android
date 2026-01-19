@@ -1134,7 +1134,7 @@ export default function RunSessionScreen({
     }
   }, [runState, aiCoachEnabled, getCoachMessage, triggerPhaseCoaching, triggerWeatherCoaching]);
 
-  const handleStart = async () => {
+  const handleStart = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setRunState("running");
     
@@ -1154,7 +1154,30 @@ export default function RunSessionScreen({
     
     speechQueue.setEnabled(aiCoachEnabled);
     speechQueue.enqueueSystem("Run started. Let's go!");
-  };
+    
+    // Speak first navigation instruction after a short delay
+    setTimeout(() => {
+      if (routeData?.turnInstructions && routeData.turnInstructions.length > 0) {
+        const firstTurn = routeData.turnInstructions[0];
+        const distanceText = firstTurn.distance >= 1000 
+          ? `${(firstTurn.distance / 1000).toFixed(1)} kilometers`
+          : `${Math.round(firstTurn.distance)} meters`;
+        speechQueue.enqueueNavigation(`In ${distanceText}, ${firstTurn.instruction}`);
+      }
+    }, 2000);
+  }, [aiCoachEnabled, routeData, startTimer, startLocationTracking, startAutoSave, startDbSync]);
+
+  // Auto-start run when coming from pre-route summary with autoStart flag
+  const autoStartTriggered = useRef(false);
+  useEffect(() => {
+    if (route.params?.autoStart && routeData && runState === 'ready' && !autoStartTriggered.current) {
+      autoStartTriggered.current = true;
+      // Small delay to ensure everything is initialized
+      setTimeout(() => {
+        handleStart();
+      }, 500);
+    }
+  }, [route.params?.autoStart, routeData, runState, handleStart]);
 
   const handlePause = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

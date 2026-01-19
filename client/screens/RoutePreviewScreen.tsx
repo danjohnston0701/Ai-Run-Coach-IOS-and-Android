@@ -528,6 +528,7 @@ export default function RoutePreviewScreen() {
       elevationGain: selectedRoute.elevationGain,
       elevationLoss: selectedRoute.elevationLoss,
       waypoints: selectedRoute.waypoints,
+      autoStart: true,
     });
   };
 
