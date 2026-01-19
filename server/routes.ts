@@ -1094,11 +1094,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const stateData = { userId: req.user!.userId, appRedirect, timestamp: Date.now() };
       const state = Buffer.from(JSON.stringify(stateData)).toString('base64');
       // Use dynamic redirect URI based on request host
-      const baseUrl = `https://${req.get('host')}`;
+      // Ensure we always include port 5000 for the callback
+      let host = req.get('host') || '';
+      if (!host.includes(':5000')) {
+        host = host.split(':')[0] + ':5000';
+      }
+      const baseUrl = `https://${host}`;
       const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
       
       console.log("=== GARMIN OAUTH DEBUG ===");
       console.log("Request host:", req.get('host'));
+      console.log("Modified host:", host);
       console.log("Base URL:", baseUrl);
       console.log("Redirect URI being sent:", redirectUri);
       console.log("App redirect (after auth):", appRedirect);
@@ -1157,7 +1163,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const garminService = await import("./garmin-service");
       // Use dynamic redirect URI based on request host
-      const baseUrl = `https://${req.get('host')}`;
+      // Ensure we always include port 5000 for the callback
+      let host = req.get('host') || '';
+      if (!host.includes(':5000')) {
+        host = host.split(':')[0] + ':5000';
+      }
+      const baseUrl = `https://${host}`;
       const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
       
       const tokens = await garminService.exchangeGarminCode(
