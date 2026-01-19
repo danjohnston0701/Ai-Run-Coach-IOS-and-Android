@@ -390,8 +390,8 @@ async function calibrateRoute(
   optimize: boolean = false
 ): Promise<CalibratedRoute | null> {
   let scale = 1.0;
-  let minScale = 0.3;
-  let maxScale = 8.0;
+  let minScale = 0.1;  // Allow smaller routes
+  let maxScale = 5.0;  // Cap maximum expansion
   
   let bestResult: CalibratedRoute | null = null;
   let bestError = Infinity;
@@ -400,7 +400,8 @@ async function calibrateRoute(
   
   const origin = { lat: startLat, lng: startLng };
   
-  for (let i = 0; i < 8; i++) {
+  // More iterations for better convergence
+  for (let i = 0; i < 10; i++) {
     const scaledWaypoints = baseWaypoints.map(wp => ({
       lat: startLat + (wp.lat - startLat) * scale,
       lng: startLng + (wp.lng - startLng) * scale,
@@ -410,11 +411,8 @@ async function calibrateRoute(
     
     if (!result.success || !result.distance) {
       if (result.error) apiErrors.push(`${result.error} (scale=${scale.toFixed(2)})`);
-      if (scale >= 1.0) {
-        maxScale = scale;
-      } else {
-        minScale = scale;
-      }
+      // On failure, try to reduce scale (routes might be too spread out)
+      maxScale = scale;
       scale = (minScale + maxScale) / 2;
       continue;
     }
@@ -427,10 +425,12 @@ async function calibrateRoute(
       bestResult = { waypoints: scaledWaypoints, result };
     }
     
-    if (error < 0.20) {
+    // Early exit if within 15% tolerance
+    if (error < 0.15) {
       return { waypoints: scaledWaypoints, result };
     }
     
+    // Binary search adjustment
     if (result.distance < targetDistance) {
       minScale = scale;
     } else {
@@ -439,13 +439,16 @@ async function calibrateRoute(
     scale = (minScale + maxScale) / 2;
   }
   
+  // Accept if within 25% tolerance (was 50%)
+  const MAX_ERROR_TOLERANCE = 0.25;
+  
   if (!bestResult) {
-    console.log(`[RouteGen] Calibration failed: ${successfulCalls}/8 API calls succeeded. Errors: ${apiErrors.slice(0, 3).join('; ')}`);
-  } else if (bestError >= 0.50) {
-    console.log(`[RouteGen] Calibration failed: best error ${(bestError * 100).toFixed(1)}% exceeds 50% threshold (dist=${bestResult.result.distance?.toFixed(2)}km, target=${targetDistance}km)`);
+    console.log(`[RouteGen] Calibration failed: ${successfulCalls}/10 API calls succeeded. Errors: ${apiErrors.slice(0, 3).join('; ')}`);
+  } else if (bestError >= MAX_ERROR_TOLERANCE) {
+    console.log(`[RouteGen] Calibration failed: best error ${(bestError * 100).toFixed(1)}% exceeds ${(MAX_ERROR_TOLERANCE * 100).toFixed(0)}% threshold (dist=${bestResult.result.distance?.toFixed(2)}km, target=${targetDistance}km)`);
   }
   
-  return (bestResult && bestError < 0.50) ? bestResult : null;
+  return (bestResult && bestError < MAX_ERROR_TOLERANCE) ? bestResult : null;
 }
 
 async function fetchElevationForRoute(encodedPolyline: string): Promise<ElevationData> {
@@ -498,7 +501,8 @@ export async function generateRouteOptions(
 ): Promise<GeneratedRoute[]> {
   console.log(`[RouteGen] Starting route generation for ${targetDistanceKm}km ${activityType}`);
   
-  const baseRadius = targetDistanceKm / 1.5;
+  // Reduce baseRadius significantly - Google routes meander so actual distance is 2-3x straight line
+  const baseRadius = targetDistanceKm / 4.0;
   const templates = getGeometricTemplates();
   const shuffledTemplates = templates.sort(() => Math.random() - 0.5);
   
