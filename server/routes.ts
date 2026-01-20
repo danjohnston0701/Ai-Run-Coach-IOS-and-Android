@@ -1745,7 +1745,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Enhanced pre-run briefing with TTS audio
   app.post("/api/coaching/pre-run-briefing-audio", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { text, distance, elevationGain, elevationLoss, difficulty, activityType, weather, targetPace, wellness: clientWellness } = req.body;
+      const { text, distance, elevationGain, elevationLoss, difficulty, activityType, weather, targetPace, wellness: clientWellness, turnInstructions } = req.body;
       
       // Get user's coach settings
       const user = await storage.getUser(req.user!.userId);
@@ -1834,8 +1834,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
+        // First navigation instructions (within first 200m)
+        if (turnInstructions && Array.isArray(turnInstructions) && turnInstructions.length > 0) {
+          parts.push(`Here's how to get started.`);
+          
+          let cumulativeDistance = 0;
+          for (const turn of turnInstructions) {
+            if (cumulativeDistance > 200) break;
+            
+            const distanceText = turn.distance >= 1000 
+              ? `${(turn.distance / 1000).toFixed(1)} kilometres`
+              : `${Math.round(turn.distance)} metres`;
+            
+            const instruction = turn.instruction || 'Continue on the route';
+            parts.push(`In ${distanceText}, ${instruction}.`);
+            cumulativeDistance += turn.distance;
+          }
+        }
+        
         // Motivational close
-        parts.push(`Let's have a great ${activityType === 'walk' ? 'walk' : 'run'}. Remember to enjoy it!`);
+        parts.push(`Let's have a great ${activityType === 'walk' ? 'walk' : 'run'}. Enjoy it!`);
         
         briefingText = parts.join(' ');
       }

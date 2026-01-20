@@ -94,7 +94,7 @@ class SpeechQueueManager {
       priority: DOMAIN_PRIORITIES[domain],
       timestamp: Date.now(),
       onComplete,
-      useOpenAI: this.useOpenAITTS && domain === 'coach',
+      useOpenAI: this.useOpenAITTS,
     };
 
     const insertIndex = this.queue.findIndex(
@@ -132,6 +132,7 @@ class SpeechQueueManager {
     weather?: any;
     targetPace?: string;
     wellness?: any;
+    turnInstructions?: Array<{ instruction: string; distance: number }>;
   }, onComplete?: () => void): Promise<void> {
     if (!this.enabled) return;
 

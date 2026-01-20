@@ -552,7 +552,7 @@ export default function RoutePreviewScreen() {
         estimatedTime,
       });
       
-      // Play high-quality OpenAI TTS audio briefing
+      // Play high-quality OpenAI TTS audio briefing with first navigation instructions
       speechQueue.playOpenAIAudio({
         distance,
         elevationGain: elevGain,
@@ -562,6 +562,7 @@ export default function RoutePreviewScreen() {
         weather: weatherData,
         targetPace: targetPaceForSpeech,
         wellness: wellnessData,
+        turnInstructions: selectedRoute.turnInstructions,
       });
     } catch (error) {
       console.error('Pre-run summary error:', error);
