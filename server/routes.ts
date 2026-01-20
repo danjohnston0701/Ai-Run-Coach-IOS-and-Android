@@ -1751,7 +1751,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get user's coach settings
       const user = await storage.getUser(req.user!.userId);
       const coachGender = user?.coachGender || 'female';
+      const coachTone = user?.coachTone || 'energetic';
+      const coachAccent = user?.coachAccent || 'british';
+      const coachName = user?.coachName || 'Coach';
       const voice = coachGender === 'male' ? 'onyx' : 'nova';
+      
+      // Street abbreviation expander
+      const expandStreetAbbreviations = (text: string): string => {
+        const abbreviations: Record<string, string> = {
+          'St': 'Street', 'Rd': 'Road', 'Ave': 'Avenue', 'Blvd': 'Boulevard',
+          'Dr': 'Drive', 'Ln': 'Lane', 'Ct': 'Court', 'Pl': 'Place',
+          'Cir': 'Circle', 'Pkwy': 'Parkway', 'Hwy': 'Highway', 'Trl': 'Trail',
+          'Ter': 'Terrace', 'Way': 'Way', 'Sq': 'Square', 'Cres': 'Crescent',
+          'Pde': 'Parade', 'Esp': 'Esplanade', 'Cl': 'Close', 'Gr': 'Grove',
+        };
+        let result = text;
+        for (const [abbr, full] of Object.entries(abbreviations)) {
+          // Match abbreviations at word boundaries (end of words or before comma/period)
+          result = result.replace(new RegExp(`\\b${abbr}\\b(?=[,.]|\\s|$)`, 'g'), full);
+        }
+        return result;
+      };
+      
+      // Get personality variations based on tone
+      const getPersonalityOpener = () => {
+        const openers: Record<string, string[]> = {
+          energetic: [
+            "Alright, let's do this!",
+            "Hey champion, time to crush it!",
+            "Get ready to feel amazing!",
+            "This is going to be epic!",
+          ],
+          calm: [
+            "Take a deep breath, we're about to begin.",
+            "Let's flow into this run together.",
+            "Center yourself, and let's go.",
+          ],
+          motivational: [
+            "Today is YOUR day!",
+            "Every step makes you stronger!",
+            "You've got this, believe in yourself!",
+          ],
+          professional: [
+            "Let me brief you on today's session.",
+            "Here's your route analysis.",
+            "Your session overview follows.",
+          ],
+          friendly: [
+            "Hey there! Ready for some fun?",
+            "Good to see you lacing up!",
+            "Let's make this a great one!",
+          ],
+        };
+        const toneOpeners = openers[coachTone] || openers.energetic;
+        return toneOpeners[Math.floor(Math.random() * toneOpeners.length)];
+      };
+      
+      const getPersonalityCloser = () => {
+        const closers: Record<string, string[]> = {
+          energetic: [
+            "Now let's GO! Show me what you've got!",
+            "Time to light it up! Let's crush this!",
+            "You're going to absolutely smash it!",
+          ],
+          calm: [
+            "Trust your training. Enjoy the journey.",
+            "Move with grace. The run is yours.",
+            "Find your rhythm and flow.",
+          ],
+          motivational: [
+            "Remember why you started. Now finish strong!",
+            "You're capable of amazing things. Prove it today!",
+            "This is your moment. Own it!",
+          ],
+          professional: [
+            "Execute the plan. Good luck.",
+            "Stay focused on your targets. You're prepared.",
+            "Follow the strategy. Strong finish ahead.",
+          ],
+          friendly: [
+            "Have fun out there! Enjoy every step!",
+            "Make some great memories! See you at the finish!",
+            "Go enjoy yourself! You've earned this!",
+          ],
+        };
+        const toneClosers = closers[coachTone] || closers.energetic;
+        return toneClosers[Math.floor(Math.random() * toneClosers.length)];
+      };
       
       // Build comprehensive briefing text if not provided
       let briefingText = text;
@@ -1759,9 +1845,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!briefingText) {
         const parts: string[] = [];
         
-        // Distance
+        // Personality opener
+        parts.push(getPersonalityOpener());
+        
+        // Distance with personality
         if (distance) {
-          parts.push(`Today's ${activityType === 'walk' ? 'walk' : 'run'} is ${distance.toFixed(1)} kilometres.`);
+          if (coachTone === 'energetic') {
+            parts.push(`We've got ${distance.toFixed(1)} awesome kilometres ahead!`);
+          } else if (coachTone === 'calm') {
+            parts.push(`Today's ${activityType === 'walk' ? 'walk' : 'run'} covers ${distance.toFixed(1)} kilometres.`);
+          } else if (coachTone === 'motivational') {
+            parts.push(`${distance.toFixed(1)} kilometres of opportunity await you!`);
+          } else {
+            parts.push(`Today's ${activityType === 'walk' ? 'walk' : 'run'} is ${distance.toFixed(1)} kilometres.`);
+          }
         }
         
         // Enhanced elevation insights
@@ -1837,7 +1934,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // First navigation instructions (within first 200m)
         if (turnInstructions && Array.isArray(turnInstructions) && turnInstructions.length > 0) {
-          parts.push(`Here's how to get started.`);
+          if (coachTone === 'energetic') {
+            parts.push(`Here's your game plan to get started!`);
+          } else if (coachTone === 'calm') {
+            parts.push(`Let me guide you through the first few turns.`);
+          } else {
+            parts.push(`Here's how to get started.`);
+          }
           
           let cumulativeDistance = 0;
           for (const turn of turnInstructions) {
@@ -1847,14 +1950,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ? `${(turn.distance / 1000).toFixed(1)} kilometres`
               : `${Math.round(turn.distance)} metres`;
             
-            const instruction = turn.instruction || 'Continue on the route';
+            // Expand street abbreviations for natural speech
+            const rawInstruction = turn.instruction || 'Continue on the route';
+            const instruction = expandStreetAbbreviations(rawInstruction);
             parts.push(`In ${distanceText}, ${instruction}.`);
             cumulativeDistance += turn.distance;
           }
         }
         
-        // Motivational close
-        parts.push(`Let's have a great ${activityType === 'walk' ? 'walk' : 'run'}. Enjoy it!`);
+        // Personality-based motivational close
+        parts.push(getPersonalityCloser());
         
         briefingText = parts.join(' ');
       }
