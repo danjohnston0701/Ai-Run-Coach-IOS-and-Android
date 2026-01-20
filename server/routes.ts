@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { storage } from "./storage";
 import { db } from "./db";
-import { garminWellnessMetrics } from "@shared/schema";
+import { garminWellnessMetrics, connectedDevices } from "@shared/schema";
 import { 
   generateToken, 
   hashPassword, 
@@ -1651,6 +1651,344 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to fetch readiness data" });
     }
   });
+
+  // ==========================================
+  // GARMIN PUSH WEBHOOK ENDPOINTS
+  // These endpoints receive real-time data from Garmin's servers
+  // No auth required - Garmin validates with their own mechanism
+  // ==========================================
+
+  // Helper to find user by Garmin user access token
+  // The userAccessToken in Garmin webhooks is the same as the OAuth access token we store
+  const findUserByGarminToken = async (userAccessToken: string) => {
+    const device = await db.query.connectedDevices.findFirst({
+      where: (d, { and, eq }) => and(
+        eq(d.deviceType, 'garmin'),
+        eq(d.accessToken, userAccessToken)
+      ),
+    });
+    return device;
+  };
+
+  // ACTIVITY - Activities (when user completes a run/walk)
+  app.post("/api/garmin/webhook/activities", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received activities push:', JSON.stringify(req.body).slice(0, 500));
+      
+      const activities = req.body.activities || [];
+      for (const activity of activities) {
+        const userAccessToken = activity.userAccessToken;
+        const device = await findUserByGarminToken(userAccessToken);
+        
+        if (device) {
+          console.log(`[Garmin Webhook] Processing activity for user ${device.userId}:`, activity.activityType);
+          // Store activity data for later processing
+          // The scheduler will sync detailed data on next run
+        }
+      }
+      
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] Activities error:', error);
+      res.status(200).json({ success: true }); // Always return 200 to Garmin
+    }
+  });
+
+  // ACTIVITY - Activity Details (detailed activity metrics)
+  app.post("/api/garmin/webhook/activity-details", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received activity details push');
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] Activity details error:', error);
+      res.status(200).json({ success: true });
+    }
+  });
+
+  // HEALTH - Sleeps (sleep data push)
+  app.post("/api/garmin/webhook/sleeps", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received sleeps push:', JSON.stringify(req.body).slice(0, 500));
+      
+      const sleeps = req.body.sleeps || [];
+      for (const sleep of sleeps) {
+        const userAccessToken = sleep.userAccessToken;
+        const device = await findUserByGarminToken(userAccessToken);
+        
+        if (device) {
+          const date = new Date(sleep.startTimeInSeconds * 1000).toISOString().split('T')[0];
+          console.log(`[Garmin Webhook] Processing sleep for user ${device.userId}, date: ${date}`);
+          
+          // Upsert sleep data
+          await db.insert(garminWellnessMetrics).values({
+            userId: device.userId,
+            date,
+            totalSleepSeconds: sleep.durationInSeconds,
+            deepSleepSeconds: sleep.deepSleepDurationInSeconds,
+            lightSleepSeconds: sleep.lightSleepDurationInSeconds,
+            remSleepSeconds: sleep.remSleepInSeconds,
+            awakeSleepSeconds: sleep.awakeDurationInSeconds,
+            sleepScore: sleep.overallSleepScore?.value,
+            sleepQuality: sleep.overallSleepScore?.qualifierKey,
+          }).onConflictDoUpdate({
+            target: [garminWellnessMetrics.userId, garminWellnessMetrics.date],
+            set: {
+              totalSleepSeconds: sleep.durationInSeconds,
+              deepSleepSeconds: sleep.deepSleepDurationInSeconds,
+              lightSleepSeconds: sleep.lightSleepDurationInSeconds,
+              remSleepSeconds: sleep.remSleepInSeconds,
+              awakeSleepSeconds: sleep.awakeDurationInSeconds,
+              sleepScore: sleep.overallSleepScore?.value,
+              sleepQuality: sleep.overallSleepScore?.qualifierKey,
+              syncedAt: new Date(),
+            },
+          });
+        }
+      }
+      
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] Sleeps error:', error);
+      res.status(200).json({ success: true });
+    }
+  });
+
+  // HEALTH - Stress (stress data push)
+  app.post("/api/garmin/webhook/stress", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received stress push:', JSON.stringify(req.body).slice(0, 500));
+      
+      const stressData = req.body.allDayStress || [];
+      for (const stress of stressData) {
+        const userAccessToken = stress.userAccessToken;
+        const device = await findUserByGarminToken(userAccessToken);
+        
+        if (device) {
+          const date = new Date(stress.startTimeInSeconds * 1000).toISOString().split('T')[0];
+          console.log(`[Garmin Webhook] Processing stress for user ${device.userId}, date: ${date}`);
+          
+          await db.insert(garminWellnessMetrics).values({
+            userId: device.userId,
+            date,
+            averageStressLevel: stress.averageStressLevel,
+            maxStressLevel: stress.maxStressLevel,
+            stressDuration: stress.stressDurationInSeconds,
+            restDuration: stress.restDurationInSeconds,
+            stressQualifier: stress.stressQualifier,
+          }).onConflictDoUpdate({
+            target: [garminWellnessMetrics.userId, garminWellnessMetrics.date],
+            set: {
+              averageStressLevel: stress.averageStressLevel,
+              maxStressLevel: stress.maxStressLevel,
+              stressDuration: stress.stressDurationInSeconds,
+              restDuration: stress.restDurationInSeconds,
+              stressQualifier: stress.stressQualifier,
+              syncedAt: new Date(),
+            },
+          });
+        }
+      }
+      
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] Stress error:', error);
+      res.status(200).json({ success: true });
+    }
+  });
+
+  // HEALTH - HRV Summary (heart rate variability)
+  app.post("/api/garmin/webhook/hrv", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received HRV push:', JSON.stringify(req.body).slice(0, 500));
+      
+      const hrvData = req.body.hrvSummaries || [];
+      for (const hrv of hrvData) {
+        const userAccessToken = hrv.userAccessToken;
+        const device = await findUserByGarminToken(userAccessToken);
+        
+        if (device) {
+          const date = new Date(hrv.startTimeInSeconds * 1000).toISOString().split('T')[0];
+          
+          await db.insert(garminWellnessMetrics).values({
+            userId: device.userId,
+            date,
+            hrvWeeklyAvg: hrv.weeklyAvg,
+            hrvLastNightAvg: hrv.lastNightAvg,
+            hrvLastNight5MinHigh: hrv.lastNight5MinHigh,
+            hrvStatus: hrv.hrvStatus,
+            hrvFeedback: hrv.feedbackPhrase,
+          }).onConflictDoUpdate({
+            target: [garminWellnessMetrics.userId, garminWellnessMetrics.date],
+            set: {
+              hrvWeeklyAvg: hrv.weeklyAvg,
+              hrvLastNightAvg: hrv.lastNightAvg,
+              hrvLastNight5MinHigh: hrv.lastNight5MinHigh,
+              hrvStatus: hrv.hrvStatus,
+              hrvFeedback: hrv.feedbackPhrase,
+              syncedAt: new Date(),
+            },
+          });
+        }
+      }
+      
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] HRV error:', error);
+      res.status(200).json({ success: true });
+    }
+  });
+
+  // HEALTH - Dailies (daily activity summary)
+  app.post("/api/garmin/webhook/dailies", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received dailies push:', JSON.stringify(req.body).slice(0, 500));
+      
+      const dailies = req.body.dailies || [];
+      for (const daily of dailies) {
+        const userAccessToken = daily.userAccessToken;
+        const device = await findUserByGarminToken(userAccessToken);
+        
+        if (device) {
+          const date = new Date(daily.startTimeInSeconds * 1000).toISOString().split('T')[0];
+          console.log(`[Garmin Webhook] Processing daily for user ${device.userId}, date: ${date}`);
+          
+          await db.insert(garminWellnessMetrics).values({
+            userId: device.userId,
+            date,
+            restingHeartRate: daily.restingHeartRateInBeatsPerMinute,
+            minHeartRate: daily.minHeartRateInBeatsPerMinute,
+            maxHeartRate: daily.maxHeartRateInBeatsPerMinute,
+            averageHeartRate: daily.averageHeartRateInBeatsPerMinute,
+          }).onConflictDoUpdate({
+            target: [garminWellnessMetrics.userId, garminWellnessMetrics.date],
+            set: {
+              restingHeartRate: daily.restingHeartRateInBeatsPerMinute,
+              minHeartRate: daily.minHeartRateInBeatsPerMinute,
+              maxHeartRate: daily.maxHeartRateInBeatsPerMinute,
+              averageHeartRate: daily.averageHeartRateInBeatsPerMinute,
+              syncedAt: new Date(),
+            },
+          });
+        }
+      }
+      
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] Dailies error:', error);
+      res.status(200).json({ success: true });
+    }
+  });
+
+  // HEALTH - Body Compositions
+  app.post("/api/garmin/webhook/body-compositions", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received body compositions push');
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] Body compositions error:', error);
+      res.status(200).json({ success: true });
+    }
+  });
+
+  // HEALTH - Pulse Ox
+  app.post("/api/garmin/webhook/pulse-ox", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received pulse ox push');
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] Pulse ox error:', error);
+      res.status(200).json({ success: true });
+    }
+  });
+
+  // HEALTH - Respiration
+  app.post("/api/garmin/webhook/respiration", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received respiration push');
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] Respiration error:', error);
+      res.status(200).json({ success: true });
+    }
+  });
+
+  // COMMON - Deregistrations (user disconnects Garmin)
+  app.post("/api/garmin/webhook/deregistrations", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received deregistration:', JSON.stringify(req.body).slice(0, 500));
+      
+      const deregistrations = req.body.deregistrations || [];
+      for (const dereg of deregistrations) {
+        const userAccessToken = dereg.userAccessToken;
+        const device = await findUserByGarminToken(userAccessToken);
+        
+        if (device) {
+          console.log(`[Garmin Webhook] User ${device.userId} deregistered from Garmin`);
+          // Mark device as inactive
+          await db.update(connectedDevices)
+            .set({ isActive: false, accessToken: null, refreshToken: null })
+            .where(eq(connectedDevices.id, device.id));
+        }
+      }
+      
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] Deregistrations error:', error);
+      res.status(200).json({ success: true });
+    }
+  });
+
+  // COMMON - User Permissions Change
+  app.post("/api/garmin/webhook/permissions", async (req: Request, res: Response) => {
+    try {
+      console.log('[Garmin Webhook] Received permissions change:', JSON.stringify(req.body).slice(0, 500));
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[Garmin Webhook] Permissions error:', error);
+      res.status(200).json({ success: true });
+    }
+  });
+
+  // Other health endpoints (log only for now)
+  app.post("/api/garmin/webhook/epochs", async (_req: Request, res: Response) => {
+    res.status(200).json({ success: true });
+  });
+  
+  app.post("/api/garmin/webhook/health-snapshot", async (_req: Request, res: Response) => {
+    res.status(200).json({ success: true });
+  });
+  
+  app.post("/api/garmin/webhook/user-metrics", async (_req: Request, res: Response) => {
+    res.status(200).json({ success: true });
+  });
+  
+  app.post("/api/garmin/webhook/blood-pressure", async (_req: Request, res: Response) => {
+    res.status(200).json({ success: true });
+  });
+  
+  app.post("/api/garmin/webhook/skin-temperature", async (_req: Request, res: Response) => {
+    res.status(200).json({ success: true });
+  });
+  
+  app.post("/api/garmin/webhook/moveiq", async (_req: Request, res: Response) => {
+    res.status(200).json({ success: true });
+  });
+  
+  app.post("/api/garmin/webhook/manually-updated-activities", async (_req: Request, res: Response) => {
+    res.status(200).json({ success: true });
+  });
+  
+  app.post("/api/garmin/webhook/activity-files", async (_req: Request, res: Response) => {
+    res.status(200).json({ success: true });
+  });
+  
+  app.post("/api/garmin/webhook/menstrual-cycle", async (_req: Request, res: Response) => {
+    res.status(200).json({ success: true });
+  });
+
+  // ==========================================
+  // END GARMIN WEBHOOK ENDPOINTS
+  // ==========================================
 
   // Wellness-aware pre-run briefing with Garmin data
   app.post("/api/coaching/pre-run-briefing", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
