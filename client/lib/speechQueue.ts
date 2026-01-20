@@ -1,10 +1,10 @@
 import * as Speech from 'expo-speech';
 import { createAudioPlayer, AudioPlayer } from 'expo-audio';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
 import { getApiUrl } from './query-client';
 import { getStoredToken } from './token-storage';
 
-const { cacheDirectory, writeAsStringAsync, deleteAsync } = FileSystem as any;
+const { cacheDirectory, writeAsStringAsync, deleteAsync } = FileSystemLegacy;
 
 export type SpeechDomain = 'coach' | 'navigation' | 'system';
 
