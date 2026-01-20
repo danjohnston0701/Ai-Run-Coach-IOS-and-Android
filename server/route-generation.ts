@@ -7,12 +7,20 @@ interface LatLng {
   lng: number;
 }
 
+interface TurnInstruction {
+  instruction: string;
+  lat: number;
+  lng: number;
+  distance?: number;
+}
+
 interface RouteResult {
   success: boolean;
   distance?: number;
   duration?: number;
   polyline?: string;
   instructions?: string[];
+  turnInstructions?: TurnInstruction[];
   error?: string;
 }
 
@@ -43,6 +51,7 @@ interface GeneratedRoute {
   elevationGain: number;
   elevationLoss: number;
   instructions: string[];
+  turnInstructions: TurnInstruction[];
   backtrackRatio: number;
   angularSpread: number;
   templateName: string;
@@ -360,12 +369,22 @@ async function fetchGoogleDirections(
     let totalDistance = 0;
     let totalDuration = 0;
     const instructions: string[] = [];
+    const turnInstructions: TurnInstruction[] = [];
+    let cumulativeDistance = 0;
     
     for (const leg of legs) {
       totalDistance += leg.distance.value;
       totalDuration += leg.duration.value;
       for (const step of leg.steps) {
-        instructions.push(step.html_instructions.replace(/<[^>]*>/g, ''));
+        const instructionText = step.html_instructions.replace(/<[^>]*>/g, '');
+        instructions.push(instructionText);
+        turnInstructions.push({
+          instruction: instructionText,
+          lat: step.start_location.lat,
+          lng: step.start_location.lng,
+          distance: cumulativeDistance,
+        });
+        cumulativeDistance += step.distance.value;
       }
     }
     
@@ -375,6 +394,7 @@ async function fetchGoogleDirections(
       duration: Math.round(totalDuration / 60),
       polyline: route.overview_polyline.points,
       instructions,
+      turnInstructions,
     };
   } catch (error: any) {
     console.error('Google Directions API error:', error);
@@ -576,6 +596,7 @@ export async function generateRouteOptions(
     }
     
     const instructions = candidate.calibrated.result.instructions || [];
+    const turnInstructions = candidate.calibrated.result.turnInstructions || [];
     const hasMajorRoads = containsMajorRoads(instructions);
     const elevation = await fetchElevationForRoute(candidate.calibrated.result.polyline!);
     const difficulty = assignDifficulty(candidate.backtrackRatio, hasMajorRoads, elevation.gain);
@@ -591,6 +612,7 @@ export async function generateRouteOptions(
       elevationGain: elevation.gain,
       elevationLoss: elevation.loss,
       instructions,
+      turnInstructions,
       backtrackRatio: candidate.backtrackRatio,
       angularSpread: candidate.angularSpread,
       templateName: candidate.template.name,

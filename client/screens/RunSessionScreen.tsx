@@ -1232,16 +1232,35 @@ export default function RunSessionScreen({
     // Speak first navigation instruction after a short delay
     // Check both routeData and route params for turn instructions
     const turnInstructions = routeData?.turnInstructions || route.params?.turnInstructions;
+    console.log('[Navigation] routeData turnInstructions:', routeData?.turnInstructions?.length || 0);
+    console.log('[Navigation] route.params turnInstructions:', route.params?.turnInstructions?.length || 0);
+    console.log('[Navigation] Using turnInstructions count:', turnInstructions?.length || 0);
     
     setTimeout(() => {
       if (turnInstructions && turnInstructions.length > 0) {
         const firstTurn = turnInstructions[0];
-        const distanceText = firstTurn.distance >= 1000 
-          ? `${(firstTurn.distance / 1000).toFixed(1)} kilometers`
-          : `${Math.round(firstTurn.distance)} meters`;
-        const instruction = firstTurn.instruction || 'Follow the route';
-        console.log('[Navigation] First instruction:', instruction, 'Distance:', distanceText);
-        speechQueue.enqueueNavigation(`In ${distanceText}, ${instruction}`);
+        const firstInstruction = firstTurn.instruction || 'Follow the route';
+        console.log('[Navigation] First instruction:', firstInstruction);
+        
+        // Build announcement: starting direction + next turn info
+        let announcement = firstInstruction;
+        
+        // If there's a second turn, include distance to it
+        if (turnInstructions.length > 1) {
+          const secondTurn = turnInstructions[1];
+          const distanceToSecond = (secondTurn.distance || 0) - (firstTurn.distance || 0);
+          const secondInstruction = secondTurn.instruction || 'continue straight';
+          
+          if (distanceToSecond > 0) {
+            const distanceText = distanceToSecond >= 1000 
+              ? `${(distanceToSecond / 1000).toFixed(1)} kilometers`
+              : `${Math.round(distanceToSecond)} meters`;
+            announcement = `${firstInstruction}, then in ${distanceText}, ${secondInstruction}`;
+          }
+          console.log('[Navigation] Second instruction at:', distanceToSecond, 'm -', secondInstruction);
+        }
+        
+        speechQueue.enqueueNavigation(announcement);
       } else {
         console.log('[Navigation] No turn instructions available');
       }

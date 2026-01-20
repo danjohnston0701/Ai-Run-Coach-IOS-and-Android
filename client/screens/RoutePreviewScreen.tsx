@@ -398,11 +398,21 @@ export default function RoutePreviewScreen() {
         elevationGain: route.elevationGain ?? route.elevation?.gain ?? route.elevation_gain ?? 0,
         elevationLoss: route.elevationLoss ?? route.elevation?.loss ?? route.elevation_loss ?? 0,
         estimatedTime: route.estimatedTime || route.estimated_time || 0,
-        turnInstructions: route.turnInstructions || route.turn_instructions || [],
+        turnInstructions: route.turnInstructions || route.turn_instructions || route.turnByTurn?.map((instruction: string, idx: number) => ({
+          instruction,
+          lat: route.waypoints?.[0]?.lat || 0,
+          lng: route.waypoints?.[0]?.lng || 0,
+          distance: idx * 50,
+        })) || [],
         terrainType: route.terrainType || route.terrain_type || 'mixed',
         description: route.description || '',
       }));
 
+      console.log('[RouteGen] First route turnInstructions count:', routesArray[0]?.turnInstructions?.length || 0);
+      if (routesArray[0]?.turnInstructions?.[0]) {
+        console.log('[RouteGen] First turn instruction:', JSON.stringify(routesArray[0].turnInstructions[0]));
+      }
+      
       setRoutes(routesArray);
       setSelectedRouteIndex(0);
       setGenerationProgress(100);
