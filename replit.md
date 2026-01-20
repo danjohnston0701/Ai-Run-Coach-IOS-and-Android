@@ -31,7 +31,7 @@ The project is organized into `/client` (React Native frontend), `/server` (Expr
 - **Speech Queue**: Manages TTS messages with priority levels and duplicate prevention for smooth AI coach audio.
 - **Navigation Engine**: Provides turn-by-turn navigation with waypoint protection and intelligent turn grouping.
 - **Route Rating**: Users can rate routes (1-5 stars) after completing runs, with optional comments.
-- **Post-Run AI Analysis**: Comprehensive run analysis including highlights, struggles, personal bests, improvement tips, and overall performance scores.
+- **Post-Run AI Analysis**: Comprehensive run analysis including highlights, struggles, personal bests, improvement tips, and overall performance scores. Enhanced with Garmin data integration for training load assessment, wellness impact analysis, technical running dynamics (cadence, stride length, ground contact time, vertical oscillation), training effect insights, VO2 max trends, and personalized recovery recommendations.
 - **Smartwatch Integration**: Connected Devices screen supports Apple Watch, Samsung, Garmin, COROS, and Strava connections. Displays real-time heart rate during runs (simulated in Expo Go, real data requires development build). Heart rate data includes zone calculation (5 zones based on max HR) and is used in AI coaching prompts for zone-specific guidance.
 - **Heart Rate Zones**: Zone 1 (0-60% max) Recovery, Zone 2 (60-70%) Aerobic, Zone 3 (70-80%) Tempo, Zone 4 (80-90%) Threshold, Zone 5 (90-100%) Maximum. Max HR calculated as 220 - age.
 
