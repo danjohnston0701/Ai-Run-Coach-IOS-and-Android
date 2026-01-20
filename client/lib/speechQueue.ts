@@ -133,6 +133,7 @@ class SpeechQueueManager {
     targetPace?: string;
     wellness?: any;
     turnInstructions?: Array<{ instruction: string; distance: number }>;
+    startLocation?: { lat: number; lng: number };
   }, onComplete?: () => void): Promise<void> {
     if (!this.enabled) return;
 

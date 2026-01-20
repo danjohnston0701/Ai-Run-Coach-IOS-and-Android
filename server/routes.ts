@@ -1746,7 +1746,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Enhanced pre-run briefing with TTS audio
   app.post("/api/coaching/pre-run-briefing-audio", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { text, distance, elevationGain, elevationLoss, difficulty, activityType, weather, targetPace, wellness: clientWellness, turnInstructions } = req.body;
+      const { text, distance, elevationGain, elevationLoss, difficulty, activityType, weather: clientWeather, targetPace, wellness: clientWellness, turnInstructions, startLocation } = req.body;
       
       // Get user's coach settings
       const user = await storage.getUser(req.user!.userId);
@@ -1755,6 +1755,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const coachAccent = user?.coachAccent || 'british';
       const coachName = user?.coachName || 'Coach';
       const voice = coachGender === 'male' ? 'onyx' : 'nova';
+      
+      // Fetch weather if not provided
+      let weather = clientWeather;
+      if (!weather && startLocation?.lat && startLocation?.lng) {
+        try {
+          const weatherRes = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${startLocation.lat}&longitude=${startLocation.lng}&current_weather=true`
+          );
+          if (weatherRes.ok) {
+            const data = await weatherRes.json();
+            weather = {
+              temp: Math.round(data.current_weather?.temperature || 20),
+              condition: data.current_weather?.weathercode <= 3 ? 'clear' : 'cloudy',
+              windSpeed: Math.round(data.current_weather?.windspeed || 0),
+            };
+          }
+        } catch (e) {
+          console.log('Weather fetch for audio briefing failed');
+        }
+      }
+      
+      // Fetch wellness data if not provided
+      let wellnessData = clientWellness;
+      if (!wellnessData) {
+        try {
+          const today = new Date().toISOString().split('T')[0];
+          const todayWellness = await db.query.garminWellnessMetrics.findFirst({
+            where: (m, { and, eq }) => and(
+              eq(m.userId, req.user!.userId),
+              eq(m.date, today)
+            ),
+          });
+          if (todayWellness) {
+            wellnessData = {
+              bodyBattery: todayWellness.bodyBatteryCurrent,
+              sleepHours: todayWellness.totalSleepSeconds ? Math.round(todayWellness.totalSleepSeconds / 3600) : undefined,
+              stressQualifier: todayWellness.stressQualifier,
+              readinessScore: todayWellness.readinessScore,
+            };
+          }
+        } catch (e) {
+          console.log('Wellness fetch for audio briefing failed');
+        }
+      }
       
       // Street abbreviation expander
       const expandStreetAbbreviations = (text: string): string => {

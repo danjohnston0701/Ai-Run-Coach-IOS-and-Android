@@ -562,18 +562,7 @@ export default function RoutePreviewScreen() {
         estimatedTime,
       });
       
-      // Play high-quality OpenAI TTS audio briefing with first navigation instructions
-      speechQueue.playOpenAIAudio({
-        distance,
-        elevationGain: elevGain,
-        elevationLoss: elevLoss,
-        difficulty: selectedRoute.difficulty,
-        activityType: params.activityType,
-        weather: weatherData,
-        targetPace: targetPaceForSpeech,
-        wellness: wellnessData,
-        turnInstructions: selectedRoute.turnInstructions,
-      });
+      // Note: Audio is now started immediately in handleStartRun() for faster playback
     } catch (error) {
       console.error('Pre-run summary error:', error);
       const errorAdvice = "Remember to warm up and start at a comfortable pace!";
@@ -590,6 +579,23 @@ export default function RoutePreviewScreen() {
   const handleStartRun = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowPreRunSummary(true);
+    
+    // Start audio immediately in parallel - don't wait for visual summary to load
+    // The backend will fetch weather/wellness data itself for the audio briefing
+    const selectedRoute = routes[selectedRouteIndex];
+    if (selectedRoute && params.aiCoach) {
+      speechQueue.playOpenAIAudio({
+        distance: selectedRoute.actualDistance,
+        elevationGain: selectedRoute.elevationGain,
+        elevationLoss: selectedRoute.elevationLoss,
+        difficulty: selectedRoute.difficulty,
+        activityType: params.activityType,
+        turnInstructions: selectedRoute.turnInstructions,
+        startLocation: currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng } : undefined,
+      });
+    }
+    
+    // Load visual summary data (weather, wellness display)
     await fetchPreRunSummary();
   };
 
