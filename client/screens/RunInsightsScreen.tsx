@@ -173,22 +173,39 @@ export default function RunInsightsScreen({
     }
   };
 
+  const [comprehensiveAnalysis, setComprehensiveAnalysis] = useState<any>(null);
+  const [hasGarminData, setHasGarminData] = useState(false);
+
   const generateAIInsights = async () => {
-    if (!run || run.aiInsights) return;
+    if (!run) return;
     
     setGeneratingInsights(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     try {
       const baseUrl = getApiUrl();
-      const response = await fetch(`${baseUrl}/api/runs/${runId}/ai-insights`, {
+      // Try comprehensive analysis first (uses all Garmin data)
+      const response = await fetch(`${baseUrl}/api/runs/${runId}/comprehensive-analysis`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
       });
       
       if (response.ok) {
+        const data = await response.json();
+        setComprehensiveAnalysis(data.analysis);
+        setHasGarminData(data.hasGarminData);
         await fetchRun();
+      } else {
+        // Fallback to basic AI insights
+        const fallbackResponse = await fetch(`${baseUrl}/api/runs/${runId}/ai-insights`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        });
+        if (fallbackResponse.ok) {
+          await fetchRun();
+        }
       }
     } catch (error) {
       console.log("Failed to generate AI insights:", error);
@@ -627,18 +644,237 @@ export default function RunInsightsScreen({
                 </ThemedText>
               </Card>
             ) : null}
+
+            {/* Comprehensive Analysis - Garmin Technical Data */}
+            {comprehensiveAnalysis ? (
+              <>
+                {/* Training & Recovery */}
+                {comprehensiveAnalysis.trainingLoadAssessment ? (
+                  <Card style={{ marginTop: Spacing.md }}>
+                    <View style={styles.aiHeader}>
+                      <View style={[styles.aiIcon, { backgroundColor: theme.primary + "20" }]}>
+                        <IconActivity size={20} color={theme.primary} />
+                      </View>
+                      <ThemedText type="h4">Training Load</ThemedText>
+                    </View>
+                    <ThemedText type="body" style={{ lineHeight: 22 }}>
+                      {comprehensiveAnalysis.trainingLoadAssessment}
+                    </ThemedText>
+                  </Card>
+                ) : null}
+
+                {/* Recovery Advice */}
+                {comprehensiveAnalysis.recoveryAdvice ? (
+                  <Card style={{ marginTop: Spacing.md }}>
+                    <View style={styles.aiHeader}>
+                      <View style={[styles.aiIcon, { backgroundColor: theme.success + "20" }]}>
+                        <IconHeart size={20} color={theme.success} />
+                      </View>
+                      <ThemedText type="h4">Recovery</ThemedText>
+                    </View>
+                    <ThemedText type="body" style={{ lineHeight: 22 }}>
+                      {comprehensiveAnalysis.recoveryAdvice}
+                    </ThemedText>
+                  </Card>
+                ) : null}
+
+                {/* Wellness Impact */}
+                {comprehensiveAnalysis.wellnessImpact ? (
+                  <Card style={{ marginTop: Spacing.md }}>
+                    <View style={styles.aiHeader}>
+                      <View style={[styles.aiIcon, { backgroundColor: theme.accent + "20" }]}>
+                        <IconSparkles size={20} color={theme.accent} />
+                      </View>
+                      <ThemedText type="h4">Wellness Impact</ThemedText>
+                      {hasGarminData ? (
+                        <View style={{ marginLeft: Spacing.sm, paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.sm, backgroundColor: theme.primary + "15" }}>
+                          <ThemedText type="small" style={{ color: theme.primary, fontSize: 10 }}>
+                            GARMIN
+                          </ThemedText>
+                        </View>
+                      ) : null}
+                    </View>
+                    <ThemedText type="body" style={{ lineHeight: 22 }}>
+                      {comprehensiveAnalysis.wellnessImpact}
+                    </ThemedText>
+                  </Card>
+                ) : null}
+
+                {/* Technical Analysis */}
+                {comprehensiveAnalysis.technicalAnalysis ? (
+                  <View style={{ marginTop: Spacing.lg }}>
+                    <ThemedText type="h4" style={styles.sectionTitle}>
+                      Technical Analysis
+                    </ThemedText>
+                    
+                    {/* Pace Analysis */}
+                    {comprehensiveAnalysis.technicalAnalysis.paceAnalysis ? (
+                      <Card style={{ marginBottom: Spacing.sm }}>
+                        <View>
+                          <ThemedText type="body" style={{ fontWeight: "600", color: theme.primary }}>
+                            Pace
+                          </ThemedText>
+                          <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: 4 }}>
+                            {comprehensiveAnalysis.technicalAnalysis.paceAnalysis}
+                          </ThemedText>
+                        </View>
+                      </Card>
+                    ) : null}
+
+                    {/* Heart Rate Analysis */}
+                    {comprehensiveAnalysis.technicalAnalysis.heartRateAnalysis ? (
+                      <Card style={{ marginBottom: Spacing.sm }}>
+                        <View>
+                          <ThemedText type="body" style={{ fontWeight: "600", color: theme.error }}>
+                            Heart Rate
+                          </ThemedText>
+                          <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: 4 }}>
+                            {comprehensiveAnalysis.technicalAnalysis.heartRateAnalysis}
+                          </ThemedText>
+                        </View>
+                      </Card>
+                    ) : null}
+
+                    {/* Cadence Analysis */}
+                    {comprehensiveAnalysis.technicalAnalysis.cadenceAnalysis ? (
+                      <Card style={{ marginBottom: Spacing.sm }}>
+                        <View>
+                          <ThemedText type="body" style={{ fontWeight: "600", color: theme.warning }}>
+                            Cadence
+                          </ThemedText>
+                          <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: 4 }}>
+                            {comprehensiveAnalysis.technicalAnalysis.cadenceAnalysis}
+                          </ThemedText>
+                        </View>
+                      </Card>
+                    ) : null}
+
+                    {/* Running Dynamics */}
+                    {comprehensiveAnalysis.technicalAnalysis.runningDynamics ? (
+                      <Card style={{ marginBottom: Spacing.sm }}>
+                        <View>
+                          <ThemedText type="body" style={{ fontWeight: "600", color: theme.accent }}>
+                            Running Dynamics
+                          </ThemedText>
+                          <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: 4 }}>
+                            {comprehensiveAnalysis.technicalAnalysis.runningDynamics}
+                          </ThemedText>
+                        </View>
+                      </Card>
+                    ) : null}
+
+                    {/* Elevation Performance */}
+                    {comprehensiveAnalysis.technicalAnalysis.elevationPerformance ? (
+                      <Card style={{ marginBottom: Spacing.sm }}>
+                        <View>
+                          <ThemedText type="body" style={{ fontWeight: "600", color: theme.success }}>
+                            Elevation
+                          </ThemedText>
+                          <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: 4 }}>
+                            {comprehensiveAnalysis.technicalAnalysis.elevationPerformance}
+                          </ThemedText>
+                        </View>
+                      </Card>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {/* Garmin Insights */}
+                {comprehensiveAnalysis.garminInsights && hasGarminData ? (
+                  <View style={{ marginTop: Spacing.lg }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.md }}>
+                      <ThemedText type="h4">
+                        Garmin Insights
+                      </ThemedText>
+                      <View style={{ marginLeft: Spacing.sm, paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.sm, backgroundColor: theme.primary + "15" }}>
+                        <ThemedText type="small" style={{ color: theme.primary, fontSize: 10 }}>
+                          FROM DEVICE
+                        </ThemedText>
+                      </View>
+                    </View>
+                    
+                    {/* Training Effect */}
+                    {comprehensiveAnalysis.garminInsights.trainingEffect ? (
+                      <Card style={{ marginBottom: Spacing.sm }}>
+                        <View>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            <IconZap size={16} color={theme.primary} />
+                            <ThemedText type="body" style={{ fontWeight: "600", marginLeft: Spacing.sm }}>
+                              Training Effect
+                            </ThemedText>
+                          </View>
+                          <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: 4 }}>
+                            {comprehensiveAnalysis.garminInsights.trainingEffect}
+                          </ThemedText>
+                        </View>
+                      </Card>
+                    ) : null}
+
+                    {/* VO2 Max */}
+                    {comprehensiveAnalysis.garminInsights.vo2MaxTrend ? (
+                      <Card style={{ marginBottom: Spacing.sm }}>
+                        <View>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            <IconTrendingUp size={16} color={theme.success} />
+                            <ThemedText type="body" style={{ fontWeight: "600", marginLeft: Spacing.sm }}>
+                              VO2 Max
+                            </ThemedText>
+                          </View>
+                          <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: 4 }}>
+                            {comprehensiveAnalysis.garminInsights.vo2MaxTrend}
+                          </ThemedText>
+                        </View>
+                      </Card>
+                    ) : null}
+
+                    {/* Recovery Time */}
+                    {comprehensiveAnalysis.garminInsights.recoveryTime ? (
+                      <Card style={{ marginBottom: Spacing.sm }}>
+                        <View>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            <IconClock size={16} color={theme.warning} />
+                            <ThemedText type="body" style={{ fontWeight: "600", marginLeft: Spacing.sm }}>
+                              Recovery Time
+                            </ThemedText>
+                          </View>
+                          <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: 4 }}>
+                            {comprehensiveAnalysis.garminInsights.recoveryTime}
+                          </ThemedText>
+                        </View>
+                      </Card>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {/* Next Run Suggestion */}
+                {comprehensiveAnalysis.nextRunSuggestion ? (
+                  <Card style={{ marginTop: Spacing.md }} gradient>
+                    <View style={styles.aiHeader}>
+                      <View style={[styles.aiIcon, { backgroundColor: theme.primary + "20" }]}>
+                        <IconRepeat size={20} color={theme.primary} />
+                      </View>
+                      <ThemedText type="h4">Next Run</ThemedText>
+                    </View>
+                    <ThemedText type="body" style={{ lineHeight: 22 }}>
+                      {comprehensiveAnalysis.nextRunSuggestion}
+                    </ThemedText>
+                  </Card>
+                ) : null}
+              </>
+            ) : null}
           </>
         ) : (
           <Card>
             <ThemedText type="body" style={{ color: theme.textSecondary, marginBottom: Spacing.md }}>
               Get personalized insights from your AI coach about this run.
+              {hasGarminData ? " Includes detailed analysis from your Garmin data." : ""}
             </ThemedText>
             <Button
               onPress={generateAIInsights}
               loading={generatingInsights}
               style={{ alignSelf: "flex-start" }}
             >
-              Generate AI Insights
+              {generatingInsights ? "Analyzing..." : "Generate AI Insights"}
             </Button>
           </Card>
         )}
