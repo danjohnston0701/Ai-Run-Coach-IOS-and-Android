@@ -4,6 +4,8 @@ import * as FileSystem from 'expo-file-system';
 import { getApiUrl } from './query-client';
 import { getStoredToken } from './token-storage';
 
+const { cacheDirectory, writeAsStringAsync, deleteAsync } = FileSystem as any;
+
 export type SpeechDomain = 'coach' | 'navigation' | 'system';
 
 export interface SpeechItem {
@@ -156,9 +158,9 @@ class SpeechQueueManager {
         throw new Error('No audio data received');
       }
 
-      const fileUri = `${FileSystem.cacheDirectory}briefing_${Date.now()}.mp3`;
-      await FileSystem.writeAsStringAsync(fileUri, data.audio, {
-        encoding: FileSystem.EncodingType.Base64,
+      const fileUri = `${cacheDirectory}briefing_${Date.now()}.mp3`;
+      await writeAsStringAsync(fileUri, data.audio, {
+        encoding: 'base64',
       });
 
       await this.stopCurrentPlayer();
@@ -170,7 +172,7 @@ class SpeechQueueManager {
         if (status.didJustFinish) {
           this.stopCurrentPlayer();
           onComplete?.();
-          FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
+          deleteAsync(fileUri, { idempotent: true }).catch(() => {});
         }
       });
       
@@ -222,9 +224,9 @@ class SpeechQueueManager {
         throw new Error('No audio data received');
       }
 
-      const fileUri = `${FileSystem.cacheDirectory}tts_${Date.now()}.mp3`;
-      await FileSystem.writeAsStringAsync(fileUri, data.audio, {
-        encoding: FileSystem.EncodingType.Base64,
+      const fileUri = `${cacheDirectory}tts_${Date.now()}.mp3`;
+      await writeAsStringAsync(fileUri, data.audio, {
+        encoding: 'base64',
       });
 
       await this.stopCurrentPlayer();
@@ -236,7 +238,7 @@ class SpeechQueueManager {
         if (status.didJustFinish) {
           this.stopCurrentPlayer();
           onComplete?.();
-          FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
+          deleteAsync(fileUri, { idempotent: true }).catch(() => {});
         }
       });
       
