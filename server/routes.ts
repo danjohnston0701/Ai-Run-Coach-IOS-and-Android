@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { storage } from "./storage";
 import { db } from "./db";
-import { garminWellnessMetrics, connectedDevices } from "@shared/schema";
+import { garminWellnessMetrics, connectedDevices, garminActivities, garminBodyComposition, runs } from "@shared/schema";
 import { 
   generateToken, 
   hashPassword, 
@@ -1673,7 +1673,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ACTIVITY - Activities (when user completes a run/walk)
   app.post("/api/garmin/webhook/activities", async (req: Request, res: Response) => {
     try {
-      console.log('[Garmin Webhook] Received activities push:', JSON.stringify(req.body).slice(0, 500));
+      console.log('[Garmin Webhook] Received activities push:', JSON.stringify(req.body).slice(0, 1000));
       
       const activities = req.body.activities || [];
       for (const activity of activities) {
@@ -1681,9 +1681,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const device = await findUserByGarminToken(userAccessToken);
         
         if (device) {
-          console.log(`[Garmin Webhook] Processing activity for user ${device.userId}:`, activity.activityType);
-          // Store activity data for later processing
-          // The scheduler will sync detailed data on next run
+          const activityType = activity.activityType || 'RUNNING';
+          const isRunOrWalk = ['RUNNING', 'WALKING', 'TRAIL_RUNNING', 'TREADMILL_RUNNING', 'INDOOR_WALKING'].includes(activityType);
+          
+          console.log(`[Garmin Webhook] Processing activity for user ${device.userId}: ${activity.activityName || activityType}`);
+          
+          // Store full activity in garmin_activities table
+          const [garminActivity] = await db.insert(garminActivities).values({
+            userId: device.userId,
+            garminActivityId: String(activity.activityId),
+            activityName: activity.activityName,
+            activityType: activityType,
+            eventType: activity.eventType,
+            startTimeInSeconds: activity.startTimeInSeconds,
+            startTimeOffsetInSeconds: activity.startTimeOffsetInSeconds,
+            durationInSeconds: activity.durationInSeconds,
+            distanceInMeters: activity.distanceInMeters,
+            averageHeartRateInBeatsPerMinute: activity.averageHeartRateInBeatsPerMinute,
+            maxHeartRateInBeatsPerMinute: activity.maxHeartRateInBeatsPerMinute,
+            averageSpeedInMetersPerSecond: activity.averageSpeedInMetersPerSecond,
+            maxSpeedInMetersPerSecond: activity.maxSpeedInMetersPerSecond,
+            averagePaceInMinutesPerKilometer: activity.averagePaceInMinutesPerKilometer,
+            averagePowerInWatts: activity.averagePowerInWatts,
+            maxPowerInWatts: activity.maxPowerInWatts,
+            normalizedPowerInWatts: activity.normalizedPowerInWatts,
+            averageRunCadenceInStepsPerMinute: activity.averageRunCadenceInStepsPerMinute,
+            maxRunCadenceInStepsPerMinute: activity.maxRunCadenceInStepsPerMinute,
+            startLatitude: activity.startingLatitudeInDegree,
+            startLongitude: activity.startingLongitudeInDegree,
+            totalElevationGainInMeters: activity.totalElevationGainInMeters,
+            totalElevationLossInMeters: activity.totalElevationLossInMeters,
+            activeKilocalories: activity.activeKilocalories,
+            bmrKilocalories: activity.bmrKilocalories,
+            aerobicTrainingEffect: activity.aerobicTrainingEffect,
+            anaerobicTrainingEffect: activity.anaerobicTrainingEffect,
+            trainingEffectLabel: activity.trainingEffectLabel,
+            vo2Max: activity.vO2Max,
+            deviceName: activity.deviceName,
+            rawData: activity,
+          }).returning();
+          
+          // If it's a run/walk, create a run record in the user's history
+          if (isRunOrWalk && activity.distanceInMeters > 0) {
+            const startTime = new Date((activity.startTimeInSeconds || 0) * 1000);
+            const durationSeconds = activity.durationInSeconds || 0;
+            const distanceKm = (activity.distanceInMeters || 0) / 1000;
+            
+            // Calculate average pace in min/km format
+            let avgPace = '';
+            if (distanceKm > 0 && durationSeconds > 0) {
+              const paceSeconds = durationSeconds / distanceKm;
+              const mins = Math.floor(paceSeconds / 60);
+              const secs = Math.floor(paceSeconds % 60);
+              avgPace = `${mins}:${secs.toString().padStart(2, '0')}`;
+            }
+            
+            // Create run record
+            const [newRun] = await db.insert(runs).values({
+              userId: device.userId,
+              distance: distanceKm,
+              duration: durationSeconds,
+              avgPace,
+              avgHeartRate: activity.averageHeartRateInBeatsPerMinute,
+              maxHeartRate: activity.maxHeartRateInBeatsPerMinute,
+              calories: activity.activeKilocalories,
+              cadence: activity.averageRunCadenceInStepsPerMinute ? Math.round(activity.averageRunCadenceInStepsPerMinute) : null,
+              elevation: activity.totalElevationGainInMeters,
+              elevationGain: activity.totalElevationGainInMeters,
+              elevationLoss: activity.totalElevationLossInMeters,
+              difficulty: activityType === 'TRAIL_RUNNING' ? 'hard' : 'moderate',
+              startLat: activity.startingLatitudeInDegree,
+              startLng: activity.startingLongitudeInDegree,
+              name: activity.activityName || `${activityType.replace(/_/g, ' ')} from Garmin`,
+              runDate: startTime.toISOString().split('T')[0],
+              runTime: startTime.toTimeString().split(' ')[0].slice(0, 5),
+              completedAt: startTime,
+            }).returning();
+            
+            // Link the Garmin activity to the run
+            await db.update(garminActivities)
+              .set({ runId: newRun.id, isProcessed: true })
+              .where(eq(garminActivities.id, garminActivity.id));
+            
+            console.log(`[Garmin Webhook] Created run record ${newRun.id} from Garmin activity ${activity.activityId}`);
+          }
         }
       }
       
@@ -1708,7 +1789,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // HEALTH - Sleeps (sleep data push)
   app.post("/api/garmin/webhook/sleeps", async (req: Request, res: Response) => {
     try {
-      console.log('[Garmin Webhook] Received sleeps push:', JSON.stringify(req.body).slice(0, 500));
+      console.log('[Garmin Webhook] Received sleeps push:', JSON.stringify(req.body).slice(0, 1000));
       
       const sleeps = req.body.sleeps || [];
       for (const sleep of sleeps) {
@@ -1719,30 +1800,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const date = new Date(sleep.startTimeInSeconds * 1000).toISOString().split('T')[0];
           console.log(`[Garmin Webhook] Processing sleep for user ${device.userId}, date: ${date}`);
           
-          // Upsert sleep data
-          await db.insert(garminWellnessMetrics).values({
+          // Store all sleep fields
+          const sleepData = {
             userId: device.userId,
             date,
             totalSleepSeconds: sleep.durationInSeconds,
             deepSleepSeconds: sleep.deepSleepDurationInSeconds,
             lightSleepSeconds: sleep.lightSleepDurationInSeconds,
-            remSleepSeconds: sleep.remSleepInSeconds,
+            remSleepSeconds: sleep.remSleepDurationInSeconds,
             awakeSleepSeconds: sleep.awakeDurationInSeconds,
-            sleepScore: sleep.overallSleepScore?.value,
-            sleepQuality: sleep.overallSleepScore?.qualifierKey,
-          }).onConflictDoUpdate({
-            target: [garminWellnessMetrics.userId, garminWellnessMetrics.date],
-            set: {
-              totalSleepSeconds: sleep.durationInSeconds,
-              deepSleepSeconds: sleep.deepSleepDurationInSeconds,
-              lightSleepSeconds: sleep.lightSleepDurationInSeconds,
-              remSleepSeconds: sleep.remSleepInSeconds,
-              awakeSleepSeconds: sleep.awakeDurationInSeconds,
-              sleepScore: sleep.overallSleepScore?.value,
-              sleepQuality: sleep.overallSleepScore?.qualifierKey,
-              syncedAt: new Date(),
-            },
+            sleepScore: sleep.overallSleepScore?.value || sleep.sleepScores?.overall?.value,
+            sleepQuality: sleep.overallSleepScore?.qualifierKey || sleep.sleepScores?.overall?.qualifierKey,
+            sleepStartTimeGMT: sleep.startTimeGMT,
+            sleepEndTimeGMT: sleep.endTimeGMT,
+            sleepLevelsMap: sleep.sleepLevelsMap,
+            avgSleepRespirationValue: sleep.avgSleepRespirationValue,
+            lowestRespirationValue: sleep.lowestRespirationValue,
+            highestRespirationValue: sleep.highestRespirationValue,
+            avgSpO2: sleep.avgSpO2Value,
+            restingHeartRate: sleep.restingHeartRate,
+            averageHeartRate: sleep.averageHeartRate,
+            rawData: sleep,
+          };
+          
+          // Try upsert - if conflict, update existing
+          const existing = await db.query.garminWellnessMetrics.findFirst({
+            where: and(
+              eq(garminWellnessMetrics.userId, device.userId),
+              eq(garminWellnessMetrics.date, date)
+            )
           });
+          
+          if (existing) {
+            await db.update(garminWellnessMetrics)
+              .set({ ...sleepData, syncedAt: new Date() })
+              .where(eq(garminWellnessMetrics.id, existing.id));
+          } else {
+            await db.insert(garminWellnessMetrics).values(sleepData);
+          }
         }
       }
       
@@ -1756,36 +1851,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // HEALTH - Stress (stress data push)
   app.post("/api/garmin/webhook/stress", async (req: Request, res: Response) => {
     try {
-      console.log('[Garmin Webhook] Received stress push:', JSON.stringify(req.body).slice(0, 500));
+      console.log('[Garmin Webhook] Received stress push:', JSON.stringify(req.body).slice(0, 1000));
       
-      const stressData = req.body.allDayStress || [];
+      const stressData = req.body.allDayStress || req.body.stressDetails || [];
       for (const stress of stressData) {
         const userAccessToken = stress.userAccessToken;
         const device = await findUserByGarminToken(userAccessToken);
         
         if (device) {
-          const date = new Date(stress.startTimeInSeconds * 1000).toISOString().split('T')[0];
+          const date = new Date((stress.startTimeInSeconds || stress.calendarDate) * 1000).toISOString().split('T')[0];
           console.log(`[Garmin Webhook] Processing stress for user ${device.userId}, date: ${date}`);
           
-          await db.insert(garminWellnessMetrics).values({
-            userId: device.userId,
-            date,
+          const stressFields = {
             averageStressLevel: stress.averageStressLevel,
             maxStressLevel: stress.maxStressLevel,
             stressDuration: stress.stressDurationInSeconds,
             restDuration: stress.restDurationInSeconds,
+            activityDuration: stress.activityDurationInSeconds,
+            lowStressDuration: stress.lowStressDurationInSeconds,
+            mediumStressDuration: stress.mediumStressDurationInSeconds,
+            highStressDuration: stress.highStressDurationInSeconds,
             stressQualifier: stress.stressQualifier,
-          }).onConflictDoUpdate({
-            target: [garminWellnessMetrics.userId, garminWellnessMetrics.date],
-            set: {
-              averageStressLevel: stress.averageStressLevel,
-              maxStressLevel: stress.maxStressLevel,
-              stressDuration: stress.stressDurationInSeconds,
-              restDuration: stress.restDurationInSeconds,
-              stressQualifier: stress.stressQualifier,
-              syncedAt: new Date(),
-            },
+            bodyBatteryHigh: stress.bodyBatteryHighValue,
+            bodyBatteryLow: stress.bodyBatteryLowValue,
+            bodyBatteryCharged: stress.bodyBatteryChargedValue,
+            bodyBatteryDrained: stress.bodyBatteryDrainedValue,
+          };
+          
+          const existing = await db.query.garminWellnessMetrics.findFirst({
+            where: and(
+              eq(garminWellnessMetrics.userId, device.userId),
+              eq(garminWellnessMetrics.date, date)
+            )
           });
+          
+          if (existing) {
+            await db.update(garminWellnessMetrics)
+              .set({ ...stressFields, syncedAt: new Date() })
+              .where(eq(garminWellnessMetrics.id, existing.id));
+          } else {
+            await db.insert(garminWellnessMetrics).values({
+              userId: device.userId,
+              date,
+              ...stressFields,
+            });
+          }
         }
       }
       
@@ -1799,7 +1909,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // HEALTH - HRV Summary (heart rate variability)
   app.post("/api/garmin/webhook/hrv", async (req: Request, res: Response) => {
     try {
-      console.log('[Garmin Webhook] Received HRV push:', JSON.stringify(req.body).slice(0, 500));
+      console.log('[Garmin Webhook] Received HRV push:', JSON.stringify(req.body).slice(0, 1000));
       
       const hrvData = req.body.hrvSummaries || [];
       for (const hrv of hrvData) {
@@ -1807,27 +1917,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const device = await findUserByGarminToken(userAccessToken);
         
         if (device) {
-          const date = new Date(hrv.startTimeInSeconds * 1000).toISOString().split('T')[0];
+          const date = hrv.calendarDate || new Date((hrv.startTimeInSeconds || 0) * 1000).toISOString().split('T')[0];
+          console.log(`[Garmin Webhook] Processing HRV for user ${device.userId}, date: ${date}`);
           
-          await db.insert(garminWellnessMetrics).values({
-            userId: device.userId,
-            date,
+          const hrvFields = {
             hrvWeeklyAvg: hrv.weeklyAvg,
             hrvLastNightAvg: hrv.lastNightAvg,
             hrvLastNight5MinHigh: hrv.lastNight5MinHigh,
             hrvStatus: hrv.hrvStatus,
             hrvFeedback: hrv.feedbackPhrase,
-          }).onConflictDoUpdate({
-            target: [garminWellnessMetrics.userId, garminWellnessMetrics.date],
-            set: {
-              hrvWeeklyAvg: hrv.weeklyAvg,
-              hrvLastNightAvg: hrv.lastNightAvg,
-              hrvLastNight5MinHigh: hrv.lastNight5MinHigh,
-              hrvStatus: hrv.hrvStatus,
-              hrvFeedback: hrv.feedbackPhrase,
-              syncedAt: new Date(),
-            },
+            hrvBaselineLowUpper: hrv.baseline?.lowUpper,
+            hrvBaselineBalancedLower: hrv.baseline?.balancedLow,
+            hrvBaselineBalancedUpper: hrv.baseline?.balancedUpper,
+            hrvStartTimeGMT: hrv.startTimeGMT,
+            hrvEndTimeGMT: hrv.endTimeGMT,
+            hrvReadings: hrv.hrvValues,
+          };
+          
+          const existing = await db.query.garminWellnessMetrics.findFirst({
+            where: and(
+              eq(garminWellnessMetrics.userId, device.userId),
+              eq(garminWellnessMetrics.date, date)
+            )
           });
+          
+          if (existing) {
+            await db.update(garminWellnessMetrics)
+              .set({ ...hrvFields, syncedAt: new Date() })
+              .where(eq(garminWellnessMetrics.id, existing.id));
+          } else {
+            await db.insert(garminWellnessMetrics).values({
+              userId: device.userId,
+              date,
+              ...hrvFields,
+            });
+          }
         }
       }
       
@@ -1838,10 +1962,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // HEALTH - Dailies (daily activity summary)
+  // HEALTH - Dailies (daily activity summary with Body Battery, steps, etc.)
   app.post("/api/garmin/webhook/dailies", async (req: Request, res: Response) => {
     try {
-      console.log('[Garmin Webhook] Received dailies push:', JSON.stringify(req.body).slice(0, 500));
+      console.log('[Garmin Webhook] Received dailies push:', JSON.stringify(req.body).slice(0, 1000));
       
       const dailies = req.body.dailies || [];
       for (const daily of dailies) {
@@ -1849,26 +1973,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const device = await findUserByGarminToken(userAccessToken);
         
         if (device) {
-          const date = new Date(daily.startTimeInSeconds * 1000).toISOString().split('T')[0];
+          const date = daily.calendarDate || new Date((daily.startTimeInSeconds || 0) * 1000).toISOString().split('T')[0];
           console.log(`[Garmin Webhook] Processing daily for user ${device.userId}, date: ${date}`);
           
-          await db.insert(garminWellnessMetrics).values({
-            userId: device.userId,
-            date,
+          const dailyFields = {
+            // Heart rate
             restingHeartRate: daily.restingHeartRateInBeatsPerMinute,
             minHeartRate: daily.minHeartRateInBeatsPerMinute,
             maxHeartRate: daily.maxHeartRateInBeatsPerMinute,
             averageHeartRate: daily.averageHeartRateInBeatsPerMinute,
-          }).onConflictDoUpdate({
-            target: [garminWellnessMetrics.userId, garminWellnessMetrics.date],
-            set: {
-              restingHeartRate: daily.restingHeartRateInBeatsPerMinute,
-              minHeartRate: daily.minHeartRateInBeatsPerMinute,
-              maxHeartRate: daily.maxHeartRateInBeatsPerMinute,
-              averageHeartRate: daily.averageHeartRateInBeatsPerMinute,
-              syncedAt: new Date(),
-            },
+            heartRateTimeOffsetValues: daily.timeOffsetHeartRateSamples,
+            // Activity
+            steps: daily.steps,
+            distanceMeters: daily.distanceInMeters,
+            activeKilocalories: daily.activeKilocalories,
+            bmrKilocalories: daily.bmrKilocalories,
+            floorsClimbed: daily.floorsClimbed,
+            floorsDescended: daily.floorsDescended,
+            // Intensity
+            moderateIntensityDuration: daily.moderateIntensityDurationInSeconds,
+            vigorousIntensityDuration: daily.vigorousIntensityDurationInSeconds,
+            intensityDuration: daily.intensityDurationGoalInSeconds,
+            sedentaryDuration: daily.sedentaryDurationInSeconds,
+            sleepingDuration: daily.sleepingDurationInSeconds,
+            activeDuration: daily.activeDurationInSeconds,
+            // Body Battery
+            bodyBatteryHigh: daily.bodyBatteryHighValue || daily.bodyBatteryHighestValue,
+            bodyBatteryLow: daily.bodyBatteryLowestValue,
+            bodyBatteryCurrent: daily.bodyBatteryMostRecentValue,
+            bodyBatteryCharged: daily.bodyBatteryChargedValue,
+            bodyBatteryDrained: daily.bodyBatteryDrainedValue,
+            bodyBatteryVersion: daily.bodyBatteryVersion,
+            // Stress
+            averageStressLevel: daily.averageStressLevel,
+            maxStressLevel: daily.maxStressLevel,
+            stressDuration: daily.stressDuration,
+            restDuration: daily.restStressDuration,
+          };
+          
+          const existing = await db.query.garminWellnessMetrics.findFirst({
+            where: and(
+              eq(garminWellnessMetrics.userId, device.userId),
+              eq(garminWellnessMetrics.date, date)
+            )
           });
+          
+          if (existing) {
+            await db.update(garminWellnessMetrics)
+              .set({ ...dailyFields, syncedAt: new Date() })
+              .where(eq(garminWellnessMetrics.id, existing.id));
+          } else {
+            await db.insert(garminWellnessMetrics).values({
+              userId: device.userId,
+              date,
+              ...dailyFields,
+            });
+          }
         }
       }
       
@@ -1882,7 +2042,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // HEALTH - Body Compositions
   app.post("/api/garmin/webhook/body-compositions", async (req: Request, res: Response) => {
     try {
-      console.log('[Garmin Webhook] Received body compositions push');
+      console.log('[Garmin Webhook] Received body compositions push:', JSON.stringify(req.body).slice(0, 1000));
+      
+      const compositions = req.body.bodyCompositions || [];
+      for (const comp of compositions) {
+        const userAccessToken = comp.userAccessToken;
+        const device = await findUserByGarminToken(userAccessToken);
+        
+        if (device) {
+          const date = new Date((comp.measurementTimeInSeconds || 0) * 1000).toISOString().split('T')[0];
+          console.log(`[Garmin Webhook] Processing body composition for user ${device.userId}, date: ${date}`);
+          
+          // Store in garminBodyComposition table
+          await db.insert(garminBodyComposition).values({
+            userId: device.userId,
+            measurementTimeInSeconds: comp.measurementTimeInSeconds,
+            measurementDate: date,
+            weightInGrams: comp.weightInGrams,
+            bmi: comp.bmi,
+            bodyFatPercentage: comp.bodyFatPercentage,
+            bodyWaterPercentage: comp.bodyWaterPercentage,
+            boneMassInGrams: comp.boneMassInGrams,
+            muscleMassInGrams: comp.muscleMassInGrams,
+            physiqueRating: comp.physiqueRating,
+            visceralFatRating: comp.visceralFatRating,
+            metabolicAge: comp.metabolicAge,
+            rawData: comp,
+          });
+        }
+      }
+      
       res.status(200).json({ success: true });
     } catch (error) {
       console.error('[Garmin Webhook] Body compositions error:', error);
@@ -1893,7 +2082,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // HEALTH - Pulse Ox
   app.post("/api/garmin/webhook/pulse-ox", async (req: Request, res: Response) => {
     try {
-      console.log('[Garmin Webhook] Received pulse ox push');
+      console.log('[Garmin Webhook] Received pulse ox push:', JSON.stringify(req.body).slice(0, 1000));
+      
+      const pulseOxData = req.body.pulseOx || [];
+      for (const pox of pulseOxData) {
+        const userAccessToken = pox.userAccessToken;
+        const device = await findUserByGarminToken(userAccessToken);
+        
+        if (device) {
+          const date = pox.calendarDate || new Date((pox.startTimeInSeconds || 0) * 1000).toISOString().split('T')[0];
+          console.log(`[Garmin Webhook] Processing pulse ox for user ${device.userId}, date: ${date}`);
+          
+          const poxFields = {
+            avgSpO2: pox.avgSpO2,
+            minSpO2: pox.minSpO2,
+            avgAltitude: pox.avgAltitude,
+            onDemandReadings: pox.onDemandReadings,
+            sleepSpO2Readings: pox.sleepPulseOxReadings,
+          };
+          
+          const existing = await db.query.garminWellnessMetrics.findFirst({
+            where: and(
+              eq(garminWellnessMetrics.userId, device.userId),
+              eq(garminWellnessMetrics.date, date)
+            )
+          });
+          
+          if (existing) {
+            await db.update(garminWellnessMetrics)
+              .set({ ...poxFields, syncedAt: new Date() })
+              .where(eq(garminWellnessMetrics.id, existing.id));
+          } else {
+            await db.insert(garminWellnessMetrics).values({
+              userId: device.userId,
+              date,
+              ...poxFields,
+            });
+          }
+        }
+      }
+      
       res.status(200).json({ success: true });
     } catch (error) {
       console.error('[Garmin Webhook] Pulse ox error:', error);
@@ -1904,7 +2132,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // HEALTH - Respiration
   app.post("/api/garmin/webhook/respiration", async (req: Request, res: Response) => {
     try {
-      console.log('[Garmin Webhook] Received respiration push');
+      console.log('[Garmin Webhook] Received respiration push:', JSON.stringify(req.body).slice(0, 1000));
+      
+      const respirations = req.body.allDayRespiration || [];
+      for (const resp of respirations) {
+        const userAccessToken = resp.userAccessToken;
+        const device = await findUserByGarminToken(userAccessToken);
+        
+        if (device) {
+          const date = resp.calendarDate || new Date((resp.startTimeInSeconds || 0) * 1000).toISOString().split('T')[0];
+          console.log(`[Garmin Webhook] Processing respiration for user ${device.userId}, date: ${date}`);
+          
+          const respFields = {
+            avgWakingRespirationValue: resp.avgWakingRespirationValue,
+            highestRespirationValue: resp.highestRespirationValue,
+            lowestRespirationValue: resp.lowestRespirationValue,
+            avgSleepRespirationValue: resp.avgSleepRespirationValue,
+          };
+          
+          const existing = await db.query.garminWellnessMetrics.findFirst({
+            where: and(
+              eq(garminWellnessMetrics.userId, device.userId),
+              eq(garminWellnessMetrics.date, date)
+            )
+          });
+          
+          if (existing) {
+            await db.update(garminWellnessMetrics)
+              .set({ ...respFields, syncedAt: new Date() })
+              .where(eq(garminWellnessMetrics.id, existing.id));
+          } else {
+            await db.insert(garminWellnessMetrics).values({
+              userId: device.userId,
+              date,
+              ...respFields,
+            });
+          }
+        }
+      }
+      
       res.status(200).json({ success: true });
     } catch (error) {
       console.error('[Garmin Webhook] Respiration error:', error);
