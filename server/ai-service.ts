@@ -714,3 +714,311 @@ Give a brief (1-2 sentences) heart rate coaching tip. ${
     return `Heart rate at ${currentHR} bpm, Zone ${currentZone}. ${currentZone > 3 ? 'Consider easing up.' : 'Looking good!'}`;
   }
 }
+
+/**
+ * Comprehensive post-run analysis using all Garmin data
+ */
+export interface GarminActivityData {
+  activityType?: string;
+  durationInSeconds?: number;
+  distanceInMeters?: number;
+  averageHeartRate?: number;
+  maxHeartRate?: number;
+  averagePace?: number;
+  averageCadence?: number;
+  maxCadence?: number;
+  averageStrideLength?: number;
+  groundContactTime?: number;
+  verticalOscillation?: number;
+  verticalRatio?: number;
+  elevationGain?: number;
+  elevationLoss?: number;
+  aerobicTrainingEffect?: number;
+  anaerobicTrainingEffect?: number;
+  vo2Max?: number;
+  recoveryTime?: number;
+  activeKilocalories?: number;
+  averagePower?: number;
+  heartRateZones?: any;
+  laps?: any[];
+  splits?: any[];
+}
+
+export interface GarminWellnessData {
+  // Sleep
+  totalSleepSeconds?: number;
+  deepSleepSeconds?: number;
+  lightSleepSeconds?: number;
+  remSleepSeconds?: number;
+  sleepScore?: number;
+  sleepQuality?: string;
+  // Stress/Recovery
+  averageStressLevel?: number;
+  bodyBatteryCurrent?: number;
+  bodyBatteryHigh?: number;
+  bodyBatteryLow?: number;
+  // HRV
+  hrvWeeklyAvg?: number;
+  hrvLastNightAvg?: number;
+  hrvStatus?: string;
+  // Activity
+  steps?: number;
+  restingHeartRate?: number;
+  readinessScore?: number;
+  // Respiration/SpO2
+  avgSpO2?: number;
+  avgWakingRespirationValue?: number;
+}
+
+export interface ComprehensiveRunAnalysis {
+  summary: string;
+  performanceScore: number; // 1-100
+  highlights: string[];
+  struggles: string[];
+  personalBests: string[];
+  improvementTips: string[];
+  trainingLoadAssessment: string;
+  recoveryAdvice: string;
+  nextRunSuggestion: string;
+  wellnessImpact: string;
+  technicalAnalysis: {
+    paceAnalysis: string;
+    heartRateAnalysis: string;
+    cadenceAnalysis: string;
+    runningDynamics: string;
+    elevationPerformance: string;
+  };
+  garminInsights: {
+    trainingEffect: string;
+    vo2MaxTrend: string;
+    recoveryTime: string;
+  };
+}
+
+export async function generateComprehensiveRunAnalysis(params: {
+  runData: any;
+  garminActivity?: GarminActivityData;
+  wellness?: GarminWellnessData;
+  previousRuns?: any[];
+  userProfile?: { fitnessLevel?: string; age?: number; weight?: number };
+  coachName: string;
+  coachTone: string;
+}): Promise<ComprehensiveRunAnalysis> {
+  const { runData, garminActivity, wellness, previousRuns, userProfile, coachName, coachTone } = params;
+  
+  // Build comprehensive prompt with all available data
+  let prompt = `You are ${coachName}, an expert AI running coach with a ${coachTone} style. 
+Analyze this run comprehensively using all available data from the runner's Garmin device and wellness metrics.
+
+## RUN DATA:
+- Distance: ${runData.distance || garminActivity?.distanceInMeters ? ((garminActivity?.distanceInMeters || 0) / 1000).toFixed(2) : '?'}km
+- Duration: ${runData.duration ? Math.floor(runData.duration / 60) : garminActivity?.durationInSeconds ? Math.floor(garminActivity.durationInSeconds / 60) : '?'} minutes
+- Average Pace: ${runData.avgPace || (garminActivity?.averagePace ? `${Math.floor(garminActivity.averagePace)}:${Math.floor((garminActivity.averagePace % 1) * 60).toString().padStart(2, '0')}` : 'N/A')}/km
+- Activity Type: ${runData.activityType || garminActivity?.activityType || 'Running'}
+- Elevation Gain: ${runData.elevationGain || garminActivity?.elevationGain || 0}m
+- Elevation Loss: ${runData.elevationLoss || garminActivity?.elevationLoss || 0}m
+`;
+
+  // Add Garmin activity metrics if available
+  if (garminActivity) {
+    prompt += `
+## GARMIN ACTIVITY METRICS:
+`;
+    if (garminActivity.averageHeartRate) {
+      prompt += `- Average Heart Rate: ${garminActivity.averageHeartRate} bpm\n`;
+    }
+    if (garminActivity.maxHeartRate) {
+      prompt += `- Max Heart Rate: ${garminActivity.maxHeartRate} bpm\n`;
+    }
+    if (garminActivity.averageCadence) {
+      prompt += `- Average Cadence: ${Math.round(garminActivity.averageCadence)} spm\n`;
+    }
+    if (garminActivity.averageStrideLength) {
+      prompt += `- Average Stride Length: ${(garminActivity.averageStrideLength * 100).toFixed(0)}cm\n`;
+    }
+    if (garminActivity.groundContactTime) {
+      prompt += `- Ground Contact Time: ${Math.round(garminActivity.groundContactTime)}ms\n`;
+    }
+    if (garminActivity.verticalOscillation) {
+      prompt += `- Vertical Oscillation: ${garminActivity.verticalOscillation.toFixed(1)}cm\n`;
+    }
+    if (garminActivity.verticalRatio) {
+      prompt += `- Vertical Ratio: ${garminActivity.verticalRatio.toFixed(1)}%\n`;
+    }
+    if (garminActivity.averagePower) {
+      prompt += `- Average Running Power: ${Math.round(garminActivity.averagePower)}W\n`;
+    }
+    if (garminActivity.aerobicTrainingEffect) {
+      prompt += `- Aerobic Training Effect: ${garminActivity.aerobicTrainingEffect.toFixed(1)}/5.0\n`;
+    }
+    if (garminActivity.anaerobicTrainingEffect) {
+      prompt += `- Anaerobic Training Effect: ${garminActivity.anaerobicTrainingEffect.toFixed(1)}/5.0\n`;
+    }
+    if (garminActivity.vo2Max) {
+      prompt += `- Estimated VO2 Max: ${garminActivity.vo2Max.toFixed(0)} ml/kg/min\n`;
+    }
+    if (garminActivity.recoveryTime) {
+      prompt += `- Recommended Recovery: ${garminActivity.recoveryTime} hours\n`;
+    }
+    if (garminActivity.activeKilocalories) {
+      prompt += `- Active Calories: ${garminActivity.activeKilocalories} kcal\n`;
+    }
+  }
+
+  // Add wellness context if available
+  if (wellness) {
+    prompt += `
+## PRE-RUN WELLNESS STATE (from Garmin):
+`;
+    if (wellness.totalSleepSeconds) {
+      const sleepHours = wellness.totalSleepSeconds / 3600;
+      prompt += `- Sleep: ${sleepHours.toFixed(1)} hours`;
+      if (wellness.sleepScore) prompt += ` (score: ${wellness.sleepScore}/100)`;
+      if (wellness.sleepQuality) prompt += ` - ${wellness.sleepQuality}`;
+      prompt += '\n';
+      if (wellness.deepSleepSeconds && wellness.remSleepSeconds) {
+        const deepHours = wellness.deepSleepSeconds / 3600;
+        const remHours = wellness.remSleepSeconds / 3600;
+        prompt += `  - Deep sleep: ${deepHours.toFixed(1)}h, REM: ${remHours.toFixed(1)}h\n`;
+      }
+    }
+    if (wellness.bodyBatteryCurrent !== undefined) {
+      prompt += `- Body Battery: ${wellness.bodyBatteryCurrent}/100`;
+      if (wellness.bodyBatteryHigh && wellness.bodyBatteryLow) {
+        prompt += ` (range today: ${wellness.bodyBatteryLow}-${wellness.bodyBatteryHigh})`;
+      }
+      prompt += '\n';
+    }
+    if (wellness.averageStressLevel !== undefined) {
+      prompt += `- Average Stress Level: ${wellness.averageStressLevel}/100\n`;
+    }
+    if (wellness.hrvStatus) {
+      prompt += `- HRV Status: ${wellness.hrvStatus}`;
+      if (wellness.hrvLastNightAvg) prompt += ` (last night avg: ${wellness.hrvLastNightAvg.toFixed(0)}ms)`;
+      prompt += '\n';
+    }
+    if (wellness.restingHeartRate) {
+      prompt += `- Resting Heart Rate: ${wellness.restingHeartRate} bpm\n`;
+    }
+    if (wellness.readinessScore !== undefined) {
+      prompt += `- Body Readiness Score: ${wellness.readinessScore}/100\n`;
+    }
+    if (wellness.avgSpO2) {
+      prompt += `- Blood Oxygen (SpO2): ${wellness.avgSpO2}%\n`;
+    }
+    if (wellness.steps) {
+      prompt += `- Steps before run: ${wellness.steps}\n`;
+    }
+  }
+
+  // Add historical context if available
+  if (previousRuns && previousRuns.length > 0) {
+    prompt += `
+## RECENT RUN HISTORY (last ${previousRuns.length} runs):
+`;
+    previousRuns.slice(0, 5).forEach((run, i) => {
+      prompt += `${i + 1}. ${run.distance?.toFixed(1) || '?'}km at ${run.avgPace || 'N/A'}/km`;
+      if (run.avgHeartRate) prompt += `, ${run.avgHeartRate}bpm`;
+      prompt += '\n';
+    });
+  }
+
+  prompt += `
+## ANALYSIS REQUIRED:
+Based on ALL the data above, provide a comprehensive JSON analysis with these fields:
+{
+  "summary": "2-3 sentence personalized summary of the run",
+  "performanceScore": <1-100 based on effort, conditions, and wellness>,
+  "highlights": ["3-5 positive aspects of the run"],
+  "struggles": ["any challenges or areas of concern"],
+  "personalBests": ["any notable achievements or improvements"],
+  "improvementTips": ["3-4 specific, actionable tips for next time"],
+  "trainingLoadAssessment": "Assessment of training stimulus based on training effect",
+  "recoveryAdvice": "Specific recovery recommendations based on wellness and effort",
+  "nextRunSuggestion": "What type of run to do next based on recovery needs",
+  "wellnessImpact": "How their wellness state affected performance",
+  "technicalAnalysis": {
+    "paceAnalysis": "Pace consistency and efficiency analysis",
+    "heartRateAnalysis": "HR zones and cardiovascular response",
+    "cadenceAnalysis": "Step rate assessment",
+    "runningDynamics": "Assessment of stride, ground contact, oscillation",
+    "elevationPerformance": "How they handled hills"
+  },
+  "garminInsights": {
+    "trainingEffect": "Interpretation of aerobic/anaerobic training effect",
+    "vo2MaxTrend": "VO2 max context and what it means",
+    "recoveryTime": "Why recovery time is what it is"
+  }
+}
+
+Be specific, use the actual numbers from the data, and provide actionable insights.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { 
+          role: "system", 
+          content: `You are ${coachName}, an expert running coach with deep knowledge of exercise physiology and Garmin metrics. Provide detailed, personalized analysis using all available biometric data. Respond only with valid JSON.` 
+        },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 1500,
+      temperature: 0.7,
+    });
+
+    const content = completion.choices[0].message.content || "{}";
+    const parsed = JSON.parse(content.replace(/```json\n?|\n?```/g, ''));
+    
+    return {
+      summary: parsed.summary || "Great run today!",
+      performanceScore: parsed.performanceScore || 75,
+      highlights: parsed.highlights || ["Completed your run!"],
+      struggles: parsed.struggles || [],
+      personalBests: parsed.personalBests || [],
+      improvementTips: parsed.improvementTips || ["Keep up the great work!"],
+      trainingLoadAssessment: parsed.trainingLoadAssessment || "Moderate training load.",
+      recoveryAdvice: parsed.recoveryAdvice || "Get adequate rest and hydration.",
+      nextRunSuggestion: parsed.nextRunSuggestion || "An easy recovery run in 24-48 hours.",
+      wellnessImpact: parsed.wellnessImpact || "Your wellness state supported this effort.",
+      technicalAnalysis: {
+        paceAnalysis: parsed.technicalAnalysis?.paceAnalysis || "Pace data not available.",
+        heartRateAnalysis: parsed.technicalAnalysis?.heartRateAnalysis || "Heart rate data not available.",
+        cadenceAnalysis: parsed.technicalAnalysis?.cadenceAnalysis || "Cadence data not available.",
+        runningDynamics: parsed.technicalAnalysis?.runningDynamics || "Running dynamics not available.",
+        elevationPerformance: parsed.technicalAnalysis?.elevationPerformance || "Elevation data not available.",
+      },
+      garminInsights: {
+        trainingEffect: parsed.garminInsights?.trainingEffect || "Training effect data not available.",
+        vo2MaxTrend: parsed.garminInsights?.vo2MaxTrend || "VO2 max data not available.",
+        recoveryTime: parsed.garminInsights?.recoveryTime || "Recovery time estimate not available.",
+      },
+    };
+  } catch (error) {
+    console.error("Error generating comprehensive run analysis:", error);
+    return {
+      summary: "Great effort on your run today!",
+      performanceScore: 70,
+      highlights: ["Completed your run", "Stayed consistent"],
+      struggles: [],
+      personalBests: [],
+      improvementTips: ["Keep training consistently", "Focus on recovery"],
+      trainingLoadAssessment: "Training load recorded.",
+      recoveryAdvice: "Rest well and stay hydrated.",
+      nextRunSuggestion: "Take a rest day or do an easy run.",
+      wellnessImpact: "Unable to assess wellness impact.",
+      technicalAnalysis: {
+        paceAnalysis: "Analysis unavailable.",
+        heartRateAnalysis: "Analysis unavailable.",
+        cadenceAnalysis: "Analysis unavailable.",
+        runningDynamics: "Analysis unavailable.",
+        elevationPerformance: "Analysis unavailable.",
+      },
+      garminInsights: {
+        trainingEffect: "Data unavailable.",
+        vo2MaxTrend: "Data unavailable.",
+        recoveryTime: "Data unavailable.",
+      },
+    };
+  }
+}

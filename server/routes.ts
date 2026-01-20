@@ -269,6 +269,127 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Comprehensive AI run analysis using all Garmin data
+  app.post("/api/runs/:id/comprehensive-analysis", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const runId = req.params.id;
+      const userId = req.user!.userId;
+      
+      // Get the run data
+      const run = await storage.getRun(runId);
+      if (!run) {
+        return res.status(404).json({ error: "Run not found" });
+      }
+      
+      // Get user profile for coach settings
+      const user = await storage.getUser(userId);
+      const coachName = user?.coachName || "AI Coach";
+      const coachTone = user?.coachTone || "energetic";
+      
+      // Get linked Garmin activity if exists
+      const garminActivity = await db.query.garminActivities.findFirst({
+        where: eq(garminActivities.runId, runId),
+      });
+      
+      // Get latest wellness metrics for the run date
+      const runDate = run.runDate || (run.completedAt ? new Date(run.completedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+      const wellness = await db.query.garminWellnessMetrics.findFirst({
+        where: and(
+          eq(garminWellnessMetrics.userId, userId),
+          eq(garminWellnessMetrics.date, runDate)
+        ),
+      });
+      
+      // Get previous runs for context
+      const previousRuns = await db.query.runs.findMany({
+        where: eq(runs.userId, userId),
+        orderBy: desc(runs.completedAt),
+        limit: 10,
+      });
+      
+      // Import and call the comprehensive analysis function
+      const aiService = await import("./ai-service");
+      const analysis = await aiService.generateComprehensiveRunAnalysis({
+        runData: run,
+        garminActivity: garminActivity ? {
+          activityType: garminActivity.activityType || undefined,
+          durationInSeconds: garminActivity.durationInSeconds || undefined,
+          distanceInMeters: garminActivity.distanceInMeters || undefined,
+          averageHeartRate: garminActivity.averageHeartRateInBeatsPerMinute || undefined,
+          maxHeartRate: garminActivity.maxHeartRateInBeatsPerMinute || undefined,
+          averagePace: garminActivity.averagePaceInMinutesPerKilometer || undefined,
+          averageCadence: garminActivity.averageRunCadenceInStepsPerMinute || undefined,
+          maxCadence: garminActivity.maxRunCadenceInStepsPerMinute || undefined,
+          averageStrideLength: garminActivity.averageStrideLength || undefined,
+          groundContactTime: garminActivity.groundContactTime || undefined,
+          verticalOscillation: garminActivity.verticalOscillation || undefined,
+          verticalRatio: garminActivity.verticalRatio || undefined,
+          elevationGain: garminActivity.totalElevationGainInMeters || undefined,
+          elevationLoss: garminActivity.totalElevationLossInMeters || undefined,
+          aerobicTrainingEffect: garminActivity.aerobicTrainingEffect || undefined,
+          anaerobicTrainingEffect: garminActivity.anaerobicTrainingEffect || undefined,
+          vo2Max: garminActivity.vo2Max || undefined,
+          recoveryTime: garminActivity.recoveryTimeInMinutes || undefined,
+          activeKilocalories: garminActivity.activeKilocalories || undefined,
+          averagePower: garminActivity.averagePowerInWatts || undefined,
+          laps: garminActivity.laps as any[] || undefined,
+          splits: garminActivity.splits as any[] || undefined,
+        } : undefined,
+        wellness: wellness ? {
+          totalSleepSeconds: wellness.totalSleepSeconds || undefined,
+          deepSleepSeconds: wellness.deepSleepSeconds || undefined,
+          lightSleepSeconds: wellness.lightSleepSeconds || undefined,
+          remSleepSeconds: wellness.remSleepSeconds || undefined,
+          sleepScore: wellness.sleepScore || undefined,
+          sleepQuality: wellness.sleepQuality || undefined,
+          averageStressLevel: wellness.averageStressLevel || undefined,
+          bodyBatteryCurrent: wellness.bodyBatteryCurrent || undefined,
+          bodyBatteryHigh: wellness.bodyBatteryHigh || undefined,
+          bodyBatteryLow: wellness.bodyBatteryLow || undefined,
+          hrvWeeklyAvg: wellness.hrvWeeklyAvg || undefined,
+          hrvLastNightAvg: wellness.hrvLastNightAvg || undefined,
+          hrvStatus: wellness.hrvStatus || undefined,
+          steps: wellness.steps || undefined,
+          restingHeartRate: wellness.restingHeartRate || undefined,
+          readinessScore: wellness.readinessScore || undefined,
+          avgSpO2: wellness.avgSpO2 || undefined,
+          avgWakingRespirationValue: wellness.avgWakingRespirationValue || undefined,
+        } : undefined,
+        previousRuns: previousRuns.filter(r => r.id !== runId).slice(0, 5),
+        userProfile: user ? {
+          fitnessLevel: user.fitnessLevel || undefined,
+          age: user.dob ? Math.floor((Date.now() - new Date(user.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : undefined,
+          weight: user.weight ? parseFloat(user.weight) : undefined,
+        } : undefined,
+        coachName,
+        coachTone,
+      });
+      
+      // Store the analysis
+      await storage.createRunAnalysis(runId, { analysis });
+      
+      // Update run with ai insights summary
+      await storage.updateRun(runId, { 
+        aiInsights: JSON.stringify({
+          summary: analysis.summary,
+          performanceScore: analysis.performanceScore,
+          highlights: analysis.highlights,
+        }),
+        aiCoachingNotes: analysis,
+      });
+      
+      res.json({
+        success: true,
+        analysis,
+        hasGarminData: !!garminActivity,
+        hasWellnessData: !!wellness,
+      });
+    } catch (error: any) {
+      console.error("Comprehensive run analysis error:", error);
+      res.status(500).json({ error: "Failed to generate comprehensive analysis" });
+    }
+  });
+
   // ==================== ROUTES ENDPOINTS ====================
   
   app.get("/api/routes/user/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
