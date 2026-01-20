@@ -330,12 +330,19 @@ export const garminWellnessMetrics = pgTable("garmin_wellness_metrics", {
   awakeSleepSeconds: integer("awake_sleep_seconds"),
   sleepScore: integer("sleep_score"),
   sleepQuality: text("sleep_quality"),
+  sleepStartTimeGMT: text("sleep_start_time_gmt"),
+  sleepEndTimeGMT: text("sleep_end_time_gmt"),
+  sleepLevelsMap: jsonb("sleep_levels_map"), // Detailed sleep stages
   
   // Stress metrics
   averageStressLevel: integer("average_stress_level"),
   maxStressLevel: integer("max_stress_level"),
   stressDuration: integer("stress_duration"), // seconds
   restDuration: integer("rest_duration"), // seconds
+  activityDuration: integer("activity_duration"), // seconds
+  lowStressDuration: integer("low_stress_duration"), // seconds
+  mediumStressDuration: integer("medium_stress_duration"), // seconds
+  highStressDuration: integer("high_stress_duration"), // seconds
   stressQualifier: text("stress_qualifier"),
   
   // Body Battery metrics
@@ -344,6 +351,7 @@ export const garminWellnessMetrics = pgTable("garmin_wellness_metrics", {
   bodyBatteryCurrent: integer("body_battery_current"),
   bodyBatteryCharged: integer("body_battery_charged"),
   bodyBatteryDrained: integer("body_battery_drained"),
+  bodyBatteryVersion: real("body_battery_version"),
   
   // HRV metrics
   hrvWeeklyAvg: real("hrv_weekly_avg"),
@@ -351,21 +359,162 @@ export const garminWellnessMetrics = pgTable("garmin_wellness_metrics", {
   hrvLastNight5MinHigh: real("hrv_last_night_5min_high"),
   hrvStatus: text("hrv_status"),
   hrvFeedback: text("hrv_feedback"),
+  hrvBaselineLowUpper: real("hrv_baseline_low_upper"),
+  hrvBaselineBalancedLower: real("hrv_baseline_balanced_lower"),
+  hrvBaselineBalancedUpper: real("hrv_baseline_balanced_upper"),
+  hrvStartTimeGMT: text("hrv_start_time_gmt"),
+  hrvEndTimeGMT: text("hrv_end_time_gmt"),
+  hrvReadings: jsonb("hrv_readings"), // Detailed HRV readings array
   
   // Heart rate metrics
   restingHeartRate: integer("resting_heart_rate"),
   minHeartRate: integer("min_heart_rate"),
   maxHeartRate: integer("max_heart_rate"),
   averageHeartRate: integer("average_heart_rate"),
+  heartRateTimeOffsetValues: jsonb("heart_rate_time_offset_values"), // Detailed HR data
   
   // Readiness
   readinessScore: integer("readiness_score"),
   readinessRecommendation: text("readiness_recommendation"),
   
+  // Respiration metrics
+  avgWakingRespirationValue: real("avg_waking_respiration_value"),
+  highestRespirationValue: real("highest_respiration_value"),
+  lowestRespirationValue: real("lowest_respiration_value"),
+  avgSleepRespirationValue: real("avg_sleep_respiration_value"),
+  
+  // Pulse Ox metrics
+  avgSpO2: real("avg_spo2"),
+  minSpO2: real("min_spo2"),
+  avgAltitude: real("avg_altitude"),
+  onDemandReadings: jsonb("on_demand_readings"), // Manual SpO2 readings
+  sleepSpO2Readings: jsonb("sleep_spo2_readings"), // Sleep SpO2 readings
+  
+  // Activity/Daily metrics
+  steps: integer("steps"),
+  distanceMeters: integer("distance_meters"),
+  activeKilocalories: integer("active_kilocalories"),
+  bmrKilocalories: integer("bmr_kilocalories"),
+  floorsClimbed: integer("floors_climbed"),
+  floorsDescended: integer("floors_descended"),
+  moderateIntensityDuration: integer("moderate_intensity_duration"),
+  vigorousIntensityDuration: integer("vigorous_intensity_duration"),
+  intensityDuration: integer("intensity_duration"),
+  sedentaryDuration: integer("sedentary_duration"),
+  sleepingDuration: integer("sleeping_duration"),
+  activeDuration: integer("active_duration"),
+  
   // Raw data for debugging
   rawData: jsonb("raw_data"),
   
   syncedAt: timestamp("synced_at").defaultNow(),
+});
+
+// Garmin Activities table (stores full activity data from Garmin)
+export const garminActivities = pgTable("garmin_activities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  runId: varchar("run_id").references(() => runs.id), // Link to our runs table
+  garminActivityId: text("garmin_activity_id").notNull().unique(),
+  
+  // Basic activity info
+  activityName: text("activity_name"),
+  activityType: text("activity_type"), // running, walking, cycling, etc.
+  eventType: text("event_type"), // race, workout, training, etc.
+  startTimeInSeconds: integer("start_time_in_seconds"),
+  startTimeOffsetInSeconds: integer("start_time_offset_in_seconds"),
+  durationInSeconds: integer("duration_in_seconds"),
+  distanceInMeters: real("distance_in_meters"),
+  
+  // Heart rate data
+  averageHeartRateInBeatsPerMinute: integer("average_heart_rate"),
+  maxHeartRateInBeatsPerMinute: integer("max_heart_rate"),
+  heartRateZones: jsonb("heart_rate_zones"), // Zone breakdown
+  
+  // Pace/Speed data
+  averageSpeedInMetersPerSecond: real("average_speed"),
+  maxSpeedInMetersPerSecond: real("max_speed"),
+  averagePaceInMinutesPerKilometer: real("average_pace"),
+  
+  // Power data (for running power)
+  averagePowerInWatts: real("average_power"),
+  maxPowerInWatts: real("max_power"),
+  normalizedPowerInWatts: real("normalized_power"),
+  
+  // Running dynamics
+  averageRunCadenceInStepsPerMinute: real("average_cadence"),
+  maxRunCadenceInStepsPerMinute: real("max_cadence"),
+  averageStrideLength: real("average_stride_length"),
+  groundContactTime: real("ground_contact_time"), // ms
+  groundContactBalance: real("ground_contact_balance"), // %
+  verticalOscillation: real("vertical_oscillation"), // cm
+  verticalRatio: real("vertical_ratio"), // %
+  
+  // Elevation data
+  startLatitude: real("start_latitude"),
+  startLongitude: real("start_longitude"),
+  totalElevationGainInMeters: real("elevation_gain"),
+  totalElevationLossInMeters: real("elevation_loss"),
+  minElevationInMeters: real("min_elevation"),
+  maxElevationInMeters: real("max_elevation"),
+  
+  // Calories
+  activeKilocalories: integer("active_kilocalories"),
+  deviceActivateKilocalories: integer("device_active_kilocalories"),
+  bmrKilocalories: integer("bmr_kilocalories"),
+  
+  // Training effect
+  aerobicTrainingEffect: real("aerobic_training_effect"), // 1.0 - 5.0
+  anaerobicTrainingEffect: real("anaerobic_training_effect"), // 1.0 - 5.0
+  trainingEffectLabel: text("training_effect_label"),
+  
+  // Recovery
+  vo2Max: real("vo2_max"),
+  lactateThresholdBpm: integer("lactate_threshold_bpm"),
+  lactateThresholdSpeed: real("lactate_threshold_speed"),
+  recoveryTimeInMinutes: integer("recovery_time"),
+  
+  // Laps and splits
+  laps: jsonb("laps"), // Array of lap data
+  splits: jsonb("splits"), // km/mile splits
+  samples: jsonb("samples"), // Time series data (GPS, HR, pace, etc.)
+  
+  // Environmental
+  averageTemperature: real("average_temperature"),
+  minTemperature: real("min_temperature"),
+  maxTemperature: real("max_temperature"),
+  
+  // Device info
+  deviceName: text("device_name"),
+  
+  // Full raw data
+  rawData: jsonb("raw_data"),
+  
+  // Metadata
+  isProcessed: boolean("is_processed").default(false),
+  aiAnalysisGenerated: boolean("ai_analysis_generated").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Garmin Body Composition table
+export const garminBodyComposition = pgTable("garmin_body_composition", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  measurementTimeInSeconds: integer("measurement_time_in_seconds"),
+  measurementDate: text("measurement_date"), // YYYY-MM-DD
+  
+  weightInGrams: integer("weight_in_grams"),
+  bmi: real("bmi"),
+  bodyFatPercentage: real("body_fat_percentage"),
+  bodyWaterPercentage: real("body_water_percentage"),
+  boneMassInGrams: integer("bone_mass_in_grams"),
+  muscleMassInGrams: integer("muscle_mass_in_grams"),
+  physiqueRating: integer("physique_rating"),
+  visceralFatRating: integer("visceral_fat_rating"),
+  metabolicAge: integer("metabolic_age"),
+  
+  rawData: jsonb("raw_data"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Device Data table (for Garmin, Samsung, Apple, Coros, Strava data)
@@ -436,3 +585,5 @@ export type RunAnalysis = typeof runAnalyses.$inferSelect;
 export type DeviceData = typeof deviceData.$inferSelect;
 export type ConnectedDevice = typeof connectedDevices.$inferSelect;
 export type GarminWellnessMetric = typeof garminWellnessMetrics.$inferSelect;
+export type GarminActivity = typeof garminActivities.$inferSelect;
+export type GarminBodyComposition = typeof garminBodyComposition.$inferSelect;
