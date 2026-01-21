@@ -256,6 +256,8 @@ export default function RunSessionScreen({
   const recentCoachingTopicsRef = useRef<string[]>([]);
   const completedInstructionsRef = useRef<Set<number>>(new Set());
   const announcedInstructionsRef = useRef<Set<number>>(new Set());
+  const announced90mRef = useRef<Set<number>>(new Set());
+  const announced50mRef = useRef<Set<number>>(new Set());
   const lastWeatherCoachTimeRef = useRef<number>(0);
   const lastWeaknessCoachTimeRef = useRef<number>(0);
   const lastOffRouteTimeRef = useRef<number>(0);
@@ -318,6 +320,8 @@ export default function RunSessionScreen({
       navigationEngine.reset();
       completedInstructionsRef.current.clear();
       announcedInstructionsRef.current.clear();
+      announced90mRef.current.clear();
+      announced50mRef.current.clear();
       if (heartRateIntervalRef.current) {
         clearInterval(heartRateIntervalRef.current);
       }
@@ -965,19 +969,26 @@ export default function RunSessionScreen({
       setCurrentInstruction(instruction);
       setDistanceToNextTurn(distanceToTurn);
 
-      if (distanceToTurn < 50 && distanceToTurn >= 20 && !announcedInstructionsRef.current.has(index)) {
-        announcedInstructionsRef.current.add(index);
-        const cleanInstruction = instruction.instruction?.replace(/<[^>]*>/g, '') || '';
-        if (cleanInstruction) {
-          speechQueue.enqueueNavigation(`In ${Math.round(distanceToTurn)} meters, ${cleanInstruction}`);
-        }
+      const cleanInstruction = instruction.instruction?.replace(/<[^>]*>/g, '') || '';
+      
+      // Announce at 90 meters (first warning)
+      if (distanceToTurn <= 90 && distanceToTurn > 50 && !announced90mRef.current.has(index) && cleanInstruction) {
+        announced90mRef.current.add(index);
+        speechQueue.enqueueNavigation(`In ${Math.round(distanceToTurn)} meters, ${cleanInstruction}`);
       }
 
-      if (distanceToTurn < 20 && index >= 0) {
+      // Announce at 50 meters (approaching)
+      if (distanceToTurn <= 50 && distanceToTurn > 20 && !announced50mRef.current.has(index) && cleanInstruction) {
+        announced50mRef.current.add(index);
+        speechQueue.enqueueNavigation(`In ${Math.round(distanceToTurn)} meters, ${cleanInstruction}`);
+      }
+
+      // Announce at 20 meters (now) and mark as completed
+      if (distanceToTurn <= 20 && !announcedInstructionsRef.current.has(index)) {
+        announcedInstructionsRef.current.add(index);
         completedInstructionsRef.current.add(index);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
-        const cleanInstruction = instruction.instruction?.replace(/<[^>]*>/g, '') || '';
         if (cleanInstruction) {
           speechQueue.enqueueNavigation(cleanInstruction);
         }
