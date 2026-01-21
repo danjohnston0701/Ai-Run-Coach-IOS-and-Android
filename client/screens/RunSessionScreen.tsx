@@ -846,9 +846,12 @@ export default function RunSessionScreen({
     return { point: nearestPoint, distance: minDist };
   }, [routeCoordinates]);
 
-  const checkOffRoute = useCallback(async (lat: number, lng: number) => {
+  const checkOffRoute = useCallback(async (lat: number, lng: number, currentDistanceKm: number) => {
     if (!aiCoachEnabled || routeCoordinates.length === 0) return;
     if (Date.now() - lastOffRouteTimeRef.current < 60000) return;
+    
+    // Don't check off-route until user has traveled at least 100m to avoid false positives at start
+    if (currentDistanceKm < 0.1) return;
     
     const OFF_ROUTE_THRESHOLD = 50;
     const { distance: distToRoute } = findNearestRoutePoint(lat, lng);
@@ -931,6 +934,9 @@ export default function RunSessionScreen({
             },
           ]);
           
+          // Play the AI coaching message via TTS
+          speechQueue.enqueueCoach(data.message);
+          
           await saveCoachingLog({
             eventType: "ai_coach",
             topic: data.topic || "real_time_coaching",
@@ -1003,7 +1009,7 @@ export default function RunSessionScreen({
 
           setCurrentLocation({ lat: newPoint.lat, lng: newPoint.lng });
           updateNavigationInstruction(newPoint.lat, newPoint.lng);
-          checkOffRoute(newPoint.lat, newPoint.lng);
+          checkOffRoute(newPoint.lat, newPoint.lng, distance);
 
           if (newPoint.elevation && lastElevationRef.current !== null) {
             const elevDiff = newPoint.elevation - lastElevationRef.current;
