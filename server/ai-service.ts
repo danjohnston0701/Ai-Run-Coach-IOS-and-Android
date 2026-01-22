@@ -87,34 +87,75 @@ export async function generatePaceUpdate(params: {
   isSplit: boolean;
   splitKm?: number;
   splitPace?: string;
+  currentGrade?: number;
+  totalElevationGain?: number;
+  isOnHill?: boolean;
+  kmSplits?: Array<{ km: number; time: number; pace: string }>;
 }): Promise<string> {
-  const { distance, targetDistance, currentPace, elapsedTime, coachName, coachTone, isSplit, splitKm, splitPace } = params;
+  const { distance, targetDistance, currentPace, elapsedTime, coachName, coachTone, isSplit, splitKm, splitPace, currentGrade, totalElevationGain, isOnHill, kmSplits } = params;
   
   const progress = Math.round((distance / targetDistance) * 100);
   const timeMin = Math.floor(elapsedTime / 60);
+  
+  // Build terrain context
+  let terrainContext = '';
+  if (currentGrade !== undefined && Math.abs(currentGrade) > 2) {
+    if (currentGrade > 5) {
+      terrainContext = `Currently climbing a steep ${currentGrade.toFixed(1)}% grade hill. `;
+    } else if (currentGrade > 2) {
+      terrainContext = `Currently on a gentle ${currentGrade.toFixed(1)}% uphill. `;
+    } else if (currentGrade < -5) {
+      terrainContext = `Currently descending a steep ${Math.abs(currentGrade).toFixed(1)}% grade. `;
+    } else if (currentGrade < -2) {
+      terrainContext = `Currently on a gentle ${Math.abs(currentGrade).toFixed(1)}% downhill. `;
+    }
+  }
+  if (totalElevationGain && totalElevationGain > 0) {
+    terrainContext += `Total elevation climbed so far: ${Math.round(totalElevationGain)}m. `;
+  }
+  
+  // Build pace trend context for splits
+  let paceTrend = '';
+  if (isSplit && kmSplits && kmSplits.length >= 2) {
+    const lastTwo = kmSplits.slice(-2);
+    if (lastTwo.length === 2) {
+      const prevTime = lastTwo[0].time;
+      const currTime = lastTwo[1].time;
+      const diff = currTime - prevTime;
+      if (diff > 10) {
+        paceTrend = 'Runner is slowing down compared to previous kilometer. ';
+      } else if (diff < -10) {
+        paceTrend = 'Runner is speeding up compared to previous kilometer. ';
+      } else {
+        paceTrend = 'Runner is maintaining consistent pace. ';
+      }
+    }
+  }
   
   let prompt: string;
   if (isSplit && splitKm && splitPace) {
     prompt = `You are ${coachName}, an AI running coach with a ${coachTone} style.
     
 The runner just completed kilometer ${splitKm} with a split pace of ${splitPace}/km. They're at ${progress}% of their ${targetDistance}km run.
+${terrainContext}${paceTrend}
 
-Give a brief (1 sentence) split update. Mention their pace and give quick encouragement or pacing advice.`;
+Give a brief (1-2 sentences) split update. ${isOnHill ? 'Acknowledge the hill effort. ' : ''}Mention their pace and give quick encouragement or pacing advice. ${paceTrend ? 'Comment on their pace trend if relevant.' : ''}`;
   } else {
     prompt = `You are ${coachName}, an AI running coach with a ${coachTone} style.
     
 500m pace check: Runner is at ${distance.toFixed(2)}km, pace ${currentPace}/km, ${timeMin} minutes in.
+${terrainContext}
 
-Give a very brief (1 sentence) pace update with encouragement.`;
+Give a very brief (1 sentence) pace update with encouragement.${isOnHill ? ' Acknowledge the hill they are on.' : ''}`;
   }
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: `You are ${coachName}, a ${coachTone} running coach. Keep pace updates to 1 brief sentence.` },
+      { role: "system", content: `You are ${coachName}, a ${coachTone} running coach. Keep pace updates brief (1-2 sentences max). Be elevation-aware when hills are mentioned.` },
       { role: "user", content: prompt }
     ],
-    max_tokens: 50,
+    max_tokens: 80,
     temperature: 0.7,
   });
 
@@ -155,6 +196,107 @@ Provide response as JSON with fields: highlights (array), struggles (array), tip
       summary: "Great effort on your run today!"
     };
   }
+}
+
+export async function generatePhaseCoaching(params: {
+  phase: 'warmUp' | 'midRun' | 'lateRun' | 'finalPush';
+  distance: number;
+  targetDistance?: number;
+  elapsedTime: number;
+  currentPace?: string;
+  currentGrade?: number;
+  totalElevationGain?: number;
+  coachName: string;
+  coachTone: string;
+  activityType?: string;
+}): Promise<string> {
+  const { phase, distance, targetDistance, elapsedTime, currentPace, currentGrade, totalElevationGain, coachName, coachTone, activityType } = params;
+  
+  const timeMin = Math.floor(elapsedTime / 60);
+  const progress = targetDistance ? Math.round((distance / targetDistance) * 100) : 0;
+  
+  const phaseDescriptions: Record<string, string> = {
+    warmUp: 'The runner is in the warm-up phase, getting into their rhythm.',
+    midRun: 'The runner is in the middle of their run, working hard.',
+    lateRun: 'The runner is in the late phase, possibly getting tired.',
+    finalPush: 'The runner is approaching the finish, time for final encouragement.',
+  };
+  
+  let terrainInfo = '';
+  if (currentGrade && Math.abs(currentGrade) > 2) {
+    terrainInfo = currentGrade > 0 ? `Currently climbing (${currentGrade.toFixed(1)}% grade). ` : `Currently descending (${Math.abs(currentGrade).toFixed(1)}% grade). `;
+  }
+  if (totalElevationGain && totalElevationGain > 0) {
+    terrainInfo += `Total climb so far: ${Math.round(totalElevationGain)}m. `;
+  }
+  
+  const prompt = `You are ${coachName}, an AI ${activityType || 'running'} coach with a ${coachTone} style.
+
+Phase: ${phaseDescriptions[phase]}
+Runner Status:
+- Distance covered: ${distance.toFixed(2)}km${targetDistance ? ` (${progress}% of ${targetDistance}km)` : ''}
+- Time elapsed: ${timeMin} minutes
+${currentPace ? `- Current pace: ${currentPace}/km` : ''}
+${terrainInfo}
+
+Give a brief (1-2 sentences) phase-appropriate coaching message. Be ${coachTone} and encouraging. Consider their current terrain if on a hill.`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: `You are ${coachName}, a ${coachTone} ${activityType || 'running'} coach. Keep coaching messages brief and impactful.` },
+      { role: "user", content: prompt }
+    ],
+    max_tokens: 80,
+    temperature: 0.8,
+  });
+
+  return completion.choices[0].message.content || "You're doing great, keep it up!";
+}
+
+export async function generateStruggleCoaching(params: {
+  distance: number;
+  elapsedTime: number;
+  currentPace: string;
+  baselinePace: string;
+  paceDropPercent: number;
+  currentGrade?: number;
+  totalElevationGain?: number;
+  coachName: string;
+  coachTone: string;
+}): Promise<string> {
+  const { distance, elapsedTime, currentPace, baselinePace, paceDropPercent, currentGrade, totalElevationGain, coachName, coachTone } = params;
+  
+  const timeMin = Math.floor(elapsedTime / 60);
+  
+  let terrainContext = '';
+  if (currentGrade && currentGrade > 3) {
+    terrainContext = `They're currently on a ${currentGrade.toFixed(1)}% uphill which may explain the slowdown. `;
+  } else if (totalElevationGain && totalElevationGain > 50) {
+    terrainContext = `They've climbed ${Math.round(totalElevationGain)}m so far, which is contributing to fatigue. `;
+  }
+  
+  const prompt = `You are ${coachName}, an AI running coach with a ${coachTone} style.
+
+The runner is struggling. Their pace has dropped ${Math.round(paceDropPercent)}% from their baseline.
+- Current pace: ${currentPace}/km (baseline was ${baselinePace}/km)
+- Distance: ${distance.toFixed(2)}km
+- Time: ${timeMin} minutes
+${terrainContext}
+
+Give a brief (1-2 sentences) supportive message to help them through this tough moment. Acknowledge their struggle, but encourage them to push through or adjust their strategy.`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: `You are ${coachName}, a ${coachTone} running coach. Be supportive during tough moments. Keep it brief.` },
+      { role: "user", content: prompt }
+    ],
+    max_tokens: 80,
+    temperature: 0.7,
+  });
+
+  return completion.choices[0].message.content || "I can see you're working hard. Take a breath and find your rhythm again.";
 }
 
 export async function generatePreRunSummary(routeData: any, weatherData: any): Promise<any> {

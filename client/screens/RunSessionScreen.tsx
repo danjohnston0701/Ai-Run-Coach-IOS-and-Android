@@ -636,31 +636,62 @@ export default function RunSessionScreen({
     if (!aiCoachEnabled || Date.now() - lastPhaseCoachTimeRef.current < 180000) return;
     
     const phase = getRunPhase();
-    const statement = getAvailableStatement(phase);
-    
-    if (!statement) return;
     
     lastPhaseCoachTimeRef.current = Date.now();
     lastCoachingDistanceRef.current = distance;
     lastCoachingTimeRef.current = Date.now();
     
-    speechQueue.enqueueCoach(statement);
-    
-    setCoachMessages((prev) => [
-      ...prev.slice(-4),
-      {
-        text: statement,
-        timestamp: Date.now(),
-        type: "encouragement",
-      },
-    ]);
-    
-    await saveCoachingLog({
-      eventType: "phase_coaching",
-      topic: phase,
-      responseText: statement,
-    });
-  }, [aiCoachEnabled, getRunPhase, getAvailableStatement, saveCoachingLog, distance]);
+    try {
+      const response = await fetch(`${getApiUrl()}/api/ai/phase-coaching`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          phase,
+          distance,
+          targetDistance: routeData?.actualDistance,
+          elapsedTime,
+          currentPace,
+          currentGrade,
+          totalElevationGain: elevationGain,
+          coachName: user?.coachName || 'Coach',
+          coachTone: user?.coachTone || 'motivating',
+          activityType: route.params?.activityType || 'run',
+        }),
+      });
+      
+      const data = await response.json();
+      if (data.message) {
+        speechQueue.enqueueCoach(data.message);
+        
+        setCoachMessages((prev) => [
+          ...prev.slice(-4),
+          {
+            text: data.message,
+            timestamp: Date.now(),
+            type: "encouragement",
+          },
+        ]);
+        
+        await saveCoachingLog({
+          eventType: "phase_coaching",
+          topic: phase,
+          responseText: data.message,
+        });
+      }
+    } catch (error) {
+      console.log("Phase coaching error:", error);
+      // Fallback to pre-defined statement
+      const statement = getAvailableStatement(phase);
+      if (statement) {
+        speechQueue.enqueueCoach(statement);
+        setCoachMessages((prev) => [
+          ...prev.slice(-4),
+          { text: statement, timestamp: Date.now(), type: "encouragement" },
+        ]);
+      }
+    }
+  }, [aiCoachEnabled, getRunPhase, getAvailableStatement, saveCoachingLog, distance, elapsedTime, currentPace, currentGrade, elevationGain, routeData, user, route.params]);
 
   const hillCoachingStatements = {
     uphill: [
@@ -811,27 +842,63 @@ export default function RunSessionScreen({
     
     if (recentMedian > baselinePaceRef.current * PACE_DROP_THRESHOLD) {
       lastWeaknessCoachTimeRef.current = Date.now();
-      const statement = weaknessCoachingStatements[Math.floor(Math.random() * weaknessCoachingStatements.length)];
       
-      setCoachMessages((prev) => [
-        ...prev.slice(-4),
-        {
-          text: statement,
-          timestamp: Date.now(),
-          type: "weakness",
-        },
-      ]);
+      // Format baseline pace for display
+      const baselineMin = Math.floor(baselinePaceRef.current / 60);
+      const baselineSec = Math.floor(baselinePaceRef.current % 60);
+      const baselinePaceStr = `${baselineMin}:${baselineSec.toString().padStart(2, "0")}`;
       
-      Speech.stop();
-      Speech.speak(statement, { language: 'en-US', pitch: 1.0, rate: 0.9 });
+      const paceDropPercent = ((recentMedian - baselinePaceRef.current) / baselinePaceRef.current) * 100;
       
-      await saveCoachingLog({
-        eventType: "weakness_detection",
-        topic: "pace_drop",
-        responseText: statement,
-      });
+      try {
+        const response = await fetch(`${getApiUrl()}/api/ai/struggle-coaching`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            distance,
+            elapsedTime,
+            currentPace,
+            baselinePace: baselinePaceStr,
+            paceDropPercent,
+            currentGrade,
+            totalElevationGain: elevationGain,
+            coachName: user?.coachName || 'Coach',
+            coachTone: user?.coachTone || 'motivating',
+          }),
+        });
+        
+        const data = await response.json();
+        const message = data.message || weaknessCoachingStatements[Math.floor(Math.random() * weaknessCoachingStatements.length)];
+        
+        setCoachMessages((prev) => [
+          ...prev.slice(-4),
+          {
+            text: message,
+            timestamp: Date.now(),
+            type: "weakness",
+          },
+        ]);
+        
+        speechQueue.enqueueCoach(message);
+        
+        await saveCoachingLog({
+          eventType: "weakness_detection",
+          topic: "pace_drop",
+          responseText: message,
+        });
+      } catch (error) {
+        console.log("Struggle coaching error:", error);
+        // Fallback to pre-defined statement
+        const statement = weaknessCoachingStatements[Math.floor(Math.random() * weaknessCoachingStatements.length)];
+        speechQueue.enqueueCoach(statement);
+        setCoachMessages((prev) => [
+          ...prev.slice(-4),
+          { text: statement, timestamp: Date.now(), type: "weakness" },
+        ]);
+      }
     }
-  }, [aiCoachEnabled, distance, kmSplits, saveCoachingLog]);
+  }, [aiCoachEnabled, distance, elapsedTime, currentPace, currentGrade, elevationGain, kmSplits, user, saveCoachingLog]);
 
   const findNearestRoutePoint = useCallback((lat: number, lng: number): { point: { latitude: number; longitude: number } | null; distance: number } => {
     if (routeCoordinates.length === 0) return { point: null, distance: Infinity };
@@ -1082,6 +1149,9 @@ export default function RunSessionScreen({
                         coachName: user?.coachName || 'Coach',
                         coachTone: user?.coachTone || 'motivating',
                         isSplit: false,
+                        currentGrade: currentGrade,
+                        totalElevationGain: elevationGain,
+                        isOnHill: Math.abs(currentGrade) > 3,
                       }),
                     })
                       .then(res => res.json())
@@ -1134,6 +1204,10 @@ export default function RunSessionScreen({
                         isSplit: true,
                         splitKm: currentKm,
                         splitPace: splitPaceStr,
+                        currentGrade: currentGrade,
+                        totalElevationGain: elevationGain,
+                        isOnHill: Math.abs(currentGrade) > 3,
+                        kmSplits: kmSplits,
                       }),
                     })
                       .then(res => res.json())

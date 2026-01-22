@@ -900,6 +900,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/ai/phase-coaching", async (req: Request, res: Response) => {
+    try {
+      const aiService = await import("./ai-service");
+      const message = await aiService.generatePhaseCoaching(req.body);
+      res.json({ message });
+    } catch (error: any) {
+      console.error("AI phase coaching error:", error);
+      res.status(500).json({ error: "Failed to get phase coaching" });
+    }
+  });
+
+  app.post("/api/ai/struggle-coaching", async (req: Request, res: Response) => {
+    try {
+      const aiService = await import("./ai-service");
+      const message = await aiService.generateStruggleCoaching(req.body);
+      res.json({ message });
+    } catch (error: any) {
+      console.error("AI struggle coaching error:", error);
+      res.status(500).json({ error: "Failed to get struggle coaching" });
+    }
+  });
+
   app.post("/api/runs/:id/ai-insights", async (req: Request, res: Response) => {
     try {
       const run = await storage.getRun(req.params.id);
