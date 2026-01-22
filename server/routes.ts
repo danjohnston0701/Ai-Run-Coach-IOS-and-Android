@@ -2620,7 +2620,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Distance with personality
         if (distance) {
           if (coachTone === 'energetic') {
-            parts.push(`We've got ${distance.toFixed(1)} awesome kilometres ahead!`);
+            parts.push(`We've got ${distance.toFixed(1)} kilometres ahead!`);
           } else if (coachTone === 'calm') {
             parts.push(`Today's ${activityType === 'walk' ? 'walk' : 'run'} covers ${distance.toFixed(1)} kilometres.`);
           } else if (coachTone === 'motivational') {
@@ -2701,7 +2701,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        // First navigation instructions (within first 200m)
+        // First 2 navigation instructions (excluding waypoints less than 5m apart)
         if (turnInstructions && Array.isArray(turnInstructions) && turnInstructions.length > 0) {
           if (coachTone === 'energetic') {
             parts.push(`Here's your game plan to get started!`);
@@ -2711,9 +2711,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             parts.push(`Here's how to get started.`);
           }
           
-          let cumulativeDistance = 0;
+          // Filter out waypoints less than 5m apart and take only first 2
+          let waypointCount = 0;
+          let lastDistance = -5; // Start at -5 so first waypoint at 0m is included
+          
           for (const turn of turnInstructions) {
-            if (cumulativeDistance > 200) break;
+            // Skip waypoints less than 5m from the previous one
+            if (turn.distance - lastDistance < 5) continue;
+            
+            // Only include first 2 waypoints
+            if (waypointCount >= 2) break;
             
             const distanceText = turn.distance >= 1000 
               ? `${(turn.distance / 1000).toFixed(1)} kilometres`
@@ -2723,7 +2730,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const rawInstruction = turn.instruction || 'Continue on the route';
             const instruction = expandStreetAbbreviations(rawInstruction);
             parts.push(`In ${distanceText}, ${instruction}.`);
-            cumulativeDistance += turn.distance;
+            
+            lastDistance = turn.distance;
+            waypointCount++;
           }
         }
         
