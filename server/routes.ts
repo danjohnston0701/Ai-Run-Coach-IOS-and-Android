@@ -3,7 +3,8 @@ import { createServer, type Server } from "node:http";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { storage } from "./storage";
 import { db } from "./db";
-import { garminWellnessMetrics, connectedDevices, garminActivities, garminBodyComposition, runs } from "@shared/schema";
+import { garminWellnessMetrics, connectedDevices, garminActivities, garminBodyComposition, runs, garminRealtimeData, garminCompanionSessions } from "@shared/schema";
+import { sql } from "drizzle-orm";
 import { 
   generateToken, 
   hashPassword, 
@@ -2875,6 +2876,448 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("HR coaching error:", error);
       res.status(500).json({ error: "Failed to get HR coaching" });
+    }
+  });
+
+  // ============================================
+  // GARMIN COMPANION APP API ENDPOINTS
+  // ============================================
+  // These endpoints are for the Android companion app to publish
+  // real-time data from Garmin SDK to this backend.
+  
+  // Companion app authentication - validates user and returns session token
+  app.post("/api/garmin-companion/auth", async (req: Request, res: Response) => {
+    try {
+      const { email, password, deviceId, deviceModel } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password required" });
+      }
+      
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+      
+      // Verify password
+      const bcrypt = await import("bcryptjs");
+      const isValid = await bcrypt.compare(password, user.password);
+      if (!isValid) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+      
+      // Generate a companion session token (JWT)
+      const jwt = await import("jsonwebtoken");
+      const token = jwt.default.sign(
+        { userId: user.id, type: "companion", deviceId },
+        process.env.SESSION_SECRET || "fallback-secret",
+        { expiresIn: "30d" }
+      );
+      
+      console.log(`[Companion] User ${user.email} authenticated from device ${deviceModel || deviceId}`);
+      
+      res.json({
+        success: true,
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          coachName: user.coachName,
+          coachTone: user.coachTone,
+        },
+      });
+    } catch (error: any) {
+      console.error("Companion auth error:", error);
+      res.status(500).json({ error: "Authentication failed" });
+    }
+  });
+  
+  // Middleware for companion app authentication
+  const companionAuthMiddleware = async (req: Request, res: Response, next: Function) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader?.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "No token provided" });
+      }
+      
+      const token = authHeader.slice(7);
+      const jwt = await import("jsonwebtoken");
+      const decoded = jwt.default.verify(token, process.env.SESSION_SECRET || "fallback-secret") as any;
+      
+      if (decoded.type !== "companion") {
+        return res.status(401).json({ error: "Invalid token type" });
+      }
+      
+      (req as any).companionUser = decoded;
+      next();
+    } catch (error) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+  };
+  
+  // Start a new companion session (when activity starts on watch)
+  app.post("/api/garmin-companion/session/start", companionAuthMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { userId } = (req as any).companionUser;
+      const { sessionId, deviceId, deviceModel, activityType } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({ error: "Session ID required" });
+      }
+      
+      // Check if session already exists
+      const existing = await db.select().from(garminCompanionSessions).where(eq(garminCompanionSessions.sessionId, sessionId)).limit(1);
+      if (existing.length > 0) {
+        return res.json({ success: true, session: existing[0], message: "Session already exists" });
+      }
+      
+      // Create new session
+      const [session] = await db.insert(garminCompanionSessions).values({
+        userId,
+        sessionId,
+        deviceId,
+        deviceModel,
+        activityType: activityType || "running",
+        status: "active",
+        startedAt: new Date(),
+      }).returning();
+      
+      console.log(`[Companion] Session ${sessionId} started for user ${userId} (${activityType || "running"})`);
+      
+      res.json({
+        success: true,
+        session,
+        message: "Session started",
+      });
+    } catch (error: any) {
+      console.error("Companion session start error:", error);
+      res.status(500).json({ error: "Failed to start session" });
+    }
+  });
+  
+  // Link companion session to a run (when phone app creates a run)
+  app.post("/api/garmin-companion/session/link", companionAuthMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { userId } = (req as any).companionUser;
+      const { sessionId, runId } = req.body;
+      
+      if (!sessionId || !runId) {
+        return res.status(400).json({ error: "Session ID and Run ID required" });
+      }
+      
+      // Update session with run ID
+      const [updated] = await db.update(garminCompanionSessions)
+        .set({ runId })
+        .where(and(
+          eq(garminCompanionSessions.sessionId, sessionId),
+          eq(garminCompanionSessions.userId, userId)
+        ))
+        .returning();
+      
+      // Also update all existing data points with the run ID
+      await db.update(garminRealtimeData)
+        .set({ runId })
+        .where(eq(garminRealtimeData.sessionId, sessionId));
+      
+      console.log(`[Companion] Session ${sessionId} linked to run ${runId}`);
+      
+      res.json({ success: true, session: updated });
+    } catch (error: any) {
+      console.error("Companion session link error:", error);
+      res.status(500).json({ error: "Failed to link session" });
+    }
+  });
+  
+  // Publish real-time data (single data point)
+  app.post("/api/garmin-companion/data", companionAuthMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { userId } = (req as any).companionUser;
+      const data = req.body;
+      
+      if (!data.sessionId) {
+        return res.status(400).json({ error: "Session ID required" });
+      }
+      
+      // Get session to find linked runId
+      const sessions = await db.select().from(garminCompanionSessions)
+        .where(eq(garminCompanionSessions.sessionId, data.sessionId))
+        .limit(1);
+      
+      const session = sessions[0];
+      const runId = session?.runId || null;
+      
+      // Insert data point
+      const [inserted] = await db.insert(garminRealtimeData).values({
+        userId,
+        runId,
+        sessionId: data.sessionId,
+        timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+        heartRate: data.heartRate,
+        heartRateZone: data.heartRateZone,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        altitude: data.altitude,
+        speed: data.speed,
+        pace: data.pace,
+        cadence: data.cadence,
+        strideLength: data.strideLength,
+        groundContactTime: data.groundContactTime,
+        groundContactBalance: data.groundContactBalance,
+        verticalOscillation: data.verticalOscillation,
+        verticalRatio: data.verticalRatio,
+        power: data.power,
+        temperature: data.temperature,
+        activityType: data.activityType,
+        isMoving: data.isMoving ?? true,
+        isPaused: data.isPaused ?? false,
+        cumulativeDistance: data.cumulativeDistance,
+        cumulativeAscent: data.cumulativeAscent,
+        cumulativeDescent: data.cumulativeDescent,
+        elapsedTime: data.elapsedTime,
+      }).returning();
+      
+      // Update session last data time and count
+      await db.update(garminCompanionSessions)
+        .set({
+          lastDataAt: new Date(),
+          dataPointCount: sql`data_point_count + 1`,
+        })
+        .where(eq(garminCompanionSessions.sessionId, data.sessionId));
+      
+      res.json({ success: true, id: inserted.id });
+    } catch (error: any) {
+      console.error("Companion data error:", error);
+      res.status(500).json({ error: "Failed to save data" });
+    }
+  });
+  
+  // Publish batch data (multiple data points for efficiency)
+  app.post("/api/garmin-companion/data/batch", companionAuthMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { userId } = (req as any).companionUser;
+      const { sessionId, dataPoints } = req.body;
+      
+      if (!sessionId || !Array.isArray(dataPoints) || dataPoints.length === 0) {
+        return res.status(400).json({ error: "Session ID and data points array required" });
+      }
+      
+      // Get session to find linked runId
+      const sessions = await db.select().from(garminCompanionSessions)
+        .where(eq(garminCompanionSessions.sessionId, sessionId))
+        .limit(1);
+      
+      const session = sessions[0];
+      const runId = session?.runId || null;
+      
+      // Insert all data points
+      const values = dataPoints.map((data: any) => ({
+        userId,
+        runId,
+        sessionId,
+        timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+        heartRate: data.heartRate,
+        heartRateZone: data.heartRateZone,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        altitude: data.altitude,
+        speed: data.speed,
+        pace: data.pace,
+        cadence: data.cadence,
+        strideLength: data.strideLength,
+        groundContactTime: data.groundContactTime,
+        groundContactBalance: data.groundContactBalance,
+        verticalOscillation: data.verticalOscillation,
+        verticalRatio: data.verticalRatio,
+        power: data.power,
+        temperature: data.temperature,
+        activityType: data.activityType,
+        isMoving: data.isMoving ?? true,
+        isPaused: data.isPaused ?? false,
+        cumulativeDistance: data.cumulativeDistance,
+        cumulativeAscent: data.cumulativeAscent,
+        cumulativeDescent: data.cumulativeDescent,
+        elapsedTime: data.elapsedTime,
+      }));
+      
+      await db.insert(garminRealtimeData).values(values);
+      
+      // Update session
+      await db.update(garminCompanionSessions)
+        .set({
+          lastDataAt: new Date(),
+          dataPointCount: sql`data_point_count + ${dataPoints.length}`,
+        })
+        .where(eq(garminCompanionSessions.sessionId, sessionId));
+      
+      console.log(`[Companion] Batch insert ${dataPoints.length} points for session ${sessionId}`);
+      
+      res.json({ success: true, count: dataPoints.length });
+    } catch (error: any) {
+      console.error("Companion batch data error:", error);
+      res.status(500).json({ error: "Failed to save batch data" });
+    }
+  });
+  
+  // Pause/resume session
+  app.post("/api/garmin-companion/session/status", companionAuthMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { userId } = (req as any).companionUser;
+      const { sessionId, status } = req.body; // status: 'active' | 'paused'
+      
+      if (!sessionId || !status) {
+        return res.status(400).json({ error: "Session ID and status required" });
+      }
+      
+      const [updated] = await db.update(garminCompanionSessions)
+        .set({ status })
+        .where(and(
+          eq(garminCompanionSessions.sessionId, sessionId),
+          eq(garminCompanionSessions.userId, userId)
+        ))
+        .returning();
+      
+      console.log(`[Companion] Session ${sessionId} status changed to ${status}`);
+      
+      res.json({ success: true, session: updated });
+    } catch (error: any) {
+      console.error("Companion session status error:", error);
+      res.status(500).json({ error: "Failed to update session status" });
+    }
+  });
+  
+  // End session (calculates summary stats)
+  app.post("/api/garmin-companion/session/end", companionAuthMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { userId } = (req as any).companionUser;
+      const { sessionId, summary } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({ error: "Session ID required" });
+      }
+      
+      // Calculate summary stats from data points if not provided
+      let stats = summary || {};
+      
+      if (!summary) {
+        const dataPoints = await db.select().from(garminRealtimeData)
+          .where(eq(garminRealtimeData.sessionId, sessionId))
+          .orderBy(garminRealtimeData.timestamp);
+        
+        if (dataPoints.length > 0) {
+          const heartRates = dataPoints.filter(d => d.heartRate).map(d => d.heartRate!);
+          const cadences = dataPoints.filter(d => d.cadence).map(d => d.cadence!);
+          const paces = dataPoints.filter(d => d.pace && d.pace > 0).map(d => d.pace!);
+          const lastPoint = dataPoints[dataPoints.length - 1];
+          
+          stats = {
+            totalDistance: lastPoint.cumulativeDistance,
+            totalDuration: lastPoint.elapsedTime,
+            avgHeartRate: heartRates.length > 0 ? Math.round(heartRates.reduce((a, b) => a + b, 0) / heartRates.length) : null,
+            maxHeartRate: heartRates.length > 0 ? Math.max(...heartRates) : null,
+            avgCadence: cadences.length > 0 ? Math.round(cadences.reduce((a, b) => a + b, 0) / cadences.length) : null,
+            avgPace: paces.length > 0 ? paces.reduce((a, b) => a + b, 0) / paces.length : null,
+            totalAscent: lastPoint.cumulativeAscent,
+            totalDescent: lastPoint.cumulativeDescent,
+          };
+        }
+      }
+      
+      // Update session with end time and stats
+      const [updated] = await db.update(garminCompanionSessions)
+        .set({
+          status: "completed",
+          endedAt: new Date(),
+          totalDistance: stats.totalDistance,
+          totalDuration: stats.totalDuration,
+          avgHeartRate: stats.avgHeartRate,
+          maxHeartRate: stats.maxHeartRate,
+          avgCadence: stats.avgCadence,
+          avgPace: stats.avgPace,
+          totalAscent: stats.totalAscent,
+          totalDescent: stats.totalDescent,
+        })
+        .where(and(
+          eq(garminCompanionSessions.sessionId, sessionId),
+          eq(garminCompanionSessions.userId, userId)
+        ))
+        .returning();
+      
+      console.log(`[Companion] Session ${sessionId} ended - ${stats.totalDistance?.toFixed(0) || 0}m in ${stats.totalDuration || 0}s`);
+      
+      res.json({ success: true, session: updated, summary: stats });
+    } catch (error: any) {
+      console.error("Companion session end error:", error);
+      res.status(500).json({ error: "Failed to end session" });
+    }
+  });
+  
+  // Get active session data (for phone app to read real-time data)
+  app.get("/api/garmin-companion/session/:sessionId/data", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { sessionId } = req.params;
+      const { since } = req.query; // Timestamp to get data since (for incremental updates)
+      
+      let query = db.select().from(garminRealtimeData)
+        .where(eq(garminRealtimeData.sessionId, sessionId))
+        .orderBy(garminRealtimeData.timestamp);
+      
+      if (since) {
+        const sinceDate = new Date(since as string);
+        query = db.select().from(garminRealtimeData)
+          .where(and(
+            eq(garminRealtimeData.sessionId, sessionId),
+            sql`timestamp > ${sinceDate}`
+          ))
+          .orderBy(garminRealtimeData.timestamp);
+      }
+      
+      const dataPoints = await query.limit(1000);
+      
+      res.json({ dataPoints, count: dataPoints.length });
+    } catch (error: any) {
+      console.error("Get companion data error:", error);
+      res.status(500).json({ error: "Failed to get session data" });
+    }
+  });
+  
+  // Get latest data point for a session (for real-time display)
+  app.get("/api/garmin-companion/session/:sessionId/latest", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { sessionId } = req.params;
+      
+      const [latest] = await db.select().from(garminRealtimeData)
+        .where(eq(garminRealtimeData.sessionId, sessionId))
+        .orderBy(sql`timestamp DESC`)
+        .limit(1);
+      
+      const [session] = await db.select().from(garminCompanionSessions)
+        .where(eq(garminCompanionSessions.sessionId, sessionId))
+        .limit(1);
+      
+      res.json({ latest, session });
+    } catch (error: any) {
+      console.error("Get latest companion data error:", error);
+      res.status(500).json({ error: "Failed to get latest data" });
+    }
+  });
+  
+  // Get user's active companion sessions
+  app.get("/api/garmin-companion/sessions/active", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      
+      const sessions = await db.select().from(garminCompanionSessions)
+        .where(and(
+          eq(garminCompanionSessions.userId, userId),
+          eq(garminCompanionSessions.status, "active")
+        ))
+        .orderBy(sql`started_at DESC`);
+      
+      res.json({ sessions });
+    } catch (error: any) {
+      console.error("Get active sessions error:", error);
+      res.status(500).json({ error: "Failed to get active sessions" });
     }
   });
 

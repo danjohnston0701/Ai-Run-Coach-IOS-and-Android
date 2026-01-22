@@ -551,6 +551,81 @@ export const connectedDevices = pgTable("connected_devices", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Garmin Companion Real-time Data table
+export const garminRealtimeData = pgTable("garmin_realtime_data", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  runId: varchar("run_id").references(() => runs.id),
+  sessionId: text("session_id").notNull(), // Companion app session ID
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  
+  // Heart Rate
+  heartRate: integer("heart_rate"), // bpm
+  heartRateZone: integer("heart_rate_zone"), // 1-5
+  
+  // Location & Movement
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+  altitude: real("altitude"), // meters
+  speed: real("speed"), // m/s
+  pace: real("pace"), // seconds per km
+  
+  // Running Dynamics (from Garmin HRM-Pro or watch)
+  cadence: integer("cadence"), // steps per minute
+  strideLength: real("stride_length"), // meters
+  groundContactTime: real("ground_contact_time"), // milliseconds
+  groundContactBalance: real("ground_contact_balance"), // percentage left/right
+  verticalOscillation: real("vertical_oscillation"), // centimeters
+  verticalRatio: real("vertical_ratio"), // percentage
+  
+  // Power & Performance (if available)
+  power: integer("power"), // watts
+  
+  // Environmental
+  temperature: real("temperature"), // celsius
+  
+  // Activity Status
+  activityType: text("activity_type"), // running, walking, cycling
+  isMoving: boolean("is_moving").default(true),
+  isPaused: boolean("is_paused").default(false),
+  
+  // Cumulative stats at this point
+  cumulativeDistance: real("cumulative_distance"), // meters
+  cumulativeAscent: real("cumulative_ascent"), // meters
+  cumulativeDescent: real("cumulative_descent"), // meters
+  elapsedTime: integer("elapsed_time"), // seconds
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Garmin Companion Sessions table
+export const garminCompanionSessions = pgTable("garmin_companion_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  runId: varchar("run_id").references(() => runs.id),
+  sessionId: text("session_id").notNull().unique(), // Unique session identifier from companion app
+  deviceId: text("device_id"), // Garmin device ID/serial
+  deviceModel: text("device_model"), // e.g., "Forerunner 965"
+  activityType: text("activity_type").default("running"),
+  status: text("status").notNull().default("active"), // active, paused, completed, abandoned
+  startedAt: timestamp("started_at").defaultNow(),
+  endedAt: timestamp("ended_at"),
+  lastDataAt: timestamp("last_data_at"),
+  dataPointCount: integer("data_point_count").default(0),
+  
+  // Session summary (populated on end)
+  totalDistance: real("total_distance"),
+  totalDuration: integer("total_duration"), // seconds
+  avgHeartRate: integer("avg_heart_rate"),
+  maxHeartRate: integer("max_heart_rate"),
+  avgCadence: integer("avg_cadence"),
+  avgPace: real("avg_pace"),
+  totalAscent: real("total_ascent"),
+  totalDescent: real("total_descent"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertRunSchema = createInsertSchema(runs).omit({ id: true, completedAt: true });
@@ -587,3 +662,5 @@ export type ConnectedDevice = typeof connectedDevices.$inferSelect;
 export type GarminWellnessMetric = typeof garminWellnessMetrics.$inferSelect;
 export type GarminActivity = typeof garminActivities.$inferSelect;
 export type GarminBodyComposition = typeof garminBodyComposition.$inferSelect;
+export type GarminRealtimeData = typeof garminRealtimeData.$inferSelect;
+export type GarminCompanionSession = typeof garminCompanionSessions.$inferSelect;
