@@ -455,6 +455,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         estimatedTime: route.duration,
         elevationGain: route.elevationGain,
         elevationLoss: route.elevationLoss,
+        maxGradientPercent: route.maxGradientPercent,
+        maxGradientDegrees: route.maxGradientDegrees,
         difficulty: route.difficulty,
         polyline: route.polyline,
         waypoints: route.waypoints,
@@ -2471,7 +2473,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Enhanced pre-run briefing with TTS audio
   app.post("/api/coaching/pre-run-briefing-audio", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { text, distance, elevationGain, elevationLoss, difficulty, activityType, weather: clientWeather, targetPace, wellness: clientWellness, turnInstructions, startLocation } = req.body;
+      const { text, distance, elevationGain, elevationLoss, maxGradientDegrees, difficulty, activityType, weather: clientWeather, targetPace, wellness: clientWellness, turnInstructions, startLocation } = req.body;
       
       // Get user's coach settings
       const user = await storage.getUser(req.user!.userId);
@@ -2630,18 +2632,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        // Enhanced elevation insights
+        // Enhanced elevation insights with max incline
         if (elevationGain && elevationGain > 0) {
           const elevLoss = elevationLoss || elevationGain;
+          const maxIncline = maxGradientDegrees ? Math.round(maxGradientDegrees) : 0;
+          const inclineText = maxIncline > 0 ? ` The steepest section reaches ${maxIncline} degrees.` : '';
           
           if (elevationGain > 150) {
-            parts.push(`This is a challenging course with ${Math.round(elevationGain)} metres of climbing and ${Math.round(elevLoss)} metres of descent. Pace yourself on the uphills and use the downhills to recover. Save some energy for the bigger climbs.`);
+            parts.push(`This is a challenging course with ${Math.round(elevationGain)} metres of climbing and ${Math.round(elevLoss)} metres of descent.${inclineText} Pace yourself on the uphills and use the downhills to recover. Save some energy for the bigger climbs.`);
           } else if (elevationGain > 100) {
-            parts.push(`Expect ${Math.round(elevationGain)} metres of climbing with ${Math.round(elevLoss)} metres of descent. There are some challenging hills ahead. Shorten your stride on the climbs and lean slightly forward.`);
+            parts.push(`Expect ${Math.round(elevationGain)} metres of climbing with ${Math.round(elevLoss)} metres of descent.${inclineText} There are some challenging hills ahead. Shorten your stride on the climbs and lean slightly forward.`);
           } else if (elevationGain > 50) {
-            parts.push(`You'll encounter ${Math.round(elevationGain)} metres of gentle elevation gain. Some rolling terrain ahead, nothing too demanding.`);
+            parts.push(`You'll encounter ${Math.round(elevationGain)} metres of gentle elevation gain.${inclineText} Some rolling terrain ahead, nothing too demanding.`);
           } else if (elevationGain > 20) {
-            parts.push(`Mostly flat with minor undulations of about ${Math.round(elevationGain)} metres total gain.`);
+            parts.push(`Mostly flat with minor undulations of about ${Math.round(elevationGain)} metres total gain.${inclineText}`);
           } else {
             parts.push(`This route is essentially flat. Great for maintaining a consistent pace.`);
           }

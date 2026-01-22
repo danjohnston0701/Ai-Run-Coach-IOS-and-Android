@@ -38,6 +38,8 @@ interface CircuitValidation {
 interface ElevationData {
   gain: number;
   loss: number;
+  maxGradientPercent: number;  // Maximum hill gradient as percentage
+  maxGradientDegrees: number;  // Maximum hill incline in degrees
 }
 
 interface GeneratedRoute {
@@ -50,6 +52,8 @@ interface GeneratedRoute {
   difficulty: 'easy' | 'moderate' | 'hard';
   elevationGain: number;
   elevationLoss: number;
+  maxGradientPercent: number;
+  maxGradientDegrees: number;
   instructions: string[];
   turnInstructions: TurnInstruction[];
   backtrackRatio: number;
@@ -472,11 +476,11 @@ async function calibrateRoute(
 }
 
 async function fetchElevationForRoute(encodedPolyline: string): Promise<ElevationData> {
-  if (!GOOGLE_MAPS_API_KEY) return { gain: 0, loss: 0 };
+  if (!GOOGLE_MAPS_API_KEY) return { gain: 0, loss: 0, maxGradientPercent: 0, maxGradientDegrees: 0 };
   
   try {
     const points = decodePolyline(encodedPolyline);
-    if (points.length < 2) return { gain: 0, loss: 0 };
+    if (points.length < 2) return { gain: 0, loss: 0, maxGradientPercent: 0, maxGradientDegrees: 0 };
     
     const samplePoints = points.filter((_, i) => i % Math.max(1, Math.floor(points.length / 50)) === 0);
     const path = samplePoints.map(p => `${p.lat},${p.lng}`).join('|');
@@ -486,23 +490,57 @@ async function fetchElevationForRoute(encodedPolyline: string): Promise<Elevatio
     const response = await fetch(url);
     const data = await response.json();
     
-    if (data.status !== 'OK' || !data.results) return { gain: 0, loss: 0 };
+    if (data.status !== 'OK' || !data.results) return { gain: 0, loss: 0, maxGradientPercent: 0, maxGradientDegrees: 0 };
     
     let totalGain = 0;
     let totalLoss = 0;
+    let maxGradientPercent = 0;
+    
     for (let i = 1; i < data.results.length; i++) {
-      const diff = data.results[i].elevation - data.results[i - 1].elevation;
-      if (diff > 0) {
-        totalGain += diff;
+      const elevDiff = data.results[i].elevation - data.results[i - 1].elevation;
+      if (elevDiff > 0) {
+        totalGain += elevDiff;
       } else {
-        totalLoss += Math.abs(diff);
+        totalLoss += Math.abs(elevDiff);
+      }
+      
+      // Calculate gradient between sample points
+      // Approximate horizontal distance between sample points
+      const lat1 = samplePoints[i - 1].lat;
+      const lng1 = samplePoints[i - 1].lng;
+      const lat2 = samplePoints[i].lat;
+      const lng2 = samplePoints[i].lng;
+      
+      // Haversine formula for distance
+      const R = 6371000; // Earth radius in meters
+      const dLat = toRadians(lat2 - lat1);
+      const dLng = toRadians(lng2 - lng1);
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const horizontalDistance = R * c;
+      
+      if (horizontalDistance > 5) { // Only calculate for meaningful distances
+        const gradientPercent = Math.abs(elevDiff / horizontalDistance) * 100;
+        if (gradientPercent > maxGradientPercent) {
+          maxGradientPercent = gradientPercent;
+        }
       }
     }
     
-    return { gain: Math.round(totalGain), loss: Math.round(totalLoss) };
+    // Convert max gradient percentage to degrees
+    const maxGradientDegrees = Math.atan(maxGradientPercent / 100) * (180 / Math.PI);
+    
+    return { 
+      gain: Math.round(totalGain), 
+      loss: Math.round(totalLoss),
+      maxGradientPercent: Math.round(maxGradientPercent * 10) / 10,
+      maxGradientDegrees: Math.round(maxGradientDegrees * 10) / 10
+    };
   } catch (error) {
     console.error('Elevation API error:', error);
-    return { gain: 0, loss: 0 };
+    return { gain: 0, loss: 0, maxGradientPercent: 0, maxGradientDegrees: 0 };
   }
 }
 
@@ -611,6 +649,8 @@ export async function generateRouteOptions(
       difficulty,
       elevationGain: elevation.gain,
       elevationLoss: elevation.loss,
+      maxGradientPercent: elevation.maxGradientPercent,
+      maxGradientDegrees: elevation.maxGradientDegrees,
       instructions,
       turnInstructions,
       backtrackRatio: candidate.backtrackRatio,

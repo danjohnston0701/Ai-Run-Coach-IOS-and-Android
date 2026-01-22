@@ -127,6 +127,7 @@ class SpeechQueueManager {
     distance?: number;
     elevationGain?: number;
     elevationLoss?: number;
+    maxGradientDegrees?: number;
     difficulty?: string;
     activityType?: string;
     weather?: any;

@@ -68,6 +68,7 @@ interface RouteCandidate {
   polyline: string;
   elevationGain: number;
   elevationLoss: number;
+  maxGradientDegrees: number;
   estimatedTime: number;
   turnInstructions: TurnInstruction[];
 }
@@ -397,6 +398,7 @@ export default function RoutePreviewScreen() {
         polyline: route.polyline || '',
         elevationGain: route.elevationGain ?? route.elevation?.gain ?? route.elevation_gain ?? 0,
         elevationLoss: route.elevationLoss ?? route.elevation?.loss ?? route.elevation_loss ?? 0,
+        maxGradientDegrees: route.maxGradientDegrees ?? 0,
         estimatedTime: route.estimatedTime || route.estimated_time || 0,
         turnInstructions: route.turnInstructions || route.turn_instructions || route.turnByTurn?.map((instruction: string, idx: number) => ({
           instruction,
@@ -588,6 +590,7 @@ export default function RoutePreviewScreen() {
         distance: selectedRoute.actualDistance,
         elevationGain: selectedRoute.elevationGain,
         elevationLoss: selectedRoute.elevationLoss,
+        maxGradientDegrees: selectedRoute.maxGradientDegrees,
         difficulty: selectedRoute.difficulty,
         activityType: params.activityType,
         turnInstructions: selectedRoute.turnInstructions,
