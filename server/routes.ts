@@ -502,10 +502,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== GOALS ENDPOINTS ====================
   
-  app.get("/api/goals", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  // Get goals by userId (path parameter for Android app compatibility)
+  app.get("/api/goals/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const userId = String(req.query.userId || req.user?.userId);
-      const goals = await storage.getUserGoals(userId);
+      const userId = req.params.userId;
+      const rawGoals = await storage.getUserGoals(userId);
+      
+      // Transform to match Android app's expected format
+      const goals = rawGoals.map(goal => ({
+        id: goal.id,
+        userId: goal.userId,
+        type: goal.type,
+        title: goal.title,
+        description: goal.description,
+        notes: goal.notes,
+        targetDate: goal.targetDate?.toISOString().split('T')[0], // YYYY-MM-DD
+        eventName: goal.eventName,
+        eventLocation: goal.eventLocation,
+        distanceTarget: goal.distanceTarget,
+        timeTargetSeconds: goal.timeTargetSeconds,
+        healthTarget: goal.healthTarget,
+        weeklyRunTarget: goal.weeklyRunTarget,
+        currentProgress: goal.progressPercent ?? 0,
+        isActive: goal.status === 'active',
+        isCompleted: !!goal.completedAt,
+        createdAt: goal.createdAt?.toISOString(),
+        updatedAt: goal.updatedAt?.toISOString(),
+        completedAt: goal.completedAt?.toISOString(),
+      }));
+      
       res.json(goals);
     } catch (error: any) {
       console.error("Get goals error:", error);
@@ -515,10 +540,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/goals", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const goal = await storage.createGoal({
-        ...req.body,
-        userId: req.user!.userId,
-      });
+      // Transform Android app format to backend format
+      const goalData = {
+        userId: req.user!.userId, // Always use authenticated user, ignore body userId
+        type: req.body.type,
+        title: req.body.title,
+        description: req.body.description || null,
+        notes: req.body.notes || null,
+        targetDate: req.body.targetDate ? new Date(req.body.targetDate) : null,
+        eventName: req.body.eventName || null,
+        eventLocation: req.body.eventLocation || null,
+        distanceTarget: req.body.distanceTarget || null,
+        timeTargetSeconds: req.body.timeTargetSeconds || null,
+        healthTarget: req.body.healthTarget || null,
+        weeklyRunTarget: req.body.weeklyRunTarget || null,
+        status: 'active',
+        progressPercent: 0,
+      };
+      
+      const rawGoal = await storage.createGoal(goalData);
+      
+      // Transform response to match Android app's expected format
+      const goal = {
+        id: rawGoal.id,
+        userId: rawGoal.userId,
+        type: rawGoal.type,
+        title: rawGoal.title,
+        description: rawGoal.description,
+        notes: rawGoal.notes,
+        targetDate: rawGoal.targetDate?.toISOString().split('T')[0],
+        eventName: rawGoal.eventName,
+        eventLocation: rawGoal.eventLocation,
+        distanceTarget: rawGoal.distanceTarget,
+        timeTargetSeconds: rawGoal.timeTargetSeconds,
+        healthTarget: rawGoal.healthTarget,
+        weeklyRunTarget: rawGoal.weeklyRunTarget,
+        currentProgress: rawGoal.progressPercent ?? 0,
+        isActive: rawGoal.status === 'active',
+        isCompleted: !!rawGoal.completedAt,
+        createdAt: rawGoal.createdAt?.toISOString(),
+        updatedAt: rawGoal.updatedAt?.toISOString(),
+        completedAt: rawGoal.completedAt?.toISOString(),
+      };
+      
       res.status(201).json(goal);
     } catch (error: any) {
       console.error("Create goal error:", error);
@@ -528,10 +592,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/goals/:id", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const goal = await storage.updateGoal(req.params.id, req.body);
-      if (!goal) {
+      // Transform Android app format to backend format
+      const updateData = {
+        type: req.body.type,
+        title: req.body.title,
+        description: req.body.description || null,
+        notes: req.body.notes || null,
+        targetDate: req.body.targetDate ? new Date(req.body.targetDate) : null,
+        eventName: req.body.eventName || null,
+        eventLocation: req.body.eventLocation || null,
+        distanceTarget: req.body.distanceTarget || null,
+        timeTargetSeconds: req.body.timeTargetSeconds || null,
+        healthTarget: req.body.healthTarget || null,
+        weeklyRunTarget: req.body.weeklyRunTarget || null,
+      };
+      
+      const rawGoal = await storage.updateGoal(req.params.id, updateData);
+      if (!rawGoal) {
         return res.status(404).json({ error: "Goal not found" });
       }
+      
+      // Transform response to match Android app's expected format
+      const goal = {
+        id: rawGoal.id,
+        userId: rawGoal.userId,
+        type: rawGoal.type,
+        title: rawGoal.title,
+        description: rawGoal.description,
+        notes: rawGoal.notes,
+        targetDate: rawGoal.targetDate?.toISOString().split('T')[0],
+        eventName: rawGoal.eventName,
+        eventLocation: rawGoal.eventLocation,
+        distanceTarget: rawGoal.distanceTarget,
+        timeTargetSeconds: rawGoal.timeTargetSeconds,
+        healthTarget: rawGoal.healthTarget,
+        weeklyRunTarget: rawGoal.weeklyRunTarget,
+        currentProgress: rawGoal.progressPercent ?? 0,
+        isActive: rawGoal.status === 'active',
+        isCompleted: !!rawGoal.completedAt,
+        createdAt: rawGoal.createdAt?.toISOString(),
+        updatedAt: rawGoal.updatedAt?.toISOString(),
+        completedAt: rawGoal.completedAt?.toISOString(),
+      };
+      
       res.json(goal);
     } catch (error: any) {
       console.error("Update goal error:", error);
@@ -542,7 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/goals/:id", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteGoal(req.params.id);
-      res.json({ success: true });
+      res.status(204).send(); // No Content - standard for DELETE success
     } catch (error: any) {
       console.error("Delete goal error:", error);
       res.status(500).json({ error: "Failed to delete goal" });
