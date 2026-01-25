@@ -124,20 +124,57 @@ export function getRouteFootprint(encodedPolyline: string): number {
   return getDistanceKm({ lat: minLat, lng: minLng }, { lat: maxLat, lng: maxLng });
 }
 
+/**
+ * Detects if a route goes down dead-end roads (cul-de-sacs)
+ * by checking for sharp U-turns (>150 degrees) in the middle of the route
+ */
+export function hasDeadEnds(encodedPolyline: string): boolean {
+  const points = decodePolyline(encodedPolyline);
+  if (points.length < 20) return false;
+  
+  // Check angles between consecutive segments
+  // Ignore first and last 10% of route (normal turns near start/finish)
+  const startCheck = Math.floor(points.length * 0.1);
+  const endCheck = Math.floor(points.length * 0.9);
+  
+  for (let i = startCheck; i < endCheck - 1; i++) {
+    if (i < 1 || i >= points.length - 1) continue;
+    
+    const p1 = points[i - 1];
+    const p2 = points[i];
+    const p3 = points[i + 1];
+    
+    // Calculate bearing change (angle between two segments)
+    const bearing1 = Math.atan2(p2.lng - p1.lng, p2.lat - p1.lat);
+    const bearing2 = Math.atan2(p3.lng - p2.lng, p3.lat - p2.lat);
+    
+    let angleDiff = Math.abs(bearing2 - bearing1) * (180 / Math.PI);
+    if (angleDiff > 180) angleDiff = 360 - angleDiff;
+    
+    // If we find a sharp U-turn (>150 degrees) in the middle of the route,
+    // it's likely a dead-end turnaround
+    if (angleDiff > 150) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 export function calculateBacktrackRatio(encodedPolyline: string): number {
   const points = decodePolyline(encodedPolyline);
   if (points.length < 10) return 0;
-  
+
   const distances: number[] = [0];
   for (let i = 1; i < points.length; i++) {
     distances.push(distances[i - 1] + getDistanceKm(points[i - 1], points[i]));
   }
   const totalDistance = distances[distances.length - 1];
   const excludeDistance = 0.3;
-  
+
   let startIdx = 0;
   let endIdx = points.length - 1;
-  
+
   for (let i = 0; i < distances.length; i++) {
     if (distances[i] >= excludeDistance) {
       startIdx = i;
@@ -211,9 +248,20 @@ export function calculateAngularSpread(encodedPolyline: string, startLat: number
 export function isGenuineCircuit(encodedPolyline: string, startLat: number, startLng: number): CircuitValidation {
   const backtrackRatio = calculateBacktrackRatio(encodedPolyline);
   const angularSpread = calculateAngularSpread(encodedPolyline, startLat, startLng);
-  
-  const valid = angularSpread >= 180 && backtrackRatio <= 0.35;
-  
+  const deadEnds = hasDeadEnds(encodedPolyline);
+
+  // EXTREMELY STRICT validation to avoid linear/dead-end routes:
+  // - Angular spread >= 270° ensures route forms an excellent circuit/loop (not just barely acceptable)
+  // - Backtrack ratio <= 0.12 (12%) prevents ANY out-and-back patterns
+  // - No dead-ends (no sharp U-turns indicating cul-de-sacs)
+  const valid = angularSpread >= 270 && backtrackRatio <= 0.12 && !deadEnds;
+
+  if (!valid) {
+    console.log(`[RouteValidation] ❌ REJECTED - Angular: ${angularSpread.toFixed(1)}° (need ≥270°), Backtrack: ${(backtrackRatio * 100).toFixed(1)}% (need ≤12%), DeadEnds: ${deadEnds}`);
+  } else {
+    console.log(`[RouteValidation] ✅ ACCEPTED - Angular: ${angularSpread.toFixed(1)}°, Backtrack: ${(backtrackRatio * 100).toFixed(1)}%, DeadEnds: false`);
+  }
+
   return { valid, backtrackRatio, angularSpread };
 }
 
@@ -299,8 +347,9 @@ export function getGeometricTemplates(): TemplatePattern[] {
     { name: 'West Loop', waypoints: [{ bearing: 225, radiusMultiplier: 1.2 }, { bearing: 270, radiusMultiplier: 1.4 }, { bearing: 315, radiusMultiplier: 0.8 }] },
     { name: 'Clockwise Square', waypoints: [{ bearing: 0, radiusMultiplier: 1.4 }, { bearing: 90, radiusMultiplier: 1.4 }, { bearing: 180, radiusMultiplier: 1.4 }, { bearing: 270, radiusMultiplier: 1.4 }] },
     { name: 'Counter-clockwise Square', waypoints: [{ bearing: 270, radiusMultiplier: 1.4 }, { bearing: 180, radiusMultiplier: 1.4 }, { bearing: 90, radiusMultiplier: 1.4 }, { bearing: 0, radiusMultiplier: 1.4 }] },
-    { name: 'NE-SW Diagonal', waypoints: [{ bearing: 45, radiusMultiplier: 1.8 }, { bearing: 225, radiusMultiplier: 1.8 }] },
-    { name: 'NW-SE Diagonal', waypoints: [{ bearing: 315, radiusMultiplier: 1.8 }, { bearing: 135, radiusMultiplier: 1.8 }] },
+    // REMOVED: Linear diagonal templates that create out-and-back routes
+    // { name: 'NE-SW Diagonal', waypoints: [{ bearing: 45, radiusMultiplier: 1.8 }, { bearing: 225, radiusMultiplier: 1.8 }] },
+    // { name: 'NW-SE Diagonal', waypoints: [{ bearing: 315, radiusMultiplier: 1.8 }, { bearing: 135, radiusMultiplier: 1.8 }] },
     { name: 'Pentagon', waypoints: [{ bearing: 0, radiusMultiplier: 1.3 }, { bearing: 72, radiusMultiplier: 1.3 }, { bearing: 144, radiusMultiplier: 1.3 }, { bearing: 216, radiusMultiplier: 1.3 }, { bearing: 288, radiusMultiplier: 1.3 }] },
     { name: 'Figure-8 NS', waypoints: [{ bearing: 0, radiusMultiplier: 1.0 }, { bearing: 45, radiusMultiplier: 0.5 }, { bearing: 180, radiusMultiplier: 1.0 }, { bearing: 225, radiusMultiplier: 0.5 }] },
     { name: 'Figure-8 EW', waypoints: [{ bearing: 90, radiusMultiplier: 1.0 }, { bearing: 135, radiusMultiplier: 0.5 }, { bearing: 270, radiusMultiplier: 1.0 }, { bearing: 315, radiusMultiplier: 0.5 }] },
@@ -334,9 +383,15 @@ export function generateTemplateWaypoints(
   baseRadius: number,
   template: TemplatePattern
 ): LatLng[] {
-  return template.waypoints.map(wp => 
-    projectPoint(startLat, startLng, wp.bearing, baseRadius * wp.radiusMultiplier)
-  );
+  // Add random variation to waypoints to create unique routes each time
+  const bearingVariation = 20; // Increased from 10° to 20° for more variation
+  const radiusVariation = 0.25; // Increased from 15% to 25% for wider spread
+  
+  return template.waypoints.map(wp => {
+    const randomBearing = wp.bearing + (Math.random() - 0.5) * bearingVariation * 2;
+    const randomMultiplier = wp.radiusMultiplier * (1 + (Math.random() - 0.5) * radiusVariation * 2);
+    return projectPoint(startLat, startLng, randomBearing, baseRadius * randomMultiplier);
+  });
 }
 
 async function fetchGoogleDirections(
@@ -406,7 +461,7 @@ async function fetchGoogleDirections(
   }
 }
 
-async function calibrateRoute(
+export async function calibrateRoute(
   startLat: number,
   startLng: number,
   baseWaypoints: LatLng[],
@@ -557,20 +612,25 @@ export async function generateRouteOptions(
   targetDistanceKm: number,
   activityType: string = 'run'
 ): Promise<GeneratedRoute[]> {
-  console.log(`[RouteGen] Starting route generation for ${targetDistanceKm}km ${activityType}`);
+  const requestId = Math.random().toString(36).substr(2, 9);
+  console.log(`[RouteGen ${requestId}] Starting route generation for ${targetDistanceKm}km ${activityType}`);
   
-  // Reduce baseRadius significantly - Google routes meander so actual distance is 2-3x straight line
-  const baseRadius = targetDistanceKm / 4.0;
+  // Increase baseRadius for more route variation and spread (Google routes meander so actual distance is 2-3x straight line)
+  const baseRadius = targetDistanceKm / 2.5; // Increased from /4.0 to /2.5 for wider footprint
+  
+  // Add randomization to ensure different routes each time
   const templates = getGeometricTemplates();
-  const shuffledTemplates = templates.sort(() => Math.random() - 0.5);
+  const shuffledTemplates = templates
+    .sort(() => Math.random() - 0.5) // Shuffle templates
+    .slice(0, 20); // Take random subset to increase variety
   
   const MIN_ROUTES = 3;
   const MAX_ROUTES = 5;
-  const maxOverlap = 0.40;
+  const maxOverlap = 0.30; // Stricter overlap to ensure more variety
   
   const candidates: CandidateRoute[] = [];
   
-  console.log(`[RouteGen] Evaluating ${shuffledTemplates.length} templates...`);
+  console.log(`[RouteGen ${requestId}] Evaluating ${shuffledTemplates.length} random templates...`);
   
   for (const template of shuffledTemplates) {
     try {

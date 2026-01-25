@@ -259,8 +259,11 @@ function setupErrorHandler(app: express.Application) {
   setupErrorHandler(app);
 
   const port = parseInt(process.env.PORT || "3000", 10);
-  server.listen(port, "127.0.0.1", () => {
-    log(`express server serving on port ${port}`);
+  // Bind to 0.0.0.0 to allow emulator connections (10.0.2.2)
+  // Use 127.0.0.1 only for production security
+  const host = process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0";
+  server.listen(port, host, () => {
+    log(`express server serving on ${host}:${port}`);
     startScheduler();
   });
 })();

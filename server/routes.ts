@@ -70,8 +70,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const token = generateToken({ userId: user.id, email: user.email });
-      
+
       const { password: _, ...userWithoutPassword } = user;
+      
+      // Return both user and token for mobile apps (Bearer token auth)
+      // Also set cookie for backwards compatibility with web
       res.json({ user: userWithoutPassword, token });
     } catch (error: any) {
       console.error("Login error:", error);
@@ -431,23 +434,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/routes/generate-options", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { startLat, startLng, distance, difficulty, activityType, terrainPreference, avoidHills } = req.body;
-      
-      console.log("[API] Generate routes request:", { startLat, startLng, distance, activityType });
-      
+      const { startLat, startLng, distance, difficulty, activityType, terrainPreference, avoidHills, enableAiRefinement } = req.body;
+
+      console.log("[API] Generate routes request:", { startLat, startLng, distance, activityType, aiRefinement: enableAiRefinement ?? true });
+
       if (!startLat || !startLng || !distance) {
         return res.status(400).json({ error: "Missing required fields: startLat, startLng, distance" });
       }
-      
+
       const routeGen = await import("./route-generation");
-      const routes = await routeGen.generateRouteOptions(
+      let routes = await routeGen.generateRouteOptions(
         parseFloat(startLat),
         parseFloat(startLng),
         parseFloat(distance),
         activityType || 'run'
       );
-      
+
       console.log("[API] Generated routes count:", routes.length);
+
+      // AI-powered route refinement (disabled by default as it's not providing value yet)
+      if (enableAiRefinement === true && process.env.OPENAI_API_KEY) {
+        try {
+          console.log("[API] Starting AI route refinement...");
+          const aiRefine = await import("./ai-route-refinement");
+          const startPoint = { lat: parseFloat(startLat), lng: parseFloat(startLng) };
+          
+          // Refine routes in parallel (but limit to avoid rate limits)
+          const refinedRoutes = [];
+          for (const route of routes) {
+            const analysis = await aiRefine.shouldUseRefinedRoute(
+              startPoint,
+              route.waypoints,
+              route.polyline,
+              parseFloat(distance)
+            );
+            
+            if (!analysis.useOriginal && analysis.refinedWaypoints) {
+              // Regenerate route with AI-improved waypoints
+              console.log(`[API] Regenerating route "${route.name}" with AI-improved waypoints`);
+              const calibration = await routeGen.calibrateRoute(
+                startPoint.lat,
+                startPoint.lng,
+                analysis.refinedWaypoints,
+                parseFloat(distance),
+                false
+              );
+              
+              if (calibration && calibration.result.success && calibration.result.polyline) {
+                // Validate the improved route
+                const backtrackRatio = routeGen.calculateBacktrackRatio(calibration.result.polyline);
+                const angularSpread = routeGen.calculateAngularSpread(calibration.result.polyline, startPoint.lat, startPoint.lng);
+                const hasDeadEndsCheck = routeGen.hasDeadEnds(calibration.result.polyline);
+                
+                const isValid = angularSpread >= 240 && backtrackRatio <= 0.15 && !hasDeadEndsCheck;
+                
+                if (isValid) {
+                  // Use the route data without re-calculating elevation
+                  refinedRoutes.push({
+                    ...route,
+                    polyline: calibration.result.polyline!,
+                    waypoints: calibration.waypoints,
+                    distance: calibration.result.distance!,
+                    duration: calibration.result.duration!,
+                    instructions: calibration.result.instructions || [],
+                    turnInstructions: calibration.result.turnInstructions || [],
+                    backtrackRatio: backtrackRatio,
+                    angularSpread: angularSpread,
+                    name: route.name + " (AI-Optimized)"
+                  });
+                  continue;
+                }
+              }
+            }
+            
+            // Keep original route if AI didn't improve it
+            refinedRoutes.push(route);
+          }
+          
+          routes = refinedRoutes;
+          console.log("[API] AI refinement complete");
+        } catch (aiError: any) {
+          console.error("[API] AI refinement failed, using original routes:", aiError.message);
+          // Continue with original routes if AI fails
+        }
+      }
       
       const formattedRoutes = routes.map((route, index) => ({
         id: route.id,
