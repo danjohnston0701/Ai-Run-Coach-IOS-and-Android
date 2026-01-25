@@ -431,9 +431,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/routes/generate-options", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { startLat, startLng, distance, difficulty, activityType, terrainPreference, avoidHills } = req.body;
+      const { 
+        startLat, 
+        startLng, 
+        distance, 
+        difficulty, 
+        activityType, 
+        terrainPreference, 
+        avoidHills,
+        sampleSize,
+        returnTopN
+      } = req.body;
       
-      console.log("[API] Generate routes request:", { startLat, startLng, distance, activityType });
+      // Default values for new parameters
+      const templatesample = sampleSize !== undefined ? parseInt(sampleSize) : 50;
+      const topN = returnTopN !== undefined ? parseInt(returnTopN) : 5;
+      
+      console.log("[API] Generate routes request:", { 
+        startLat, 
+        startLng, 
+        distance, 
+        activityType,
+        sampleSize: templatesample,
+        returnTopN: topN
+      });
       
       if (!startLat || !startLng || !distance) {
         return res.status(400).json({ error: "Missing required fields: startLat, startLng, distance" });
@@ -444,7 +465,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         parseFloat(startLat),
         parseFloat(startLng),
         parseFloat(distance),
-        activityType || 'run'
+        activityType || 'run',
+        templatesample,
+        topN
       );
       
       console.log("[API] Generated routes count:", routes.length);
@@ -473,6 +496,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ routes: formattedRoutes });
     } catch (error: any) {
       console.error("Generate routes error:", error);
+      res.status(500).json({ error: "Failed to generate routes" });
+    }
+  });
+
+  // AI Route Generation - Premium+ Plans Only
+  app.post("/api/routes/generate-ai", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { startLat, startLng, distance, activityType } = req.body;
+      
+      console.log("[API] 🤖 AI Route Generation (Premium+) request:", { startLat, startLng, distance, activityType });
+      
+      if (!startLat || !startLng || !distance) {
+        return res.status(400).json({ error: "Missing required fields: startLat, startLng, distance" });
+      }
+      
+      const routeGenAI = await import("./route-generation-ai");
+      const routes = await routeGenAI.generateAIRoutesWithGoogle(
+        parseFloat(startLat),
+        parseFloat(startLng),
+        parseFloat(distance),
+        activityType || 'run'
+      );
+      
+      console.log("[API] ✅ Generated AI routes count:", routes.length);
+      
+      const formattedRoutes = routes.map((route) => ({
+        id: route.id,
+        name: route.name,
+        distance: route.distance,
+        estimatedTime: route.duration,
+        elevationGain: route.elevationGain,
+        elevationLoss: route.elevationLoss,
+        maxGradientPercent: route.maxGradientPercent,
+        maxGradientDegrees: route.maxGradientDegrees,
+        difficulty: route.difficulty,
+        polyline: route.polyline,
+        waypoints: route.waypoints,
+        description: `${route.name} - ${route.distance.toFixed(1)}km AI-designed circuit`,
+        turnByTurn: route.instructions,
+        turnInstructions: route.turnInstructions,
+        circuitQuality: {
+          backtrackRatio: route.circuitQuality.backtrackRatio,
+          angularSpread: route.circuitQuality.angularSpread,
+          loopQuality: route.circuitQuality.loopQuality,
+        },
+      }));
+      
+      res.json({ routes: formattedRoutes });
+    } catch (error: any) {
+      console.error("Generate AI routes error:", error);
+      res.status(500).json({ error: "Failed to generate routes" });
+    }
+  });
+
+  // V1 Template Route Generation - Free & Lite Plans
+  app.post("/api/routes/generate-template", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { startLat, startLng, distance, activityType } = req.body;
+      
+      console.log("[API] 📐 Template Route Generation (Free/Lite) request:", { startLat, startLng, distance, activityType });
+      
+      if (!startLat || !startLng || !distance) {
+        return res.status(400).json({ error: "Missing required fields: startLat, startLng, distance" });
+      }
+      
+      const routeGenV1 = await import("./route-generation");
+      const routes = await routeGenV1.generateRouteOptions(
+        parseFloat(startLat),
+        parseFloat(startLng),
+        parseFloat(distance),
+        activityType || 'run',
+        50, // sampleSize
+        5   // returnTopN
+      );
+      
+      console.log("[API] ✅ Generated template routes count:", routes.length);
+      
+      const formattedRoutes = routes.map((route) => ({
+        id: route.id,
+        name: route.name,
+        distance: route.distance,
+        estimatedTime: route.duration,
+        elevationGain: route.elevationGain,
+        elevationLoss: route.elevationLoss,
+        maxGradientPercent: route.maxGradientPercent,
+        maxGradientDegrees: route.maxGradientDegrees,
+        difficulty: route.difficulty,
+        polyline: route.polyline,
+        waypoints: route.waypoints,
+        description: `${route.templateName} - ${route.distance.toFixed(1)}km circuit with ${route.elevationGain}m climb`,
+        turnByTurn: route.instructions,
+        turnInstructions: route.turnInstructions,
+        circuitQuality: {
+          backtrackRatio: route.backtrackRatio,
+          angularSpread: route.angularSpread,
+        },
+      }));
+      
+      res.json({ routes: formattedRoutes });
+    } catch (error: any) {
+      console.error("Generate template routes error:", error);
       res.status(500).json({ error: "Failed to generate routes" });
     }
   });
@@ -3421,6 +3545,357 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Get active sessions error:", error);
       res.status(500).json({ error: "Failed to get active sessions" });
+    }
+  });
+
+  // ==================== ANDROID V2 ENDPOINTS ====================
+
+  // Update coach settings
+  app.put("/api/users/:id/coach-settings", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { coachName, coachGender, coachAccent, coachTone } = req.body;
+      
+      // Verify user is updating their own settings
+      if (req.user?.userId !== id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      
+      // Validate inputs
+      const validGenders = ['male', 'female'];
+      const validAccents = ['American', 'British', 'Australian', 'Irish', 'South African'];
+      const validTones = ['motivational', 'energetic', 'calm', 'professional', 'friendly'];
+      
+      if (coachGender && !validGenders.includes(coachGender)) {
+        return res.status(400).json({ error: 'Invalid coach gender' });
+      }
+      
+      if (coachAccent && !validAccents.includes(coachAccent)) {
+        return res.status(400).json({ error: 'Invalid coach accent' });
+      }
+      
+      if (coachTone && !validTones.includes(coachTone)) {
+        return res.status(400).json({ error: 'Invalid coach tone' });
+      }
+      
+      // Update user
+      const updatedUser = await storage.updateUser(id, {
+        coachName,
+        coachGender,
+        coachAccent,
+        coachTone
+      });
+      
+      if (!updatedUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      const { password: _, ...userWithoutPassword } = updatedUser;
+      res.json(userWithoutPassword);
+    } catch (error: any) {
+      console.error("Update coach settings error:", error);
+      res.status(500).json({ error: "Failed to update coach settings" });
+    }
+  });
+
+  // Get friends list (Android format)
+  app.get("/api/friends/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const { status } = req.query;
+      
+      // Verify user is requesting their own friends
+      if (req.user?.userId !== userId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      
+      const friendUsers = await storage.getFriends(userId);
+      
+      const friends = friendUsers.map(f => ({
+        id: f.id,
+        name: f.name,
+        email: f.email,
+        profilePicUrl: f.profilePic,
+        subscriptionTier: f.subscriptionTier || 'free',
+        friendshipStatus: 'accepted',
+        friendsSince: f.createdAt?.toISOString() || new Date().toISOString()
+      }));
+      
+      res.json({
+        friends,
+        count: friends.length
+      });
+    } catch (error: any) {
+      console.error("Get friends error:", error);
+      res.status(500).json({ error: "Failed to get friends" });
+    }
+  });
+
+  // Add a friend
+  app.post("/api/friends/:userId/add", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const { friendId } = req.body;
+      
+      // Verify user is adding to their own friends list
+      if (req.user?.userId !== userId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      
+      // Can't add self
+      if (userId === friendId) {
+        return res.status(400).json({ error: "Cannot add yourself as a friend" });
+      }
+      
+      // Check if friend user exists
+      const friendUser = await storage.getUser(friendId);
+      if (!friendUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Check if friendship already exists
+      const existingFriends = await storage.getFriends(userId);
+      if (existingFriends.some(f => f.id === friendId)) {
+        return res.status(409).json({ error: "Friendship already exists" });
+      }
+      
+      // Add friend (bidirectional)
+      await storage.addFriend(userId, friendId);
+      await storage.addFriend(friendId, userId); // Mutual friendship
+      
+      // Return friend details
+      const { password: _, ...friendWithoutPassword } = friendUser;
+      res.status(201).json({
+        id: friendUser.id,
+        name: friendUser.name,
+        email: friendUser.email,
+        profilePicUrl: friendUser.profilePic,
+        subscriptionTier: friendUser.subscriptionTier || 'free',
+        friendshipStatus: 'accepted',
+        friendsSince: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error("Add friend error:", error);
+      res.status(500).json({ error: "Failed to add friend" });
+    }
+  });
+
+  // Remove a friend
+  app.delete("/api/friends/:userId/:friendId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId, friendId } = req.params;
+      
+      if (req.user?.userId !== userId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      
+      await storage.removeFriend(userId, friendId);
+      
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Remove friend error:", error);
+      res.status(500).json({ error: "Failed to remove friend" });
+    }
+  });
+
+  // Get group runs (Android format)
+  app.get("/api/group-runs", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { status: statusFilter, my_groups } = req.query;
+      const userId = req.user!.userId;
+      
+      // Get all group runs
+      const allGroupRuns = await storage.getGroupRuns();
+      
+      // Get participants for each group run
+      const groupRunsWithDetails = await Promise.all(
+        allGroupRuns.map(async (gr) => {
+          // Get host/creator details
+          const host = await storage.getUser(gr.hostUserId);
+          
+          // Get participants count
+          const participants = await db.select().from(groupRunParticipants)
+            .where(and(
+              eq(groupRunParticipants.groupRunId, gr.id),
+              eq(groupRunParticipants.invitationStatus, 'accepted')
+            ));
+          
+          // Check if current user is joined
+          const userParticipant = participants.find(p => p.userId === userId);
+          
+          return {
+            id: gr.id,
+            name: gr.title || 'Group Run',
+            description: gr.description || '',
+            creatorId: gr.hostUserId,
+            creatorName: host?.name || 'Unknown',
+            meetingPoint: 'TBD', // Not in current schema
+            meetingLat: null,
+            meetingLng: null,
+            distance: gr.targetDistance || 5.0,
+            dateTime: gr.plannedStartAt?.toISOString() || new Date().toISOString(),
+            maxParticipants: 10, // Default
+            currentParticipants: participants.length,
+            isPublic: true,
+            status: gr.status || 'upcoming',
+            isJoined: !!userParticipant,
+            createdAt: gr.createdAt?.toISOString() || new Date().toISOString()
+          };
+        })
+      );
+      
+      // Apply filters
+      let filteredRuns = groupRunsWithDetails;
+      
+      if (statusFilter) {
+        filteredRuns = filteredRuns.filter(gr => gr.status === statusFilter);
+      }
+      
+      if (my_groups === 'true') {
+        filteredRuns = filteredRuns.filter(gr => gr.creatorId === userId || gr.isJoined);
+      }
+      
+      res.json({
+        groupRuns: filteredRuns,
+        count: filteredRuns.length,
+        total: groupRunsWithDetails.length
+      });
+    } catch (error: any) {
+      console.error("Get group runs error:", error);
+      res.status(500).json({ error: "Failed to get group runs" });
+    }
+  });
+
+  // Create a group run
+  app.post("/api/group-runs", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const {
+        name, description, meetingPoint, meetingLat, meetingLng,
+        distance, dateTime, maxParticipants = 10, isPublic = true
+      } = req.body;
+      
+      const creatorId = req.user!.userId;
+      
+      // Validation
+      if (!name || !distance || !dateTime) {
+        return res.status(400).json({ error: 'Missing required fields: name, distance, dateTime' });
+      }
+      
+      if (new Date(dateTime) <= new Date()) {
+        return res.status(400).json({ error: 'Date/time must be in the future' });
+      }
+      
+      if (distance <= 0 || distance > 100) {
+        return res.status(400).json({ error: 'Distance must be between 0 and 100 km' });
+      }
+      
+      // Generate invite token
+      const inviteToken = Math.random().toString(36).substring(2, 15);
+      
+      // Create group run
+      const groupRun = await storage.createGroupRun({
+        hostUserId: creatorId,
+        title: name,
+        description,
+        targetDistance: distance,
+        plannedStartAt: new Date(dateTime),
+        inviteToken,
+        status: 'pending',
+        mode: 'route'
+      });
+      
+      // Auto-join creator as participant
+      await storage.joinGroupRun(groupRun.id, creatorId);
+      
+      // Get creator details
+      const creator = await storage.getUser(creatorId);
+      
+      res.status(201).json({
+        id: groupRun.id,
+        name: groupRun.title,
+        description: groupRun.description,
+        creatorId: groupRun.hostUserId,
+        creatorName: creator?.name || 'Unknown',
+        meetingPoint: meetingPoint || 'TBD',
+        meetingLat,
+        meetingLng,
+        distance: groupRun.targetDistance,
+        dateTime: groupRun.plannedStartAt?.toISOString(),
+        maxParticipants,
+        currentParticipants: 1,
+        isPublic,
+        status: groupRun.status,
+        isJoined: true,
+        createdAt: groupRun.createdAt?.toISOString()
+      });
+    } catch (error: any) {
+      console.error("Create group run error:", error);
+      res.status(500).json({ error: "Failed to create group run" });
+    }
+  });
+
+  // Join a group run
+  app.post("/api/group-runs/:groupRunId/join", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { groupRunId } = req.params;
+      const userId = req.user!.userId;
+      
+      // Check if group run exists
+      const groupRun = await storage.getGroupRun(groupRunId);
+      if (!groupRun) {
+        return res.status(404).json({ error: 'Group run not found' });
+      }
+      
+      // Check if already joined
+      const participants = await db.select().from(groupRunParticipants)
+        .where(and(
+          eq(groupRunParticipants.groupRunId, groupRunId),
+          eq(groupRunParticipants.userId, userId)
+        ));
+      
+      if (participants.length > 0) {
+        return res.status(409).json({ error: 'Already joined this group run' });
+      }
+      
+      // Check if group is full (optional - could be added later)
+      
+      // Join group
+      await storage.joinGroupRun(groupRunId, userId);
+      
+      res.json({
+        message: 'Successfully joined group run',
+        groupRunId,
+        userId
+      });
+    } catch (error: any) {
+      console.error("Join group run error:", error);
+      res.status(500).json({ error: "Failed to join group run" });
+    }
+  });
+
+  // Leave a group run
+  app.delete("/api/group-runs/:groupRunId/leave", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { groupRunId } = req.params;
+      const userId = req.user!.userId;
+      
+      // Check if user is the creator
+      const groupRun = await storage.getGroupRun(groupRunId);
+      if (groupRun?.hostUserId === userId) {
+        return res.status(400).json({ error: 'Creators cannot leave their own group run. Delete it instead.' });
+      }
+      
+      // Remove participant
+      await db.delete(groupRunParticipants)
+        .where(and(
+          eq(groupRunParticipants.groupRunId, groupRunId),
+          eq(groupRunParticipants.userId, userId)
+        ));
+      
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Leave group run error:", error);
+      res.status(500).json({ error: "Failed to leave group run" });
     }
   });
 

@@ -259,8 +259,8 @@ function setupErrorHandler(app: express.Application) {
   setupErrorHandler(app);
 
   const port = parseInt(process.env.PORT || "3000", 10);
-  server.listen(port, "127.0.0.1", () => {
-    log(`express server serving on port ${port}`);
+  server.listen(port, "0.0.0.0", () => {
+    log(`express server serving on port ${port} (accessible from Android emulator)`);
     startScheduler();
   });
 })();

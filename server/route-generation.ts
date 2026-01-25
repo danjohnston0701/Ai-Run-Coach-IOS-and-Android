@@ -247,6 +247,86 @@ export function calculateRouteOverlap(polyline1: string, polyline2: string): num
   return overlap / Math.min(seg1.size, seg2.size);
 }
 
+/**
+ * Calculate the angle between three points (in degrees)
+ */
+function calculateAngleBetweenPoints(p1: LatLng, p2: LatLng, p3: LatLng): number {
+  // Vector from p2 to p1
+  const v1 = { lat: p1.lat - p2.lat, lng: p1.lng - p2.lng };
+  // Vector from p2 to p3
+  const v2 = { lat: p3.lat - p2.lat, lng: p3.lng - p2.lng };
+  
+  // Dot product
+  const dot = v1.lat * v2.lat + v1.lng * v2.lng;
+  
+  // Magnitudes
+  const mag1 = Math.sqrt(v1.lat * v1.lat + v1.lng * v1.lng);
+  const mag2 = Math.sqrt(v2.lat * v2.lat + v2.lng * v2.lng);
+  
+  if (mag1 === 0 || mag2 === 0) return 0;
+  
+  // Calculate angle in radians then convert to degrees
+  const angleRad = Math.acos(Math.max(-1, Math.min(1, dot / (mag1 * mag2))));
+  return angleRad * 180 / Math.PI;
+}
+
+/**
+ * Count dead-end points in a route (points where the route must turn around)
+ */
+export function countDeadEnds(encodedPolyline: string): number {
+  const points = decodePolyline(encodedPolyline);
+  if (points.length < 3) return 0;
+  
+  let deadEnds = 0;
+  const TURNAROUND_THRESHOLD = 15; // degrees
+  
+  // Check interior points for sharp turnarounds (near 180 degrees)
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+    
+    const angle = calculateAngleBetweenPoints(prev, curr, next);
+    
+    // If angle is close to 180°, it's a turnaround point (dead-end)
+    if (Math.abs(angle - 180) < TURNAROUND_THRESHOLD) {
+      deadEnds++;
+    }
+  }
+  
+  return deadEnds;
+}
+
+/**
+ * Calculate a composite circuit quality score (0-1, higher is better)
+ * Factors in backtrack ratio, angular spread, and dead-end count
+ */
+export function calculateCircuitScore(
+  backtrackRatio: number,
+  angularSpread: number,
+  deadEndCount: number
+): number {
+  // Backtrack component (0-1, higher is better)
+  const backtrackScore = 1 - Math.min(1, backtrackRatio);
+  
+  // Angular spread component (0-1, higher is better)
+  const angularScore = Math.min(1, angularSpread / 360);
+  
+  // Dead-end component (0-1, higher is better)
+  // Each dead-end reduces score by 0.5, capped at 0
+  const deadEndScore = Math.max(0, 1 - deadEndCount * 0.5);
+  
+  // Composite score with weights:
+  // 40% backtrack ratio, 40% angular spread, 20% dead-ends
+  const compositeScore = (
+    backtrackScore * 0.4 +
+    angularScore * 0.4 +
+    deadEndScore * 0.2
+  );
+  
+  return compositeScore;
+}
+
 const MAJOR_ROAD_KEYWORDS = ['highway', 'hwy', 'motorway', 'expressway', 'freeway', 'interstate', 'turnpike'];
 
 export function containsMajorRoads(instructions: string[]): boolean {
@@ -549,30 +629,38 @@ interface CandidateRoute {
   calibrated: CalibratedRoute;
   backtrackRatio: number;
   angularSpread: number;
+  deadEndCount: number;
+  circuitScore: number;
 }
 
 export async function generateRouteOptions(
   startLat: number,
   startLng: number,
   targetDistanceKm: number,
-  activityType: string = 'run'
+  activityType: string = 'run',
+  sampleSize: number = 50,
+  returnTopN: number = 5
 ): Promise<GeneratedRoute[]> {
+  console.log(`[RouteGen] 🗺️ Enhanced circuit filtering enabled`);
   console.log(`[RouteGen] Starting route generation for ${targetDistanceKm}km ${activityType}`);
+  console.log(`[RouteGen] 🔍 Sampling ${sampleSize} templates, returning top ${returnTopN} circuits`);
   
   // Reduce baseRadius significantly - Google routes meander so actual distance is 2-3x straight line
   const baseRadius = targetDistanceKm / 4.0;
   const templates = getGeometricTemplates();
   const shuffledTemplates = templates.sort(() => Math.random() - 0.5);
   
-  const MIN_ROUTES = 3;
-  const MAX_ROUTES = 5;
+  // Use the specified sample size (limit to available templates)
+  const samplesToEvaluate = Math.min(sampleSize, shuffledTemplates.length);
+  const templatesToTry = shuffledTemplates.slice(0, samplesToEvaluate);
+  
   const maxOverlap = 0.40;
   
   const candidates: CandidateRoute[] = [];
   
-  console.log(`[RouteGen] Evaluating ${shuffledTemplates.length} templates...`);
+  console.log(`[RouteGen] Evaluating ${templatesToTry.length} templates...`);
   
-  for (const template of shuffledTemplates) {
+  for (const template of templatesToTry) {
     try {
       console.log(`[RouteGen] Trying template: ${template.name}`);
       const baseWaypoints = generateTemplateWaypoints(startLat, startLng, baseRadius, template);
@@ -593,32 +681,44 @@ export async function generateRouteOptions(
         startLng
       );
       
+      const deadEndCount = countDeadEnds(calibrated.result.polyline);
+      const circuitScore = calculateCircuitScore(backtrackRatio, angularSpread, deadEndCount);
+      
       candidates.push({
         template,
         calibrated,
         backtrackRatio,
         angularSpread,
+        deadEndCount,
+        circuitScore,
       });
       
-      console.log(`[RouteGen] Candidate ${template.name}: backtrack=${(backtrackRatio * 100).toFixed(1)}%, angular=${angularSpread}°`);
+      console.log(`[RouteGen] Candidate ${template.name}: score=${circuitScore.toFixed(2)}, backtrack=${(backtrackRatio * 100).toFixed(1)}%, angular=${angularSpread}°, deadEnds=${deadEndCount}`);
       
     } catch (error) {
       console.error(`[RouteGen] Error with template ${template.name}:`, error);
     }
   }
   
-  candidates.sort((a, b) => a.backtrackRatio - b.backtrackRatio);
+  // Sort by circuit score (descending - higher is better)
+  candidates.sort((a, b) => b.circuitScore - a.circuitScore);
   
-  console.log(`[RouteGen] Found ${candidates.length} candidates, selecting best ${MIN_ROUTES}-${MAX_ROUTES} routes...`);
+  console.log(`[RouteGen] 📊 Found ${candidates.length} candidates, selecting best ${returnTopN} circuits...`);
+  
+  if (candidates.length > 0) {
+    console.log(`[RouteGen] 🏆 Best circuit score: ${candidates[0].circuitScore.toFixed(2)} (${candidates[0].template.name})`);
+    console.log(`[RouteGen] 📉 Worst circuit score: ${candidates[candidates.length - 1].circuitScore.toFixed(2)} (${candidates[candidates.length - 1].template.name})`);
+  }
   
   const validRoutes: GeneratedRoute[] = [];
   const usedTemplates = new Set<string>();
   
   for (const candidate of candidates) {
-    if (validRoutes.length >= MAX_ROUTES) break;
+    if (validRoutes.length >= returnTopN) break;
     
     if (usedTemplates.has(candidate.template.name)) continue;
     
+    // Apply diversity filter to ensure routes are different
     let isTooSimilar = false;
     for (const existing of validRoutes) {
       const overlap = calculateRouteOverlap(candidate.calibrated.result.polyline!, existing.polyline);
@@ -629,7 +729,7 @@ export async function generateRouteOptions(
     }
     
     if (isTooSimilar) {
-      console.log(`[RouteGen] ${candidate.template.name} rejected: too similar to existing route`);
+      console.log(`[RouteGen] ${candidate.template.name} rejected: too similar to existing route (overlap > ${maxOverlap})`);
       continue;
     }
     
@@ -660,10 +760,10 @@ export async function generateRouteOptions(
     
     validRoutes.push(route);
     usedTemplates.add(candidate.template.name);
-    console.log(`[RouteGen] Selected ${candidate.template.name}: ${route.distance.toFixed(2)}km, backtrack=${(candidate.backtrackRatio * 100).toFixed(1)}%, climb=${elevation.gain}m`);
+    console.log(`[RouteGen] ✅ Selected ${candidate.template.name}: ${route.distance.toFixed(2)}km, score=${candidate.circuitScore.toFixed(2)}, backtrack=${(candidate.backtrackRatio * 100).toFixed(1)}%, deadEnds=${candidate.deadEndCount}, climb=${elevation.gain}m`);
   }
   
-  console.log(`[RouteGen] Generated ${validRoutes.length} routes (target: ${MIN_ROUTES}-${MAX_ROUTES})`);
+  console.log(`[RouteGen] 🎉 Generated ${validRoutes.length} high-quality circuit routes (target: ${returnTopN})`);
   
-  return validRoutes.slice(0, MAX_ROUTES);
+  return validRoutes;
 }
