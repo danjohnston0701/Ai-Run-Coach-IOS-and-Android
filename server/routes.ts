@@ -3563,19 +3563,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Validate inputs
       const validGenders = ['male', 'female'];
-      const validAccents = ['American', 'British', 'Australian', 'Irish', 'South African'];
-      const validTones = ['motivational', 'energetic', 'calm', 'professional', 'friendly'];
+      const validAccents = ['British', 'American', 'Australian', 'Irish', 'Scottish', 'New Zealand'];
+      const validTones = ['Energetic', 'Motivational', 'Instructive', 'Factual', 'Abrupt'];
       
       if (coachGender && !validGenders.includes(coachGender)) {
         return res.status(400).json({ error: 'Invalid coach gender' });
       }
       
       if (coachAccent && !validAccents.includes(coachAccent)) {
-        return res.status(400).json({ error: 'Invalid coach accent' });
+        return res.status(400).json({ error: `Invalid coach accent: ${coachAccent}. Valid options: ${validAccents.join(', ')}` });
       }
       
       if (coachTone && !validTones.includes(coachTone)) {
-        return res.status(400).json({ error: 'Invalid coach tone' });
+        return res.status(400).json({ error: `Invalid coach tone: ${coachTone}. Valid options: ${validTones.join(', ')}` });
       }
       
       // Update user
@@ -3615,16 +3615,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: f.id,
         name: f.name,
         email: f.email,
-        profilePicUrl: f.profilePic,
-        subscriptionTier: f.subscriptionTier || 'free',
-        friendshipStatus: 'accepted',
-        friendsSince: f.createdAt?.toISOString() || new Date().toISOString()
+        profilePic: f.profilePic,
+        fitnessLevel: f.fitnessLevel,
+        distanceScale: f.distanceScale
       }));
       
-      res.json({
-        friends,
-        count: friends.length
-      });
+      res.json(friends);
     } catch (error: any) {
       console.error("Get friends error:", error);
       res.status(500).json({ error: "Failed to get friends" });
