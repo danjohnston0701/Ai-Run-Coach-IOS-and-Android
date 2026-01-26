@@ -11,7 +11,7 @@ import {
   type GarminWellnessMetric
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, or, and, desc, ilike, sql } from "drizzle-orm";
+import { eq, or, and, desc, ilike, sql, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -150,7 +150,7 @@ export class DatabaseStorage implements IStorage {
     if (friendIds.length === 0) return [];
     
     const friendUsers = await db.select().from(users).where(
-      sql`${users.id} = ANY(${friendIds})`
+      inArray(users.id, friendIds)
     );
     return friendUsers;
   }
