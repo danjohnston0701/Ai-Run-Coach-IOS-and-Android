@@ -141,6 +141,15 @@ export const runs = pgTable("runs", {
   elevationGain: real("elevation_gain"),
   elevationLoss: real("elevation_loss"),
   eventId: varchar("event_id").references(() => events.id),
+  // New columns for analytics
+  tss: integer("tss").default(0), // Training Stress Score
+  gap: varchar("gap"), // Grade Adjusted Pace
+  isPublic: boolean("is_public").default(true), // Social sharing
+  strugglePoints: jsonb("struggle_points"), // Array of struggle point data
+  kmSplits: jsonb("km_splits"), // Kilometer splits data
+  minHeartRate: integer("min_heart_rate"), // Minimum HR
+  terrainType: text("terrain_type"), // Terrain classification
+  userComments: text("user_comments"), // Post-run user comments
 });
 
 // Goals table
@@ -626,6 +635,270 @@ export const garminCompanionSessions = pgTable("garmin_companion_sessions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ==================== FITNESS & FRESHNESS TABLES ====================
+
+// Daily Fitness table (stores daily CTL/ATL/TSB calculations)
+export const dailyFitness = pgTable("daily_fitness", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  ctl: real("ctl").notNull(), // Chronic Training Load (42-day average)
+  atl: real("atl").notNull(), // Acute Training Load (7-day average)
+  tsb: real("tsb").notNull(), // Training Stress Balance (Fitness - Fatigue)
+  trainingLoad: integer("training_load").default(0), // Daily TSS
+  status: text("status").notNull(), // overtrained, optimal, maintaining, detraining, etc.
+  rampRate: real("ramp_rate"), // Weekly change in CTL
+  injuryRisk: text("injury_risk"), // low, moderate, high
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ==================== SEGMENT TABLES ====================
+
+// Segments table (popular running segments)
+export const segments = pgTable("segments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  startLat: real("start_lat").notNull(),
+  startLng: real("start_lng").notNull(),
+  endLat: real("end_lat").notNull(),
+  endLng: real("end_lng").notNull(),
+  polyline: text("polyline").notNull(), // Encoded polyline for matching
+  distance: real("distance").notNull(), // meters
+  elevationGain: real("elevation_gain"), // meters
+  elevationLoss: real("elevation_loss"), // meters
+  avgGradient: real("avg_gradient"), // percentage
+  maxGradient: real("max_gradient"), // percentage
+  terrainType: text("terrain_type"), // road, trail, track, mixed
+  city: text("city"),
+  country: text("country"),
+  category: text("category").default("community"), // kom, sprint, climb, community
+  effortCount: integer("effort_count").default(0),
+  starCount: integer("star_count").default(0),
+  createdById: varchar("created_by_user_id").references(() => users.id),
+  isVerified: boolean("is_verified").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Segment Efforts table (user attempts on segments)
+export const segmentEfforts = pgTable("segment_efforts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  segmentId: varchar("segment_id").notNull().references(() => segments.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  runId: varchar("run_id").notNull().references(() => runs.id),
+  elapsedTime: integer("elapsed_time").notNull(), // seconds
+  movingTime: integer("moving_time"), // seconds (excluding pauses)
+  startIndex: integer("start_index").notNull(), // GPS track array index
+  endIndex: integer("end_index").notNull(),
+  avgHeartRate: integer("avg_heart_rate"),
+  maxHeartRate: integer("max_heart_rate"),
+  avgCadence: integer("avg_cadence"),
+  avgPower: integer("avg_power"), // watts (if available)
+  isPersonalRecord: boolean("is_personal_record").default(false),
+  leaderboardRank: integer("leaderboard_rank"), // All-time rank
+  yearlyRank: integer("yearly_rank"),
+  monthlyRank: integer("monthly_rank"),
+  achievementType: text("achievement_type"), // new_pr, kom, top_10, etc.
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Segment Stars table (user's starred/favorite segments)
+export const segmentStars = pgTable("segment_stars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  segmentId: varchar("segment_id").notNull().references(() => segments.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ==================== TRAINING PLAN TABLES ====================
+
+// Training Plans table
+export const trainingPlans = pgTable("training_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  goalType: text("goal_type").notNull(), // 5k, 10k, half_marathon, marathon, ultra
+  targetDistance: real("target_distance"), // km
+  targetTime: integer("target_time"), // seconds
+  targetDate: timestamp("target_date"),
+  currentWeek: integer("current_week").default(1),
+  totalWeeks: integer("total_weeks").notNull(),
+  experienceLevel: text("experience_level").notNull(), // beginner, intermediate, advanced
+  weeklyMileageBase: real("weekly_mileage_base"), // km
+  daysPerWeek: integer("days_per_week").default(4),
+  includeSpeedWork: boolean("include_speed_work").default(true),
+  includeHillWork: boolean("include_hill_work").default(true),
+  includeLongRuns: boolean("include_long_runs").default(true),
+  status: text("status").default("active"), // active, completed, paused
+  aiGenerated: boolean("ai_generated").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+// Weekly Plans table (breakdown of each week's training)
+export const weeklyPlans = pgTable("weekly_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  trainingPlanId: varchar("training_plan_id").notNull().references(() => trainingPlans.id),
+  weekNumber: integer("week_number").notNull(),
+  weekDescription: text("week_description"),
+  totalDistance: real("total_distance"), // km for the week
+  totalDuration: integer("total_duration"), // seconds
+  focusArea: text("focus_area"), // endurance, speed, recovery, race_prep
+  intensityLevel: text("intensity_level"), // easy, moderate, hard
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Planned Workouts table
+export const plannedWorkouts = pgTable("planned_workouts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  weeklyPlanId: varchar("weekly_plan_id").notNull().references(() => weeklyPlans.id),
+  trainingPlanId: varchar("training_plan_id").notNull().references(() => trainingPlans.id),
+  dayOfWeek: integer("day_of_week").notNull(), // 0-6 (Sunday-Saturday)
+  scheduledDate: timestamp("scheduled_date"),
+  workoutType: text("workout_type").notNull(), // easy, tempo, intervals, long_run, hill_repeats, recovery, rest
+  distance: real("distance"), // km
+  duration: integer("duration"), // seconds
+  targetPace: text("target_pace"), // min/km
+  intensity: text("intensity"), // z1, z2, z3, z4, z5 (heart rate zones)
+  description: text("description"),
+  instructions: text("instructions"), // Detailed workout instructions
+  isCompleted: boolean("is_completed").default(false),
+  completedRunId: varchar("completed_run_id").references(() => runs.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Plan Adaptations table (track when AI adjusts the plan)
+export const planAdaptations = pgTable("plan_adaptations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  trainingPlanId: varchar("training_plan_id").notNull().references(() => trainingPlans.id),
+  adaptationDate: timestamp("adaptation_date").defaultNow(),
+  reason: text("reason").notNull(), // missed_workout, injury, over_training, ahead_of_schedule
+  changes: jsonb("changes"), // What was changed
+  aiSuggestion: text("ai_suggestion"),
+  userAccepted: boolean("user_accepted").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ==================== SOCIAL FEED TABLES ====================
+
+// Feed Activities table (social feed posts)
+export const feedActivities = pgTable("feed_activities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  runId: varchar("run_id").references(() => runs.id),
+  goalId: varchar("goal_id").references(() => goals.id),
+  achievementId: varchar("achievement_id"),
+  activityType: text("activity_type").notNull(), // run_completed, goal_achieved, pr_achieved, segment_kr, joined_challenge
+  content: text("content"), // Optional user comment
+  visibility: text("visibility").default("friends"), // public, friends, private
+  reactionCount: integer("reaction_count").default(0),
+  commentCount: integer("comment_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Reactions table (kudos, fire, etc.)
+export const reactions = pgTable("reactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  activityId: varchar("activity_id").notNull().references(() => feedActivities.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  reactionType: text("reaction_type").notNull(), // kudos, fire, strong, clap, heart
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Activity Comments table
+export const activityComments = pgTable("activity_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  activityId: varchar("activity_id").notNull().references(() => feedActivities.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  comment: text("comment").notNull(),
+  likeCount: integer("like_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Comment Likes table
+export const commentLikes = pgTable("comment_likes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  commentId: varchar("comment_id").notNull().references(() => activityComments.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Clubs table (running clubs)
+export const clubs = pgTable("clubs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  clubPicture: text("club_picture"),
+  isPublic: boolean("is_public").default(true),
+  memberCount: integer("member_count").default(0),
+  createdById: varchar("created_by_user_id").notNull().references(() => users.id),
+  city: text("city"),
+  country: text("country"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Club Memberships table
+export const clubMemberships = pgTable("club_memberships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clubId: varchar("club_id").notNull().references(() => clubs.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  role: text("role").default("member"), // admin, moderator, member
+  joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+// Challenges table
+export const challenges = pgTable("challenges", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  challengeType: text("challenge_type").notNull(), // distance, duration, frequency, segment
+  targetValue: real("target_value").notNull(), // km, minutes, or count
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  isPublic: boolean("is_public").default(true),
+  participantCount: integer("participant_count").default(0),
+  createdById: varchar("created_by_user_id").notNull().references(() => users.id),
+  badgeImage: text("badge_image"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Challenge Participants table
+export const challengeParticipants = pgTable("challenge_participants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  challengeId: varchar("challenge_id").notNull().references(() => challenges.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  currentProgress: real("current_progress").default(0),
+  progressPercent: integer("progress_percent").default(0),
+  isCompleted: boolean("is_completed").default(false),
+  completedAt: timestamp("completed_at"),
+  rank: integer("rank"), // Leaderboard rank
+  joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+// ==================== ACHIEVEMENTS TABLES ====================
+
+// Achievements table (badge definitions)
+export const achievements = pgTable("achievements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(), // distance, speed, consistency, social, segment
+  badgeImage: text("badge_image"),
+  requirement: jsonb("requirement"), // Criteria for earning
+  rarity: text("rarity").default("common"), // common, rare, epic, legendary
+  points: integer("points").default(10),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// User Achievements table
+export const userAchievements = pgTable("user_achievements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  achievementId: varchar("achievement_id").notNull().references(() => achievements.id),
+  runId: varchar("run_id").references(() => runs.id), // Run that earned it
+  earnedAt: timestamp("earned_at").defaultNow(),
+  notificationSent: boolean("notification_sent").default(false),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertRunSchema = createInsertSchema(runs).omit({ id: true, completedAt: true });
@@ -664,3 +937,21 @@ export type GarminActivity = typeof garminActivities.$inferSelect;
 export type GarminBodyComposition = typeof garminBodyComposition.$inferSelect;
 export type GarminRealtimeData = typeof garminRealtimeData.$inferSelect;
 export type GarminCompanionSession = typeof garminCompanionSessions.$inferSelect;
+export type DailyFitness = typeof dailyFitness.$inferSelect;
+export type Segment = typeof segments.$inferSelect;
+export type SegmentEffort = typeof segmentEfforts.$inferSelect;
+export type SegmentStar = typeof segmentStars.$inferSelect;
+export type TrainingPlan = typeof trainingPlans.$inferSelect;
+export type WeeklyPlan = typeof weeklyPlans.$inferSelect;
+export type PlannedWorkout = typeof plannedWorkouts.$inferSelect;
+export type PlanAdaptation = typeof planAdaptations.$inferSelect;
+export type FeedActivity = typeof feedActivities.$inferSelect;
+export type Reaction = typeof reactions.$inferSelect;
+export type ActivityComment = typeof activityComments.$inferSelect;
+export type CommentLike = typeof commentLikes.$inferSelect;
+export type Club = typeof clubs.$inferSelect;
+export type ClubMembership = typeof clubMemberships.$inferSelect;
+export type Challenge = typeof challenges.$inferSelect;
+export type ChallengeParticipant = typeof challengeParticipants.$inferSelect;
+export type Achievement = typeof achievements.$inferSelect;
+export type UserAchievement = typeof userAchievements.$inferSelect;

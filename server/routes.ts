@@ -1,9 +1,17 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
-import { eq, and, gte, desc } from "drizzle-orm";
+import { eq, and, gte, desc, lte } from "drizzle-orm";
 import { storage } from "./storage";
 import { db } from "./db";
-import { garminWellnessMetrics, connectedDevices, garminActivities, garminBodyComposition, runs, garminRealtimeData, garminCompanionSessions } from "@shared/schema";
+import { 
+  garminWellnessMetrics, connectedDevices, garminActivities, garminBodyComposition, 
+  runs, garminRealtimeData, garminCompanionSessions,
+  dailyFitness, segmentEfforts, segmentStars, segments,
+  trainingPlans, weeklyPlans, plannedWorkouts, planAdaptations,
+  feedActivities, reactions, activityComments, commentLikes,
+  clubs, clubMemberships, challenges, challengeParticipants,
+  achievements, userAchievements, goals, users
+} from "@shared/schema";
 import { sql } from "drizzle-orm";
 import { 
   generateToken, 
@@ -13,6 +21,29 @@ import {
   optionalAuthMiddleware,
   type AuthenticatedRequest 
 } from "./auth";
+import {
+  calculateTSS,
+  updateDailyFitness,
+  recalculateHistoricalFitness,
+  getFitnessTrend,
+  getCurrentFitness,
+  getFitnessRecommendations
+} from "./fitness-service";
+import {
+  matchRunToSegments,
+  reprocessRunForSegments,
+  createSegmentFromRun
+} from "./segment-matching-service";
+import {
+  generateTrainingPlan,
+  adaptTrainingPlan,
+  completeWorkout
+} from "./training-plan-service";
+import {
+  checkAchievementsAfterRun,
+  getUserAchievements,
+  initializeAchievements
+} from "./achievements-service";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -220,10 +251,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/runs", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const userId = req.user!.userId;
+      const runData = req.body;
+      
+      // Calculate TSS if not provided
+      let tss = runData.tss || 0;
+      if (tss === 0 && runData.duration) {
+        tss = calculateTSS(
+          runData.duration,
+          runData.avgHeartRate,
+          runData.maxHeartRate,
+          60, // Default resting HR (could get from user profile)
+          runData.difficulty
+        );
+      }
+      
+      // Create run with TSS
       const run = await storage.createRun({
-        ...req.body,
-        userId: req.user!.userId,
+        ...runData,
+        userId,
+        tss,
       });
+      
+      // Update fitness metrics asynchronously (don't block response)
+      if (run.completedAt && tss > 0) {
+        const runDate = run.completedAt.toISOString().split('T')[0];
+        updateDailyFitness(userId, runDate, tss).catch(err => {
+          console.error("Failed to update fitness metrics:", err);
+        });
+      }
+      
+      // Match segments asynchronously (don't block response)
+      if (run.gpsTrack && Array.isArray(run.gpsTrack)) {
+        matchRunToSegments(
+          run.id,
+          userId,
+          run.gpsTrack as any,
+          run.avgHeartRate || undefined,
+          run.maxHeartRate || undefined,
+          run.cadence || undefined
+        ).catch(err => {
+          console.error("Failed to match segments:", err);
+        });
+      }
+      
+      // Check for achievements asynchronously (don't block response)
+      checkAchievementsAfterRun(run.id, userId).catch(err => {
+        console.error("Failed to check achievements:", err);
+      });
+      
       res.status(201).json(run);
     } catch (error: any) {
       console.error("Create run error:", error);
@@ -3892,6 +3968,1051 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Leave group run error:", error);
       res.status(500).json({ error: "Failed to leave group run" });
+    }
+  });
+
+  // ==================== FITNESS & FRESHNESS ENDPOINTS ====================
+  
+  // Get current fitness status
+  app.get("/api/fitness/current/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      
+      const currentFitness = await getCurrentFitness(userId);
+      
+      if (!currentFitness) {
+        return res.json({
+          ctl: 0,
+          atl: 0,
+          tsb: 0,
+          status: "no_data",
+          message: "No fitness data available yet. Complete some runs to see your fitness metrics!"
+        });
+      }
+      
+      const recommendations = getFitnessRecommendations(
+        currentFitness.ctl,
+        currentFitness.atl,
+        currentFitness.tsb,
+        currentFitness.status,
+        currentFitness.injuryRisk || "low"
+      );
+      
+      res.json({
+        ...currentFitness,
+        recommendations
+      });
+    } catch (error: any) {
+      console.error("Get current fitness error:", error);
+      res.status(500).json({ error: "Failed to get fitness status" });
+    }
+  });
+  
+  // Get fitness trend for date range
+  app.get("/api/fitness/trend/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const { startDate, endDate } = req.query;
+      
+      // Default to last 90 days if not specified
+      const end = endDate ? String(endDate) : new Date().toISOString().split('T')[0];
+      const start = startDate ? String(startDate) : (() => {
+        const date = new Date();
+        date.setDate(date.getDate() - 90);
+        return date.toISOString().split('T')[0];
+      })();
+      
+      const trend = await getFitnessTrend(userId, start, end);
+      
+      res.json({
+        startDate: start,
+        endDate: end,
+        dataPoints: trend.length,
+        trend: trend.map(point => ({
+          date: point.date,
+          fitness: point.ctl,
+          fatigue: point.atl,
+          form: point.tsb,
+          trainingLoad: point.trainingLoad,
+          status: point.status,
+          rampRate: point.rampRate,
+          injuryRisk: point.injuryRisk
+        }))
+      });
+    } catch (error: any) {
+      console.error("Get fitness trend error:", error);
+      res.status(500).json({ error: "Failed to get fitness trend" });
+    }
+  });
+  
+  // Recalculate all historical fitness data
+  app.post("/api/fitness/recalculate/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      
+      // Verify user is requesting their own data
+      if (req.user!.userId !== userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      
+      await recalculateHistoricalFitness(userId);
+      
+      res.json({ 
+        success: true,
+        message: "Historical fitness data recalculated successfully"
+      });
+    } catch (error: any) {
+      console.error("Recalculate fitness error:", error);
+      res.status(500).json({ error: "Failed to recalculate fitness data" });
+    }
+  });
+  
+  // ==================== RUN ANALYSIS ENDPOINT ====================
+  
+  // Delete a run
+  app.delete("/api/runs/:id", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user!.userId;
+      
+      // Get run to verify ownership
+      const run = await storage.getRun(id);
+      if (!run) {
+        return res.status(404).json({ error: "Run not found" });
+      }
+      
+      if (run.userId !== userId) {
+        return res.status(403).json({ error: "Not authorized to delete this run" });
+      }
+      
+      // Delete run (this would need to be added to storage.ts)
+      await db.delete(runs).where(eq(runs.id, id));
+      
+      // Recalculate fitness after deletion
+      if (run.completedAt && run.tss) {
+        recalculateHistoricalFitness(userId).catch(err => {
+          console.error("Failed to recalculate fitness after run deletion:", err);
+        });
+      }
+      
+      res.json({ success: true, message: "Run deleted successfully" });
+    } catch (error: any) {
+      console.error("Delete run error:", error);
+      res.status(500).json({ error: "Failed to delete run" });
+    }
+  });
+  
+  // Get comprehensive run analysis
+  app.post("/api/coaching/run-analysis", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { runId, userComments } = req.body;
+      
+      // Get run data
+      const run = await storage.getRun(runId);
+      if (!run) {
+        return res.status(404).json({ error: "Run not found" });
+      }
+      
+      // Get user profile
+      const user = await storage.getUser(run.userId);
+      
+      // Get current fitness
+      const fitness = await getCurrentFitness(run.userId);
+      
+      // Get user's active goals
+      const activeGoals = await db
+        .select()
+        .from(goals)
+        .where(
+          and(
+            eq(goals.userId, run.userId),
+            eq(goals.status, "active")
+          )
+        );
+      
+      // Get historical runs on similar route (if available)
+      const historicalRuns = run.routeId ? await db
+        .select()
+        .from(runs)
+        .where(
+          and(
+            eq(runs.userId, run.userId),
+            eq(runs.routeId, run.routeId)
+          )
+        )
+        .orderBy(desc(runs.completedAt))
+        .limit(5) : [];
+      
+      // Build comprehensive context for AI
+      const analysisContext = {
+        run: {
+          id: run.id,
+          distance: run.distance,
+          duration: run.duration,
+          avgPace: run.avgPace,
+          avgHeartRate: run.avgHeartRate,
+          maxHeartRate: run.maxHeartRate,
+          minHeartRate: run.minHeartRate,
+          calories: run.calories,
+          cadence: run.cadence,
+          elevation: run.elevation,
+          elevationGain: run.elevationGain,
+          elevationLoss: run.elevationLoss,
+          difficulty: run.difficulty,
+          terrainType: run.terrainType,
+          tss: run.tss,
+          gap: run.gap,
+          weatherData: run.weatherData,
+          kmSplits: run.kmSplits,
+          strugglePoints: run.strugglePoints,
+          userComments: userComments || run.userComments,
+          completedAt: run.completedAt
+        },
+        user: {
+          name: user?.name,
+          age: user?.dob ? Math.floor((Date.now() - new Date(user.dob).getTime()) / 31557600000) : null,
+          gender: user?.gender,
+          fitnessLevel: user?.fitnessLevel,
+          weight: user?.weight,
+          height: user?.height
+        },
+        fitness: fitness ? {
+          ctl: fitness.ctl,
+          atl: fitness.atl,
+          tsb: fitness.tsb,
+          status: fitness.status,
+          injuryRisk: fitness.injuryRisk,
+          rampRate: fitness.rampRate
+        } : null,
+        goals: activeGoals.map(g => ({
+          type: g.type,
+          title: g.title,
+          targetDate: g.targetDate,
+          progressPercent: g.progressPercent
+        })),
+        historicalContext: historicalRuns.length > 0 ? {
+          previousAttempts: historicalRuns.length,
+          bestTime: Math.min(...historicalRuns.map(r => r.duration)),
+          avgTime: historicalRuns.reduce((sum, r) => sum + r.duration, 0) / historicalRuns.length,
+          improvement: historicalRuns[0] ? 
+            ((historicalRuns[0].duration - run.duration) / historicalRuns[0].duration * 100).toFixed(1) : null
+        } : null
+      };
+      
+      // TODO: Send to OpenAI for analysis
+      // For now, return a placeholder response
+      const mockAnalysis = {
+        summary: `Great ${run.distance}km run! Your performance shows solid consistency with an average pace of ${run.avgPace}.`,
+        performanceScores: {
+          overall: 8.2,
+          paceConsistency: 7.8,
+          effort: 8.5,
+          mentalToughness: 8.0
+        },
+        demographicComparison: fitness ? {
+          percentile: 75,
+          message: "You're performing better than 75% of runners in your age and gender category"
+        } : null,
+        strengths: [
+          "Consistent pacing throughout the run",
+          "Strong finish despite challenging conditions"
+        ],
+        areasForImprovement: [
+          "Consider working on cadence - aim for 170-180 spm",
+          "Heart rate management could be improved in zones 3-4"
+        ],
+        trainingRecommendations: [
+          {
+            category: "endurance",
+            priority: "high",
+            recommendation: "Incorporate one long slow distance run per week"
+          }
+        ],
+        goalsProgress: activeGoals.map(g => ({
+          goalTitle: g.title,
+          progressPercent: g.progressPercent || 0,
+          onTrack: true,
+          message: "Good progress towards your goal!"
+        })),
+        weatherImpact: run.weatherData ? {
+          impactScore: 6.5,
+          adjustedPerformance: 8.7,
+          factors: ["Temperature was warmer than ideal", "Moderate wind resistance"]
+        } : null,
+        coachMessage: "Excellent work! Your consistency is improving, and your fitness is building steadily. Keep up the great work!"
+      };
+      
+      res.json({
+        analysis: mockAnalysis,
+        context: analysisContext
+      });
+    } catch (error: any) {
+      console.error("Run analysis error:", error);
+      res.status(500).json({ error: "Failed to generate run analysis" });
+    }
+  });
+  
+  // ==================== SEGMENT ENDPOINTS ====================
+  
+  // Get segments near a location
+  app.get("/api/segments/nearby", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { lat, lng, radius = 5 } = req.query; // radius in km
+      
+      if (!lat || !lng) {
+        return res.status(400).json({ error: "Latitude and longitude required" });
+      }
+      
+      const latitude = parseFloat(String(lat));
+      const longitude = parseFloat(String(lng));
+      const radiusKm = parseFloat(String(radius));
+      
+      // Simple bounding box query (0.01 degrees ≈ 1km)
+      const latDelta = radiusKm * 0.01;
+      const lngDelta = radiusKm * 0.01;
+      
+      const nearbySegments = await db
+        .select()
+        .from(segments)
+        .where(
+          sql`${segments.startLat} BETWEEN ${latitude - latDelta} AND ${latitude + latDelta}
+          AND ${segments.startLng} BETWEEN ${longitude - lngDelta} AND ${longitude + lngDelta}`
+        )
+        .limit(20);
+      
+      res.json(nearbySegments);
+    } catch (error: any) {
+      console.error("Get nearby segments error:", error);
+      res.status(500).json({ error: "Failed to get nearby segments" });
+    }
+  });
+  
+  // Get segment leaderboard
+  app.get("/api/segments/:id/leaderboard", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { timeframe = 'all' } = req.query; // all, yearly, monthly
+      
+      let efforts = await db
+        .select({
+          effort: segmentEfforts,
+          user: users
+        })
+        .from(segmentEfforts)
+        .leftJoin(users, eq(segmentEfforts.userId, users.id))
+        .where(eq(segmentEfforts.segmentId, id as any))
+        .orderBy(segmentEfforts.elapsedTime)
+        .limit(100);
+      
+      // Filter by timeframe if needed
+      if (timeframe === 'yearly') {
+        const yearAgo = new Date();
+        yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+        efforts = efforts.filter(e => 
+          e.effort.createdAt && e.effort.createdAt >= yearAgo
+        );
+      } else if (timeframe === 'monthly') {
+        const monthAgo = new Date();
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        efforts = efforts.filter(e => 
+          e.effort.createdAt && e.effort.createdAt >= monthAgo
+        );
+      }
+      
+      res.json({
+        segmentId: id,
+        timeframe,
+        leaderboard: efforts.map((e, index) => ({
+          rank: index + 1,
+          userId: e.user?.id,
+          userName: e.user?.name,
+          userProfilePic: e.user?.profilePic,
+          elapsedTime: e.effort.elapsedTime,
+          avgHeartRate: e.effort.avgHeartRate,
+          avgPower: e.effort.avgPower,
+          achievementType: e.effort.achievementType,
+          createdAt: e.effort.createdAt
+        }))
+      });
+    } catch (error: any) {
+      console.error("Get segment leaderboard error:", error);
+      res.status(500).json({ error: "Failed to get segment leaderboard" });
+    }
+  });
+  
+  // Star/unstar a segment
+  app.post("/api/segments/:id/star", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user!.userId;
+      
+      // Check if already starred
+      const existing = await db
+        .select()
+        .from(segmentStars)
+        .where(
+          and(
+            eq(segmentStars.segmentId, id as any),
+            eq(segmentStars.userId, userId)
+          )
+        )
+        .limit(1);
+      
+      if (existing.length > 0) {
+        // Unstar
+        await db.delete(segmentStars).where(eq(segmentStars.id, existing[0].id));
+        return res.json({ starred: false });
+      } else {
+        // Star
+        await db.insert(segmentStars).values({
+          segmentId: id as any,
+          userId
+        });
+        return res.json({ starred: true });
+      }
+    } catch (error: any) {
+      console.error("Star segment error:", error);
+      res.status(500).json({ error: "Failed to star/unstar segment" });
+    }
+  });
+  
+  // Create a segment from a run
+  app.post("/api/segments/create", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { runId, startIndex, endIndex, name, description } = req.body;
+      const userId = req.user!.userId;
+      
+      if (!runId || startIndex === undefined || endIndex === undefined || !name) {
+        return res.status(400).json({ error: "runId, startIndex, endIndex, and name are required" });
+      }
+      
+      const segmentId = await createSegmentFromRun(
+        runId,
+        userId,
+        startIndex,
+        endIndex,
+        name,
+        description
+      );
+      
+      res.status(201).json({ segmentId, message: "Segment created successfully" });
+    } catch (error: any) {
+      console.error("Create segment error:", error);
+      res.status(500).json({ error: error.message || "Failed to create segment" });
+    }
+  });
+  
+  // Reprocess a run to find segment matches
+  app.post("/api/segments/reprocess/:runId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { runId } = req.params;
+      
+      await reprocessRunForSegments(runId);
+      
+      res.json({ success: true, message: "Run reprocessed for segment matching" });
+    } catch (error: any) {
+      console.error("Reprocess run error:", error);
+      res.status(500).json({ error: error.message || "Failed to reprocess run" });
+    }
+  });
+  
+  // Get user's segment efforts
+  app.get("/api/segments/efforts/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      
+      const efforts = await db
+        .select({
+          effort: segmentEfforts,
+          segment: segments
+        })
+        .from(segmentEfforts)
+        .leftJoin(segments, eq(segmentEfforts.segmentId, segments.id as any))
+        .where(eq(segmentEfforts.userId, userId))
+        .orderBy(desc(segmentEfforts.createdAt))
+        .limit(50);
+      
+      res.json(efforts.map(e => ({
+        id: e.effort.id,
+        segmentId: e.segment?.id,
+        segmentName: e.segment?.name,
+        elapsedTime: e.effort.elapsedTime,
+        isPersonalRecord: e.effort.isPersonalRecord,
+        leaderboardRank: e.effort.leaderboardRank,
+        achievementType: e.effort.achievementType,
+        createdAt: e.effort.createdAt
+      })));
+    } catch (error: any) {
+      console.error("Get segment efforts error:", error);
+      res.status(500).json({ error: "Failed to get segment efforts" });
+    }
+  });
+  
+  // ==================== HEATMAP ENDPOINT ====================
+  
+  // Get user's running heatmap
+  app.get("/api/heatmap/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      
+      // Get all runs with GPS tracks
+      const userRuns = await db
+        .select({
+          gpsTrack: runs.gpsTrack,
+          distance: runs.distance,
+          completedAt: runs.completedAt
+        })
+        .from(runs)
+        .where(eq(runs.userId, userId))
+        .orderBy(desc(runs.completedAt));
+      
+      // Aggregate GPS points
+      const allPoints: Array<{ lat: number; lng: number; intensity: number }> = [];
+      
+      for (const run of userRuns) {
+        if (run.gpsTrack && Array.isArray(run.gpsTrack)) {
+          const points = run.gpsTrack as Array<{ latitude: number; longitude: number }>;
+          
+          // Sample every nth point to reduce data size
+          const sampleRate = Math.max(1, Math.floor(points.length / 100));
+          
+          for (let i = 0; i < points.length; i += sampleRate) {
+            const point = points[i];
+            if (point.latitude && point.longitude) {
+              allPoints.push({
+                lat: point.latitude,
+                lng: point.longitude,
+                intensity: 1
+              });
+            }
+          }
+        }
+      }
+      
+      // Cluster nearby points (simple grid-based clustering)
+      const gridSize = 0.001; // ~100m
+      const grid = new Map<string, { lat: number; lng: number; count: number }>();
+      
+      for (const point of allPoints) {
+        const gridLat = Math.floor(point.lat / gridSize) * gridSize;
+        const gridLng = Math.floor(point.lng / gridSize) * gridSize;
+        const key = `${gridLat},${gridLng}`;
+        
+        if (grid.has(key)) {
+          const cell = grid.get(key)!;
+          cell.count++;
+        } else {
+          grid.set(key, { lat: gridLat, lng: gridLng, count: 1 });
+        }
+      }
+      
+      // Convert to array and normalize intensity
+      const maxCount = Math.max(...Array.from(grid.values()).map(c => c.count));
+      const heatmapData = Array.from(grid.values()).map(cell => ({
+        lat: cell.lat,
+        lng: cell.lng,
+        intensity: cell.count / maxCount
+      }));
+      
+      res.json({
+        totalRuns: userRuns.length,
+        totalPoints: allPoints.length,
+        clusteredPoints: heatmapData.length,
+        heatmap: heatmapData
+      });
+    } catch (error: any) {
+      console.error("Get heatmap error:", error);
+      res.status(500).json({ error: "Failed to generate heatmap" });
+    }
+  });
+
+  // ==================== TRAINING PLAN ENDPOINTS ====================
+  
+  // Generate AI training plan
+  app.post("/api/training-plans/generate", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const {
+        goalType,
+        targetDistance,
+        targetTime,
+        targetDate,
+        experienceLevel,
+        daysPerWeek
+      } = req.body;
+      
+      if (!goalType || !targetDistance) {
+        return res.status(400).json({ error: "goalType and targetDistance are required" });
+      }
+      
+      const planId = await generateTrainingPlan(
+        userId,
+        goalType,
+        targetDistance,
+        targetTime,
+        targetDate ? new Date(targetDate) : undefined,
+        experienceLevel || "intermediate",
+        daysPerWeek || 4
+      );
+      
+      res.status(201).json({
+        planId,
+        message: "Training plan generated successfully"
+      });
+    } catch (error: any) {
+      console.error("Generate training plan error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate training plan" });
+    }
+  });
+  
+  // Get user's training plans
+  app.get("/api/training-plans/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const { status = 'active' } = req.query;
+      
+      const plans = await db
+        .select()
+        .from(trainingPlans)
+        .where(
+          and(
+            eq(trainingPlans.userId, userId),
+            eq(trainingPlans.status, String(status))
+          )
+        )
+        .orderBy(desc(trainingPlans.createdAt));
+      
+      res.json(plans);
+    } catch (error: any) {
+      console.error("Get training plans error:", error);
+      res.status(500).json({ error: "Failed to get training plans" });
+    }
+  });
+  
+  // Get training plan details with all weeks and workouts
+  app.get("/api/training-plans/details/:planId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { planId } = req.params;
+      
+      // Get plan
+      const plan = await db
+        .select()
+        .from(trainingPlans)
+        .where(eq(trainingPlans.id, planId))
+        .limit(1);
+      
+      if (!plan[0]) {
+        return res.status(404).json({ error: "Training plan not found" });
+      }
+      
+      // Get weeks
+      const weeks = await db
+        .select()
+        .from(weeklyPlans)
+        .where(eq(weeklyPlans.trainingPlanId, planId))
+        .orderBy(weeklyPlans.weekNumber);
+      
+      // Get workouts for each week
+      const weeksWithWorkouts = await Promise.all(
+        weeks.map(async (week) => {
+          const workouts = await db
+            .select()
+            .from(plannedWorkouts)
+            .where(eq(plannedWorkouts.weeklyPlanId, week.id))
+            .orderBy(plannedWorkouts.dayOfWeek);
+          
+          return {
+            ...week,
+            workouts
+          };
+        })
+      );
+      
+      res.json({
+        plan: plan[0],
+        weeks: weeksWithWorkouts
+      });
+    } catch (error: any) {
+      console.error("Get training plan details error:", error);
+      res.status(500).json({ error: "Failed to get training plan details" });
+    }
+  });
+  
+  // Adapt training plan
+  app.post("/api/training-plans/:planId/adapt", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { planId } = req.params;
+      const { reason } = req.body;
+      const userId = req.user!.userId;
+      
+      if (!reason) {
+        return res.status(400).json({ error: "Reason is required" });
+      }
+      
+      await adaptTrainingPlan(planId, reason, userId);
+      
+      res.json({ success: true, message: "Training plan adapted" });
+    } catch (error: any) {
+      console.error("Adapt training plan error:", error);
+      res.status(500).json({ error: error.message || "Failed to adapt training plan" });
+    }
+  });
+  
+  // Mark workout as completed
+  app.post("/api/training-plans/complete-workout", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { workoutId, runId } = req.body;
+      
+      if (!workoutId || !runId) {
+        return res.status(400).json({ error: "workoutId and runId are required" });
+      }
+      
+      await completeWorkout(workoutId, runId);
+      
+      res.json({ success: true, message: "Workout marked as completed" });
+    } catch (error: any) {
+      console.error("Complete workout error:", error);
+      res.status(500).json({ error: "Failed to mark workout as completed" });
+    }
+  });
+  
+  // ==================== SOCIAL FEED ENDPOINTS ====================
+  
+  // Get activity feed
+  app.get("/api/feed", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const { limit = 50, offset = 0 } = req.query;
+      
+      // Get user's friends
+      const friendsList = await storage.getFriends(userId);
+      const friendIds = friendsList.map(f => f.id);
+      friendIds.push(userId); // Include own activities
+      
+      // Get activities from friends
+      const activities = await db
+        .select({
+          activity: feedActivities,
+          user: users,
+        })
+        .from(feedActivities)
+        .leftJoin(users, eq(feedActivities.userId, users.id))
+        .where(
+          and(
+            sql`${feedActivities.userId} = ANY(${friendIds})`,
+            sql`${feedActivities.visibility} IN ('public', 'friends')`
+          )
+        )
+        .orderBy(desc(feedActivities.createdAt))
+        .limit(Number(limit))
+        .offset(Number(offset));
+      
+      res.json(activities.map(a => ({
+        id: a.activity.id,
+        userId: a.user?.id,
+        userName: a.user?.name,
+        userProfilePic: a.user?.profilePic,
+        activityType: a.activity.activityType,
+        content: a.activity.content,
+        runId: a.activity.runId,
+        goalId: a.activity.goalId,
+        achievementId: a.activity.achievementId,
+        reactionCount: a.activity.reactionCount,
+        commentCount: a.activity.commentCount,
+        createdAt: a.activity.createdAt
+      })));
+    } catch (error: any) {
+      console.error("Get activity feed error:", error);
+      res.status(500).json({ error: "Failed to get activity feed" });
+    }
+  });
+  
+  // Add reaction to activity
+  app.post("/api/feed/:activityId/react", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { activityId } = req.params;
+      const { reactionType } = req.body; // kudos, fire, strong, clap, heart
+      const userId = req.user!.userId;
+      
+      // Check if already reacted
+      const existing = await db
+        .select()
+        .from(reactions)
+        .where(
+          and(
+            eq(reactions.activityId, activityId),
+            eq(reactions.userId, userId)
+          )
+        )
+        .limit(1);
+      
+      if (existing.length > 0) {
+        // Update reaction type
+        await db
+          .update(reactions)
+          .set({ reactionType })
+          .where(eq(reactions.id, existing[0].id));
+      } else {
+        // Add new reaction
+        await db.insert(reactions).values({
+          activityId,
+          userId,
+          reactionType
+        });
+        
+        // Increment reaction count
+        await db
+          .update(feedActivities)
+          .set({
+            reactionCount: sql`${feedActivities.reactionCount} + 1`
+          })
+          .where(eq(feedActivities.id, activityId));
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Add reaction error:", error);
+      res.status(500).json({ error: "Failed to add reaction" });
+    }
+  });
+  
+  // Add comment to activity
+  app.post("/api/feed/:activityId/comment", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { activityId } = req.params;
+      const { comment } = req.body;
+      const userId = req.user!.userId;
+      
+      if (!comment || comment.trim().length === 0) {
+        return res.status(400).json({ error: "Comment cannot be empty" });
+      }
+      
+      // Add comment
+      const newComment = await db
+        .insert(activityComments)
+        .values({
+          activityId,
+          userId,
+          comment: comment.trim()
+        })
+        .returning();
+      
+      // Increment comment count
+      await db
+        .update(feedActivities)
+        .set({
+          commentCount: sql`${feedActivities.commentCount} + 1`
+        })
+        .where(eq(feedActivities.id, activityId));
+      
+      res.status(201).json(newComment[0]);
+    } catch (error: any) {
+      console.error("Add comment error:", error);
+      res.status(500).json({ error: "Failed to add comment" });
+    }
+  });
+  
+  // Get comments for activity
+  app.get("/api/feed/:activityId/comments", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { activityId } = req.params;
+      
+      const comments = await db
+        .select({
+          comment: activityComments,
+          user: users
+        })
+        .from(activityComments)
+        .leftJoin(users, eq(activityComments.userId, users.id))
+        .where(eq(activityComments.activityId, activityId))
+        .orderBy(activityComments.createdAt);
+      
+      res.json(comments.map(c => ({
+        id: c.comment.id,
+        userId: c.user?.id,
+        userName: c.user?.name,
+        userProfilePic: c.user?.profilePic,
+        comment: c.comment.comment,
+        likeCount: c.comment.likeCount,
+        createdAt: c.comment.createdAt
+      })));
+    } catch (error: any) {
+      console.error("Get comments error:", error);
+      res.status(500).json({ error: "Failed to get comments" });
+    }
+  });
+  
+  // ==================== CLUBS ENDPOINTS ====================
+  
+  // Get clubs
+  app.get("/api/clubs", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { search, city } = req.query;
+      
+      let query = db.select().from(clubs).where(eq(clubs.isPublic, true));
+      
+      if (city) {
+        query = query.where(eq(clubs.city, String(city)));
+      }
+      
+      const clubsList = await query.orderBy(desc(clubs.memberCount)).limit(50);
+      
+      res.json(clubsList);
+    } catch (error: any) {
+      console.error("Get clubs error:", error);
+      res.status(500).json({ error: "Failed to get clubs" });
+    }
+  });
+  
+  // Join club
+  app.post("/api/clubs/:clubId/join", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { clubId } = req.params;
+      const userId = req.user!.userId;
+      
+      // Check if already member
+      const existing = await db
+        .select()
+        .from(clubMemberships)
+        .where(
+          and(
+            eq(clubMemberships.clubId, clubId),
+            eq(clubMemberships.userId, userId)
+          )
+        )
+        .limit(1);
+      
+      if (existing.length > 0) {
+        return res.status(409).json({ error: "Already a member" });
+      }
+      
+      // Add membership
+      await db.insert(clubMemberships).values({
+        clubId,
+        userId,
+        role: "member"
+      });
+      
+      // Increment member count
+      await db
+        .update(clubs)
+        .set({
+          memberCount: sql`${clubs.memberCount} + 1`
+        })
+        .where(eq(clubs.id, clubId));
+      
+      res.json({ success: true, message: "Joined club successfully" });
+    } catch (error: any) {
+      console.error("Join club error:", error);
+      res.status(500).json({ error: "Failed to join club" });
+    }
+  });
+  
+  // ==================== CHALLENGES ENDPOINTS ====================
+  
+  // Get active challenges
+  app.get("/api/challenges", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const now = new Date();
+      
+      const activeChallenges = await db
+        .select()
+        .from(challenges)
+        .where(
+          and(
+            eq(challenges.isPublic, true),
+            gte(challenges.endDate, now)
+          )
+        )
+        .orderBy(challenges.startDate)
+        .limit(50);
+      
+      res.json(activeChallenges);
+    } catch (error: any) {
+      console.error("Get challenges error:", error);
+      res.status(500).json({ error: "Failed to get challenges" });
+    }
+  });
+  
+  // Join challenge
+  app.post("/api/challenges/:challengeId/join", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { challengeId } = req.params;
+      const userId = req.user!.userId;
+      
+      // Check if already participating
+      const existing = await db
+        .select()
+        .from(challengeParticipants)
+        .where(
+          and(
+            eq(challengeParticipants.challengeId, challengeId),
+            eq(challengeParticipants.userId, userId)
+          )
+        )
+        .limit(1);
+      
+      if (existing.length > 0) {
+        return res.status(409).json({ error: "Already participating in this challenge" });
+      }
+      
+      // Add participation
+      await db.insert(challengeParticipants).values({
+        challengeId,
+        userId,
+        currentProgress: 0,
+        progressPercent: 0,
+        isCompleted: false
+      });
+      
+      // Increment participant count
+      await db
+        .update(challenges)
+        .set({
+          participantCount: sql`${challenges.participantCount} + 1`
+        })
+        .where(eq(challenges.id, challengeId));
+      
+      res.json({ success: true, message: "Joined challenge successfully" });
+    } catch (error: any) {
+      console.error("Join challenge error:", error);
+      res.status(500).json({ error: "Failed to join challenge" });
+    }
+  });
+
+  // ==================== ACHIEVEMENTS ENDPOINTS ====================
+  
+  // Initialize default achievements (run once)
+  app.post("/api/achievements/initialize", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      await initializeAchievements();
+      res.json({ success: true, message: "Achievements initialized" });
+    } catch (error: any) {
+      console.error("Initialize achievements error:", error);
+      res.status(500).json({ error: "Failed to initialize achievements" });
+    }
+  });
+  
+  // Get user's achievements
+  app.get("/api/achievements/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const achievementsData = await getUserAchievements(userId);
+      res.json(achievementsData);
+    } catch (error: any) {
+      console.error("Get achievements error:", error);
+      res.status(500).json({ error: "Failed to get achievements" });
+    }
+  });
+  
+  // Get all available achievements
+  app.get("/api/achievements", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const allAchievements = await db.select().from(achievements).orderBy(achievements.category, achievements.points);
+      res.json(allAchievements);
+    } catch (error: any) {
+      console.error("Get all achievements error:", error);
+      res.status(500).json({ error: "Failed to get achievements" });
     }
   });
 
