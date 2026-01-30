@@ -42,3 +42,5 @@ app-example
 /ios
 /android
 .env
+server_dist/
+server.log

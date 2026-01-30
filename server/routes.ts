@@ -44,8 +44,20 @@ import {
   getUserAchievements,
   initializeAchievements
 } from "./achievements-service";
+import garminOAuthRouter from "./garmin-oauth-bridge";
+import {
+  snapTrackToOSMSegments,
+  recordSegmentUsage,
+  analyzeRouteCharacteristics
+} from "./osm-segment-intelligence";
+import {
+  generateIntelligentRoute
+} from "./intelligent-route-generation";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  
+  // ==================== GARMIN OAUTH BRIDGE ====================
+  app.use(garminOAuthRouter);
   
   // ==================== AUTH ENDPOINTS ====================
   
@@ -293,6 +305,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ).catch(err => {
           console.error("Failed to match segments:", err);
         });
+        
+        // NEW: Track OSM segments for route intelligence
+        (async () => {
+          try {
+            const osmSegments = await snapTrackToOSMSegments(run.gpsTrack as any);
+            await recordSegmentUsage(run.id, userId, osmSegments);
+            
+            // Analyze route characteristics
+            const characteristics = analyzeRouteCharacteristics(run.gpsTrack as any);
+            console.log(`Run ${run.id} characteristics:`, characteristics);
+            
+            // Update run with characteristics (optional)
+            await db.execute(sql`
+              UPDATE runs 
+              SET route_characteristics = ${JSON.stringify(characteristics)}
+              WHERE id = ${run.id}
+            `);
+          } catch (err) {
+            console.error("Failed to track OSM segments:", err);
+          }
+        })();
       }
       
       // Check for achievements asynchronously (don't block response)
@@ -573,6 +606,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Generate routes error:", error);
       res.status(500).json({ error: "Failed to generate routes" });
+    }
+  });
+  
+  // NEW: GraphHopper-based intelligent route generation  
+  app.post("/api/routes/generate-intelligent", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { latitude, longitude, distanceKm, preferTrails, avoidHills } = req.body;
+      
+      if (!latitude || !longitude || !distanceKm) {
+        return res.status(400).json({ 
+          error: "Missing required fields: latitude, longitude, distanceKm" 
+        });
+      }
+      
+      console.log(`🗺️  Intelligent route generation: ${distanceKm}km at (${latitude}, ${longitude})`);
+      
+      const routes = await generateIntelligentRoute({
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        distanceKm: parseFloat(distanceKm),
+        preferTrails: preferTrails !== false,
+        avoidHills: avoidHills === true,
+      });
+      
+      res.json({
+        success: true,
+        routes: routes.map(route => ({
+          id: route.id,
+          polyline: route.polyline,
+          distance: route.distance,
+          elevationGain: route.elevationGain,
+          elevationLoss: route.elevationLoss,
+          difficulty: route.difficulty,
+          estimatedTime: route.duration,
+          popularityScore: route.popularityScore,
+          qualityScore: route.qualityScore,
+          turnInstructions: route.turnInstructions,
+        })),
+      });
+    } catch (error: any) {
+      console.error("Intelligent route generation error:", error);
+      res.status(500).json({ 
+        error: error.message || "Failed to generate intelligent route" 
+      });
     }
   });
 
