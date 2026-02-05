@@ -4,7 +4,7 @@ const path = require('path');
 
 async function runMigration() {
   const { Pool } = pg;
-  const connectionString = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
+  const connectionString = process.env.EXTERNAL_DATABASE_URL;
 
   if (!connectionString) {
     console.error('❌ No database connection string found');

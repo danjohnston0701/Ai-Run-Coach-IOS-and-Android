@@ -2,7 +2,7 @@ const pg = require('pg');
 
 async function checkTables() {
   const { Pool } = pg;
-  const connectionString = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
+  const connectionString = process.env.EXTERNAL_DATABASE_URL;
 
   const pool = new Pool({ 
     connectionString,
