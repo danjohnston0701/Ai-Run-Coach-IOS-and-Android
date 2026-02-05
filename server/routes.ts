@@ -825,7 +825,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/goals/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const userId = req.params.userId;
+      console.log(`[GET /api/goals/:userId] Fetching goals for userId: ${userId}`);
+      
       const rawGoals = await storage.getUserGoals(userId);
+      console.log(`[GET /api/goals/:userId] Found ${rawGoals.length} goals for user ${userId}`);
       
       // Transform to match Android app's expected format
       const goals = rawGoals.map(goal => ({
@@ -850,9 +853,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         completedAt: goal.completedAt?.toISOString(),
       }));
       
+      console.log(`[GET /api/goals/:userId] Returning ${goals.length} formatted goals`);
       res.json(goals);
     } catch (error: any) {
-      console.error("Get goals error:", error);
+      console.error("[GET /api/goals/:userId] Error:", error);
+      // Return empty array instead of error if no goals found
+      if (error.message?.includes('not found') || error.message?.includes('No goals')) {
+        console.log(`[GET /api/goals/:userId] No goals found, returning empty array`);
+        return res.json([]);
+      }
       res.status(500).json({ error: "Failed to get goals" });
     }
   });
