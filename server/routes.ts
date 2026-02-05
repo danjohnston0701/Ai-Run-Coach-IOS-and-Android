@@ -180,6 +180,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Upload profile picture (base64)
+  app.post("/api/users/:id/profile-picture", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user?.userId !== req.params.id) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      const { imageData } = req.body; // base64 encoded image or data URL
+      
+      if (!imageData) {
+        return res.status(400).json({ error: "No image data provided" });
+      }
+
+      // Update user's profile picture
+      const updated = await storage.updateUser(req.params.id, {
+        profilePic: imageData
+      });
+
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const { password: _, ...userWithoutPassword } = updated;
+      res.json(userWithoutPassword);
+    } catch (error: any) {
+      console.error("Upload profile picture error:", error);
+      res.status(500).json({ error: "Failed to upload profile picture" });
+    }
+  });
+
   // ==================== FRIENDS ENDPOINTS ====================
   
   app.get("/api/friends", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
@@ -611,16 +641,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // NEW: GraphHopper-based intelligent route generation  
   app.post("/api/routes/generate-intelligent", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    console.log("🎯 Route generation endpoint HIT!");
+    console.log("📦 Request body:", JSON.stringify(req.body, null, 2));
+    
     try {
       const { latitude, longitude, distanceKm, preferTrails, avoidHills } = req.body;
       
       if (!latitude || !longitude || !distanceKm) {
+        console.log("❌ Missing required fields!");
         return res.status(400).json({ 
           error: "Missing required fields: latitude, longitude, distanceKm" 
         });
       }
       
       console.log(`🗺️  Intelligent route generation: ${distanceKm}km at (${latitude}, ${longitude})`);
+      console.log(`🌲 Trails: ${preferTrails}, ⛰️ Avoid Hills: ${avoidHills}`);
+      
+      console.log("⏳ Calling generateIntelligentRoute()...");
+      const startTime = Date.now();
       
       const routes = await generateIntelligentRoute({
         latitude: parseFloat(latitude),
@@ -629,6 +667,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         preferTrails: preferTrails !== false,
         avoidHills: avoidHills === true,
       });
+      
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      console.log(`✅ Route generation completed in ${elapsed}s`);
+      console.log(`📊 Generated ${routes.length} routes`);
       
       res.json({
         success: true,
@@ -3166,7 +3208,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Wellness-aware coaching response during run
+  // Helper function to map user coach settings to OpenAI voices
+  const mapCoachVoice = (coachGender?: string, coachAccent?: string): string => {
+    if (coachGender === 'male') {
+      if (coachAccent === 'british') return 'alloy';
+      if (coachAccent === 'american') return 'echo';
+      return 'onyx';
+    } else {
+      if (coachAccent === 'british') return 'nova';
+      if (coachAccent === 'american') return 'shimmer';
+      return 'fable';
+    }
+  };
+
+  // Pace Update Coaching with TTS
+  app.post("/api/coaching/pace-update", async (req: Request, res: Response) => {
+    try {
+      const aiService = await import("./ai-service");
+      const message = await aiService.generatePaceUpdate(req.body);
+      
+      // Generate TTS audio with user's voice settings
+      const { coachName, coachGender, coachAccent } = req.body;
+      const voice = mapCoachVoice(coachGender, coachAccent);
+      const audioBuffer = await aiService.generateTTS(message, voice);
+      const base64Audio = audioBuffer.toString('base64');
+      
+      res.json({ 
+        message,
+        nextPace: req.body.currentPace, // Fallback
+        audio: base64Audio,
+        format: 'mp3'
+      });
+    } catch (error: any) {
+      console.error("Pace update coaching error:", error);
+      res.status(500).json({ error: "Failed to get pace update" });
+    }
+  });
+
+  // Struggle Coaching with TTS
+  app.post("/api/coaching/struggle-coaching", async (req: Request, res: Response) => {
+    try {
+      const aiService = await import("./ai-service");
+      const message = await aiService.generateStruggleCoaching(req.body);
+      
+      // Generate TTS audio with user's voice settings
+      const { coachName, coachGender, coachAccent } = req.body;
+      const voice = mapCoachVoice(coachGender, coachAccent);
+      const audioBuffer = await aiService.generateTTS(message, voice);
+      const base64Audio = audioBuffer.toString('base64');
+      
+      res.json({ 
+        message,
+        audio: base64Audio,
+        format: 'mp3'
+      });
+    } catch (error: any) {
+      console.error("Struggle coaching error:", error);
+      res.status(500).json({ error: "Failed to get struggle coaching" });
+    }
+  });
+
+  // Phase Coaching with TTS
+  app.post("/api/coaching/phase-coaching", async (req: Request, res: Response) => {
+    try {
+      const aiService = await import("./ai-service");
+      const message = await aiService.generatePhaseCoaching(req.body);
+      
+      // Generate TTS audio with user's voice settings
+      const { coachName, coachGender, coachAccent } = req.body;
+      const voice = mapCoachVoice(coachGender, coachAccent);
+      const audioBuffer = await aiService.generateTTS(message, voice);
+      const base64Audio = audioBuffer.toString('base64');
+      
+      res.json({ 
+        message,
+        nextPhase: null,
+        audio: base64Audio,
+        format: 'mp3'
+      });
+    } catch (error: any) {
+      console.error("Phase coaching error:", error);
+      res.status(500).json({ error: "Failed to get phase coaching" });
+    }
+  });
+
+  // Wellness-aware coaching response during run (Talk to Coach) - Updated with TTS
   app.post("/api/coaching/talk-to-coach", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { message, context } = req.body;
@@ -3204,7 +3330,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const aiService = await import("./ai-service");
       const response = await aiService.getWellnessAwareCoachingResponse(message, context);
       
-      res.json({ response });
+      // Generate TTS audio with user's voice settings
+      const coachGender = user?.coachGender || 'female';
+      const coachAccent = user?.coachAccent || 'british';
+      const voice = mapCoachVoice(coachGender, coachAccent);
+      const audioBuffer = await aiService.generateTTS(response, voice);
+      const base64Audio = audioBuffer.toString('base64');
+      
+      res.json({ 
+        message: response,
+        audio: base64Audio,
+        format: 'mp3'
+      });
     } catch (error: any) {
       console.error("Talk to coach error:", error);
       res.status(500).json({ error: "Failed to get coaching response" });
@@ -3252,7 +3389,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         wellness,
       });
       
-      res.json({ response });
+      // Generate TTS audio with user's voice settings
+      const coachGender = user?.coachGender || 'female';
+      const coachAccent = user?.coachAccent || 'british';
+      const voice = mapCoachVoice(coachGender, coachAccent);
+      const audioBuffer = await aiService.generateTTS(response, voice);
+      const base64Audio = audioBuffer.toString('base64');
+      
+      res.json({ 
+        message: response,
+        audio: base64Audio,
+        format: 'mp3'
+      });
     } catch (error: any) {
       console.error("HR coaching error:", error);
       res.status(500).json({ error: "Failed to get HR coaching" });

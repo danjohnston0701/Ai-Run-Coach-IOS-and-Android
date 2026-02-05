@@ -150,6 +150,10 @@ export const runs = pgTable("runs", {
   minHeartRate: integer("min_heart_rate"), // Minimum HR
   terrainType: text("terrain_type"), // Terrain classification
   userComments: text("user_comments"), // Post-run user comments
+  // Run goals for target tracking
+  targetDistance: real("target_distance"), // User's target distance in km
+  targetTime: integer("target_time"), // User's target time in milliseconds
+  wasTargetAchieved: boolean("was_target_achieved"), // Whether target was met
 });
 
 // Goals table

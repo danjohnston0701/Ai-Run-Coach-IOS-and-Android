@@ -5,6 +5,7 @@
  */
 
 import axios from "axios";
+import * as polyline from "@mapbox/polyline";
 import { getRoutePopularityScore, analyzeRouteCharacteristics } from "./osm-segment-intelligence";
 
 const GRAPHHOPPER_API_KEY = process.env.GRAPHHOPPER_API_KEY || "";
@@ -61,7 +62,7 @@ async function generateGraphHopperRoute(
   lat: number,
   lng: number,
   distanceMeters: number,
-  profile: 'foot' | 'hike',
+  profile: 'foot' | 'bike',
   seed: number = 0
 ): Promise<any> {
   try {
@@ -194,9 +195,17 @@ export async function generateIntelligentRoute(
 ): Promise<GeneratedRoute[]> {
   const { latitude, longitude, distanceKm, preferTrails = true } = request;
   const distanceMeters = distanceKm * 1000;
-  const profile = preferTrails ? 'hike' : 'foot';
   
-  console.log(`🗺️ Generating ${distanceKm}km route at (${latitude}, ${longitude})`);
+  // Check if API key is set
+  if (!GRAPHHOPPER_API_KEY) {
+    throw new Error("GRAPHHOPPER_API_KEY is not set in environment variables");
+  }
+  
+  // GraphHopper free API only supports 'foot', 'bike', 'car'
+  // Always use 'foot' for running routes
+  const profile = 'foot';
+  
+  console.log(`🗺️ Generating ${distanceKm}km (${distanceMeters}m) route at (${latitude}, ${longitude})`);
   
   // Generate multiple candidates with different seeds
   const maxAttempts = 3;
@@ -206,7 +215,12 @@ export async function generateIntelligentRoute(
     popularityScore: number;
   }> = [];
   
-  for (let seed = 0; seed < maxAttempts; seed++) {
+  // Use random starting seed to ensure different routes each generation
+  const baseSeed = Math.floor(Math.random() * 100);
+  console.log(`🎲 Using random base seed: ${baseSeed}`);
+  
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const seed = baseSeed + attempt;
     try {
       const ghResponse = await generateGraphHopperRoute(
         latitude,
@@ -222,7 +236,23 @@ export async function generateIntelligentRoute(
       }
       
       const path = ghResponse.paths[0];
-      const coordinates = path.points.coordinates as Array<[number, number]>;
+      let coordinates = path.points.coordinates as Array<[number, number]>;
+      
+      // ENSURE CIRCULAR ROUTE: Force start and end to be the exact same point
+      if (coordinates.length > 0) {
+        const startPoint: [number, number] = [longitude, latitude];
+        
+        // Replace first point with exact user location
+        coordinates[0] = startPoint;
+        
+        // Replace last point with exact user location to close the loop
+        coordinates[coordinates.length - 1] = startPoint;
+        
+        console.log(`Seed ${seed}: Enforced circular route - start (${startPoint[0].toFixed(6)}, ${startPoint[1].toFixed(6)}) = end`);
+      }
+      
+      // Debug: Log what GraphHopper returned
+      console.log(`Seed ${seed}: GraphHopper returned distance=${path.distance}m, ascend=${path.ascend}m, time=${path.time}ms, points=${coordinates.length}`);
       
       // Validate route quality
       const validation = validateRoute(coordinates);
@@ -275,21 +305,25 @@ export async function generateIntelligentRoute(
       route.ascend || 0
     );
     
-    console.log(`  Route ${index + 1}: Score=${candidate.totalScore.toFixed(2)}, Quality=${candidate.validation.qualityScore.toFixed(2)}, Popularity=${candidate.popularityScore.toFixed(2)}`);
+    console.log(`  Route ${index + 1}: Distance=${route.distance}m (${(route.distance / 1000).toFixed(2)}km), Score=${candidate.totalScore.toFixed(2)}, Quality=${candidate.validation.qualityScore.toFixed(2)}, Popularity=${candidate.popularityScore.toFixed(2)}`);
     
-    return {
+    const generatedRoute = {
       id: generateRouteId(),
       polyline: encodePolyline(route.points.coordinates),
       coordinates: route.points.coordinates,
-      distance: route.distance,
+      distance: route.distance, // Distance in meters from GraphHopper
       elevationGain: route.ascend || 0,
       elevationLoss: route.descend || 0,
-      duration: route.time / 1000,
+      duration: route.time / 1000, // Convert milliseconds to seconds
       difficulty,
       popularityScore: candidate.popularityScore,
       qualityScore: candidate.validation.qualityScore,
       turnInstructions: route.instructions || [],
     };
+    
+    console.log(`  → Returning: distance=${generatedRoute.distance}m, elevation=${generatedRoute.elevationGain}m↗/${generatedRoute.elevationLoss}m↘, duration=${generatedRoute.duration}s`);
+    
+    return generatedRoute;
   });
 }
 
@@ -301,11 +335,12 @@ function generateRouteId(): string {
 }
 
 /**
- * Encode polyline (simplified version - use polyline library for production)
+ * Encode polyline using Google Polyline encoding
  */
 function encodePolyline(coordinates: Array<[number, number]>): string {
-  // For now, just stringify - use @mapbox/polyline or similar in production
-  return JSON.stringify(coordinates);
+  // Convert from [lng, lat] to [lat, lng] for polyline encoding
+  const latLngCoords = coordinates.map(coord => [coord[1], coord[0]]);
+  return polyline.encode(latLngCoords);
 }
 
 /**
