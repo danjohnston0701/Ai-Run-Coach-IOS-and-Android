@@ -4,15 +4,17 @@ import * as schema from "@shared/schema";
 
 const { Pool } = pg;
 
-// Use external Neon database (EXTERNAL_DATABASE_URL) as primary
-// Falls back to Replit's DATABASE_URL if external is not set
-const connectionString = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
+// ALWAYS use EXTERNAL_DATABASE_URL (Neon database)
+// DO NOT use DATABASE_URL as it points to wrong database
+const connectionString = process.env.EXTERNAL_DATABASE_URL;
 
 if (!connectionString) {
   throw new Error(
-    "EXTERNAL_DATABASE_URL or DATABASE_URL must be set. Did you forget to configure the database?",
+    "EXTERNAL_DATABASE_URL must be set. This should point to the Neon PostgreSQL database.",
   );
 }
+
+console.log("🔌 Connecting to database:", connectionString.substring(0, 30) + "...");
 
 export const pool = new Pool({ 
   connectionString,
