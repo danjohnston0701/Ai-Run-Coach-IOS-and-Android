@@ -1,0 +1,38 @@
+# ================================================================
+# ONE-LINER FIX - Copy/Paste This Into Replit Shell
+# ================================================================
+#
+# This single command will:
+# 1. Remove auth requirement from /api/group-runs
+# 2. Restart the server
+# 3. Test the endpoint
+#
+# Perfect for quick testing!
+# ================================================================
+
+cp server/routes.ts server/routes.ts.backup && sed -i 's/app\.get("\/api\/group-runs", authMiddleware,/app.get("\/api\/group-runs",/' server/routes.ts && pkill -f "node.*server" && sleep 2 && npm run server:prod & sleep 5 && curl -i "https://${REPL_SLUG}.${REPL_OWNER}.repl.co/api/group-runs" | head -30 && echo "" && echo "✅ Done! Endpoint is now public. Test your Android app!"
+
+
+# ================================================================
+# To add test data (run this after the above):
+# ================================================================
+
+cat > /tmp/add-group-runs.js << 'EOF' && node /tmp/add-group-runs.js && rm /tmp/add-group-runs.js
+const { Client } = require('pg');
+(async () => {
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  const users = await client.query('SELECT id FROM users LIMIT 1');
+  if (!users.rows[0]) { console.log('❌ No users'); return; }
+  await client.query(`INSERT INTO group_runs (host_user_id, mode, title, description, target_distance, invite_token, status, planned_start_at) VALUES ($1, 'route', 'Morning Run', 'Easy 5k', 5.0, 'TEST-' || gen_random_uuid(), 'pending', NOW() + INTERVAL '1 day')`, [users.rows[0].id]);
+  console.log('✅ Test group run created!');
+  await client.end();
+})();
+EOF
+
+
+# ================================================================
+# To revert (put auth back):
+# ================================================================
+
+cp server/routes.ts.backup server/routes.ts && pkill -f "node.*server" && npm run server:prod &
