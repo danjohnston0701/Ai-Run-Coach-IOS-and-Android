@@ -5,7 +5,8 @@
  */
 
 import axios from "axios";
-import polyline from "@mapbox/polyline";
+// Use require for polyline due to esbuild export issues
+const polyline = require("@mapbox/polyline");
 import { getRoutePopularityScore, analyzeRouteCharacteristics } from "./osm-segment-intelligence";
 
 const GRAPHHOPPER_API_KEY = process.env.GRAPHHOPPER_API_KEY || "";
@@ -340,12 +341,7 @@ function generateRouteId(): string {
 function encodePolyline(coordinates: Array<[number, number]>): string {
   // Convert from [lng, lat] to [lat, lng] for polyline encoding
   const latLngCoords = coordinates.map(coord => [coord[1], coord[0]]);
-  // Handle both default and named exports from polyline module
-  const encoder = typeof polyline === 'function' ? polyline : (polyline as any).encode || (polyline as any).default?.encode;
-  if (!encoder) {
-    throw new Error('Polyline encoder not found');
-  }
-  return encoder(latLngCoords);
+  return polyline.encode(latLngCoords);
 }
 
 /**
