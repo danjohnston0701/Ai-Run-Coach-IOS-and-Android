@@ -253,8 +253,19 @@ function setupErrorHandler(app: express.Application) {
   // Register API routes BEFORE static file serving
   const server = await registerRoutes(app);
 
-  // Static file serving and landing page AFTER API routes
-  configureExpoAndLanding(app);
+  // Only setup Expo/Metro in development mode
+  if (process.env.NODE_ENV !== "production") {
+    configureExpoAndLanding(app);
+  } else {
+    // Production: Just serve a simple health check page
+    app.get("/", (_req, res) => {
+      res.json({ 
+        status: "ok", 
+        service: "AI Run Coach API",
+        version: "2.0.0"
+      });
+    });
+  }
 
   setupErrorHandler(app);
 
