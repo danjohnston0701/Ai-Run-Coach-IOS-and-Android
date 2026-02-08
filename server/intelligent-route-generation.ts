@@ -5,8 +5,6 @@
  */
 
 import axios from "axios";
-// Use require for polyline due to esbuild export issues
-const polyline = require("@mapbox/polyline");
 import { getRoutePopularityScore, analyzeRouteCharacteristics } from "./osm-segment-intelligence";
 
 const GRAPHHOPPER_API_KEY = process.env.GRAPHHOPPER_API_KEY || "";
@@ -336,12 +334,45 @@ function generateRouteId(): string {
 }
 
 /**
- * Encode polyline using Google Polyline encoding
+ * Encode polyline using Google Polyline encoding algorithm
+ * Implements the algorithm directly to avoid module import issues
  */
 function encodePolyline(coordinates: Array<[number, number]>): string {
   // Convert from [lng, lat] to [lat, lng] for polyline encoding
   const latLngCoords = coordinates.map(coord => [coord[1], coord[0]]);
-  return polyline.encode(latLngCoords);
+  
+  let encoded = '';
+  let prevLat = 0;
+  let prevLng = 0;
+
+  for (const [lat, lng] of latLngCoords) {
+    const lat5 = Math.round(lat * 1e5);
+    const lng5 = Math.round(lng * 1e5);
+    
+    encoded += encodeValue(lat5 - prevLat);
+    encoded += encodeValue(lng5 - prevLng);
+    
+    prevLat = lat5;
+    prevLng = lng5;
+  }
+  
+  return encoded;
+}
+
+/**
+ * Encode a single value for polyline format
+ */
+function encodeValue(value: number): string {
+  let encoded = '';
+  let num = value < 0 ? ~(value << 1) : (value << 1);
+  
+  while (num >= 0x20) {
+    encoded += String.fromCharCode((0x20 | (num & 0x1f)) + 63);
+    num >>= 5;
+  }
+  
+  encoded += String.fromCharCode(num + 63);
+  return encoded;
 }
 
 /**
