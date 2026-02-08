@@ -5,7 +5,7 @@
  */
 
 import axios from "axios";
-import * as polyline from "@mapbox/polyline";
+import polyline from "@mapbox/polyline";
 import { getRoutePopularityScore, analyzeRouteCharacteristics } from "./osm-segment-intelligence";
 
 const GRAPHHOPPER_API_KEY = process.env.GRAPHHOPPER_API_KEY || "";
