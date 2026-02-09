@@ -2,6 +2,17 @@
  * Intelligent Route Generation Service
  * 
  * Uses GraphHopper API + OSM segment popularity data to generate high-quality running routes
+ * 
+ * ROUTE QUALITY RULES (Feb 9, 2026):
+ * ✅ Avoids highways, motorways, and major roads (using GraphHopper road_class data)
+ * ✅ Validates distance within ±10% of target
+ * ✅ Detects and rejects routes with 180° U-turns  
+ * ✅ Prevents repeated segments (backtracking)
+ * ✅ Enforces genuine circular routes (start = end)
+ * ✅ Optimizes for trails, parks, paths, cycleways when preferTrails=true
+ * ✅ Filters out routes with >30% highway usage (HIGH severity)
+ * ✅ Filters out routes with >10% highway usage (MEDIUM severity)
+ * ✅ Scores routes: Quality (50%) + Popularity (30%) + Terrain (20% if preferTrails)
  */
 
 import axios from "axios";
@@ -18,6 +29,14 @@ interface RouteRequest {
   distanceKm: number;
   preferTrails?: boolean;
   avoidHills?: boolean;
+}
+
+interface RoadClassAnalysis {
+  hasHighways: boolean;
+  highwayPercentage: number;
+  trailPercentage: number;
+  pathPercentage: number;
+  terrainScore: number; // 0-1, higher = more trails/paths
 }
 
 interface GeneratedRoute {
@@ -45,7 +64,7 @@ interface TurnInstruction {
 interface ValidationResult {
   isValid: boolean;
   issues: Array<{
-    type: 'U_TURN' | 'REPEATED_SEGMENT' | 'DEAD_END';
+    type: 'U_TURN' | 'REPEATED_SEGMENT' | 'DEAD_END' | 'HIGHWAY' | 'DISTANCE_MISMATCH';
     location: [number, number];
     severity: 'LOW' | 'MEDIUM' | 'HIGH';
   }>;
@@ -89,13 +108,97 @@ async function generateGraphHopperRoute(
 }
 
 /**
- * Validate route for dead ends, U-turns, and backtracking
+ * Analyze road classes from GraphHopper details
  */
-function validateRoute(coordinates: Array<[number, number]>): ValidationResult {
+function analyzeRoadClasses(roadClassDetails: any[]): RoadClassAnalysis {
+  if (!roadClassDetails || roadClassDetails.length === 0) {
+    return {
+      hasHighways: false,
+      highwayPercentage: 0,
+      trailPercentage: 0,
+      pathPercentage: 0,
+      terrainScore: 0.5,
+    };
+  }
+  
+  let totalSegments = 0;
+  let highwaySegments = 0;
+  let trailSegments = 0;
+  let pathSegments = 0;
+  
+  // GraphHopper road_class values: https://docs.graphhopper.com/#section/Elevation-API/Details
+  // motorway, trunk, primary, secondary, tertiary, unclassified, residential, service, track, path, footway, cycleway
+  
+  for (const detail of roadClassDetails) {
+    const [startIdx, endIdx, roadClass] = detail;
+    const segmentLength = endIdx - startIdx;
+    totalSegments += segmentLength;
+    
+    const roadClassLower = (roadClass || '').toLowerCase();
+    
+    // Highways and major roads (BAD for running)
+    if (roadClassLower.includes('motorway') || 
+        roadClassLower.includes('trunk') || 
+        roadClassLower.includes('primary')) {
+      highwaySegments += segmentLength;
+    }
+    
+    // Trails and paths (GOOD for running)
+    if (roadClassLower.includes('track') || 
+        roadClassLower.includes('trail')) {
+      trailSegments += segmentLength;
+    }
+    
+    // Footpaths and cycleways (GREAT for running)
+    if (roadClassLower.includes('path') || 
+        roadClassLower.includes('footway') || 
+        roadClassLower.includes('cycleway')) {
+      pathSegments += segmentLength;
+    }
+  }
+  
+  const highwayPercentage = totalSegments > 0 ? (highwaySegments / totalSegments) : 0;
+  const trailPercentage = totalSegments > 0 ? (trailSegments / totalSegments) : 0;
+  const pathPercentage = totalSegments > 0 ? (pathSegments / totalSegments) : 0;
+  
+  // Terrain score: 1.0 = all trails/paths, 0.0 = all highways
+  const terrainScore = Math.max(0, Math.min(1, 
+    (trailPercentage * 1.0 + pathPercentage * 1.0) - (highwayPercentage * 2.0)
+  ));
+  
+  return {
+    hasHighways: highwayPercentage > 0.1, // More than 10% highways
+    highwayPercentage,
+    trailPercentage,
+    pathPercentage,
+    terrainScore,
+  };
+}
+
+/**
+ * Validate route for dead ends, U-turns, backtracking, highways, and distance
+ */
+function validateRoute(
+  coordinates: Array<[number, number]>,
+  actualDistanceMeters: number,
+  targetDistanceMeters: number,
+  roadClassDetails?: any[]
+): ValidationResult {
   const issues: ValidationResult['issues'] = [];
   
   if (coordinates.length < 3) {
     return { isValid: false, issues: [], qualityScore: 0 };
+  }
+  
+  // Check distance tolerance (±10% of target)
+  const distanceDiffPercent = Math.abs(actualDistanceMeters - targetDistanceMeters) / targetDistanceMeters;
+  if (distanceDiffPercent > 0.10) {
+    issues.push({
+      type: 'DISTANCE_MISMATCH',
+      location: coordinates[0],
+      severity: distanceDiffPercent > 0.20 ? 'HIGH' : 'MEDIUM',
+    });
+    console.log(`⚠️ Distance mismatch: ${(distanceDiffPercent * 100).toFixed(1)}% off target (actual=${actualDistanceMeters}m, target=${targetDistanceMeters}m)`);
   }
   
   // Check for U-turns (180° turns)
@@ -127,6 +230,19 @@ function validateRoute(coordinates: Array<[number, number]>): ValidationResult {
       });
     }
     segmentSet.add(segment);
+  }
+  
+  // Check for highways/motorways
+  if (roadClassDetails) {
+    const roadAnalysis = analyzeRoadClasses(roadClassDetails);
+    if (roadAnalysis.hasHighways) {
+      issues.push({
+        type: 'HIGHWAY',
+        location: coordinates[0],
+        severity: roadAnalysis.highwayPercentage > 0.3 ? 'HIGH' : 'MEDIUM',
+      });
+      console.log(`⚠️ Highway detected: ${(roadAnalysis.highwayPercentage * 100).toFixed(1)}% of route`);
+    }
   }
   
   // Calculate quality score
@@ -253,8 +369,21 @@ export async function generateIntelligentRoute(
       // Debug: Log what GraphHopper returned
       console.log(`Seed ${seed}: GraphHopper returned distance=${path.distance}m, ascend=${path.ascend}m, time=${path.time}ms, points=${coordinates.length}`);
       
-      // Validate route quality
-      const validation = validateRoute(coordinates);
+      // Extract road class details for validation
+      const roadClassDetails = path.details?.road_class || [];
+      
+      // Analyze terrain (for preferTrails filtering)
+      const roadAnalysis = analyzeRoadClasses(roadClassDetails);
+      console.log(`Seed ${seed}: Terrain - trails=${(roadAnalysis.trailPercentage * 100).toFixed(1)}%, paths=${(roadAnalysis.pathPercentage * 100).toFixed(1)}%, highways=${(roadAnalysis.highwayPercentage * 100).toFixed(1)}%, score=${roadAnalysis.terrainScore.toFixed(2)}`);
+      
+      // If user prefers trails but route has very few, penalize it
+      if (preferTrails && roadAnalysis.terrainScore < 0.3) {
+        console.log(`Seed ${seed}: Rejected - user prefers trails but route has low terrain score`);
+        continue;
+      }
+      
+      // Validate route quality (includes distance tolerance, U-turns, highways)
+      const validation = validateRoute(coordinates, path.distance, distanceMeters, roadClassDetails);
       console.log(`Seed ${seed}: Valid=${validation.isValid}, Quality=${validation.qualityScore.toFixed(2)}, Issues=${validation.issues.length}`);
       
       if (!validation.isValid) {
@@ -270,7 +399,8 @@ export async function generateIntelligentRoute(
         route: path,
         validation,
         popularityScore,
-      });
+        terrainScore: roadAnalysis.terrainScore,
+      } as any);
       
     } catch (error) {
       console.error(`Seed ${seed} failed:`, error);
@@ -283,12 +413,23 @@ export async function generateIntelligentRoute(
   }
   
   // Score candidates and pick the best
-  const scored = candidates.map(c => ({
-    ...c,
-    totalScore: 
-      c.validation.qualityScore * 0.6 + // 60% weight on quality (no dead ends)
-      c.popularityScore * 0.4,          // 40% weight on popularity
-  }));
+  const scored = candidates.map((c: any) => {
+    // Base scoring: quality (50%) + popularity (30%)
+    let totalScore = 
+      c.validation.qualityScore * 0.5 + // 50% weight on quality (no dead ends, highways, distance ok)
+      c.popularityScore * 0.3;          // 30% weight on popularity
+    
+    // If user prefers trails, add terrain score (20% weight)
+    if (preferTrails) {
+      totalScore += c.terrainScore * 0.2;
+      console.log(`Terrain bonus for seed: quality=${c.validation.qualityScore.toFixed(2)}, popularity=${c.popularityScore.toFixed(2)}, terrain=${c.terrainScore.toFixed(2)}`);
+    } else {
+      // Without trail preference, give remaining 20% to quality
+      totalScore += c.validation.qualityScore * 0.2;
+    }
+    
+    return { ...c, totalScore };
+  });
   
   scored.sort((a, b) => b.totalScore - a.totalScore);
   
@@ -297,14 +438,14 @@ export async function generateIntelligentRoute(
   // Return top 3 routes (or fewer if less than 3 valid routes)
   const topRoutes = scored.slice(0, 3);
   
-  return topRoutes.map((candidate, index) => {
+  return topRoutes.map((candidate: any, index: number) => {
     const route = candidate.route;
     const difficulty = calculateDifficulty(
       route.distance / 1000,
       route.ascend || 0
     );
     
-    console.log(`  Route ${index + 1}: Distance=${route.distance}m (${(route.distance / 1000).toFixed(2)}km), Score=${candidate.totalScore.toFixed(2)}, Quality=${candidate.validation.qualityScore.toFixed(2)}, Popularity=${candidate.popularityScore.toFixed(2)}`);
+    console.log(`  Route ${index + 1}: Distance=${route.distance}m (${(route.distance / 1000).toFixed(2)}km), Score=${candidate.totalScore.toFixed(2)}, Quality=${candidate.validation.qualityScore.toFixed(2)}, Popularity=${candidate.popularityScore.toFixed(2)}, Terrain=${candidate.terrainScore?.toFixed(2) || 'N/A'}`);
     
     const generatedRoute = {
       id: generateRouteId(),
