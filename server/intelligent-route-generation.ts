@@ -3,16 +3,18 @@
  * 
  * Uses GraphHopper API + OSM segment popularity data to generate high-quality running routes
  * 
- * ROUTE QUALITY RULES (Feb 9, 2026):
+ * ROUTE QUALITY RULES (Feb 10, 2026):
  * ✅ Avoids highways, motorways, and major roads (using GraphHopper road_class data)
- * ✅ Validates distance within ±10% of target
- * ✅ Detects and rejects routes with 180° U-turns  
+ * ✅ Validates distance within ±10% of target (STRICT)
+ * ✅ Detects and rejects routes with U-turns >155° (dead-end turnarounds)
  * ✅ Prevents repeated segments (backtracking)
  * ✅ Enforces genuine circular routes (start = end)
  * ✅ Optimizes for trails, parks, paths, cycleways when preferTrails=true
  * ✅ Filters out routes with >30% highway usage (HIGH severity)
  * ✅ Filters out routes with >10% highway usage (MEDIUM severity)
  * ✅ Scores routes: Quality (50%) + Popularity (30%) + Terrain (20% if preferTrails)
+ * ✅ Triple-layer validation: early distance check + full validation + final filter
+ * ✅ 30 attempts to find perfect routes (increased from 3 to handle strict rules)
  */
 
 import axios from "axios";
@@ -201,7 +203,7 @@ function validateRoute(
     console.log(`❌ REJECTED: Distance ${(distanceDiffPercent * 100).toFixed(1)}% off target (actual=${(actualDistanceMeters/1000).toFixed(2)}km, target=${(targetDistanceMeters/1000).toFixed(2)}km)`);
   }
   
-  // Check for U-turns (sharp turns >150°)
+  // Check for U-turns (sharp turns >155°)
   let uTurnCount = 0;
   for (let i = 1; i < coordinates.length - 1; i++) {
     const angle = calculateAngle(
@@ -210,8 +212,8 @@ function validateRoute(
       coordinates[i + 1]
     );
     
-    // Lower threshold from 160° to 150° to catch minor U-turns
-    if (angle > 150) {
+    // U-turn threshold: 155° (allows gentle curves but rejects dead-end turnarounds)
+    if (angle > 155) {
       uTurnCount++;
       issues.push({
         type: 'U_TURN',
@@ -339,10 +341,10 @@ export async function generateIntelligentRoute(
   
   console.log(`🗺️ Generating ${distanceKm}km (${distanceMeters}m) route at (${latitude}, ${longitude})`);
   console.log(`📏 STRICT: Target distance tolerance: ${(distanceMeters * 0.9 / 1000).toFixed(2)}km - ${(distanceMeters * 1.1 / 1000).toFixed(2)}km (±10%)`);
-  console.log(`🚫 STRICT: Zero U-turns >150°, zero highways >30%, zero distance errors >10%`);
+  console.log(`🚫 STRICT: Zero U-turns >155°, zero highways >30%, zero distance errors >10%`);
   
-  // Generate multiple candidates with different seeds (increased to 15 due to very strict validation)
-  const maxAttempts = 15;
+  // Generate multiple candidates with different seeds (increased to 30 due to very strict validation)
+  const maxAttempts = 30;
   const candidates: Array<{
     route: any;
     validation: ValidationResult;
@@ -449,8 +451,10 @@ export async function generateIntelligentRoute(
   
   // No valid routes found
   if (candidates.length === 0) {
-    throw new Error("Could not generate a valid route. Try a different location or distance.");
+    throw new Error(`Could not generate valid routes within ±10% of ${distanceKm}km in this area. Try a different distance (e.g., ${Math.max(3, distanceKm - 2)}km or ${distanceKm + 2}km) or move to a different location with more path options.`);
   }
+  
+  console.log(`✅ Found ${candidates.length} valid route(s) that meet all criteria`);
   
   // Score candidates and pick the best
   const scored = candidates.map((c: any) => {
