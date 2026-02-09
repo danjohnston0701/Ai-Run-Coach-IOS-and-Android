@@ -190,15 +190,15 @@ function validateRoute(
     return { isValid: false, issues: [], qualityScore: 0 };
   }
   
-  // Check distance tolerance (±10% of target)
+  // Check distance tolerance (±10% of target) - STRICT
   const distanceDiffPercent = Math.abs(actualDistanceMeters - targetDistanceMeters) / targetDistanceMeters;
   if (distanceDiffPercent > 0.10) {
     issues.push({
       type: 'DISTANCE_MISMATCH',
       location: coordinates[0],
-      severity: distanceDiffPercent > 0.20 ? 'HIGH' : 'MEDIUM',
+      severity: 'HIGH', // Any distance mismatch >10% is HIGH severity = auto-reject
     });
-    console.log(`⚠️ Distance mismatch: ${(distanceDiffPercent * 100).toFixed(1)}% off target (actual=${actualDistanceMeters}m, target=${targetDistanceMeters}m)`);
+    console.log(`❌ REJECTED: Distance ${(distanceDiffPercent * 100).toFixed(1)}% off target (actual=${(actualDistanceMeters/1000).toFixed(2)}km, target=${(targetDistanceMeters/1000).toFixed(2)}km)`);
   }
   
   // Check for U-turns (180° turns)
@@ -233,15 +233,18 @@ function validateRoute(
   }
   
   // Check for highways/motorways
-  if (roadClassDetails) {
+  if (roadClassDetails && roadClassDetails.length > 0) {
     const roadAnalysis = analyzeRoadClasses(roadClassDetails);
+    console.log(`🛣️ Road analysis: highways=${(roadAnalysis.highwayPercentage * 100).toFixed(1)}%, trails=${(roadAnalysis.trailPercentage * 100).toFixed(1)}%, paths=${(roadAnalysis.pathPercentage * 100).toFixed(1)}%`);
+    
     if (roadAnalysis.hasHighways) {
+      const severity = roadAnalysis.highwayPercentage > 0.3 ? 'HIGH' : 'MEDIUM';
       issues.push({
         type: 'HIGHWAY',
         location: coordinates[0],
-        severity: roadAnalysis.highwayPercentage > 0.3 ? 'HIGH' : 'MEDIUM',
+        severity,
       });
-      console.log(`⚠️ Highway detected: ${(roadAnalysis.highwayPercentage * 100).toFixed(1)}% of route`);
+      console.log(`${severity === 'HIGH' ? '❌' : '⚠️'} Highway ${severity}: ${(roadAnalysis.highwayPercentage * 100).toFixed(1)}% of route`);
     }
   }
   
@@ -249,8 +252,14 @@ function validateRoute(
   const highIssues = issues.filter(i => i.severity === 'HIGH').length;
   const mediumIssues = issues.filter(i => i.severity === 'MEDIUM').length;
   
-  const qualityScore = Math.max(0, 1 - (highIssues * 0.3 + mediumIssues * 0.1));
-  const isValid = highIssues < 2; // Allow max 1 high severity issue
+  const qualityScore = Math.max(0, 1 - (highIssues * 0.5 + mediumIssues * 0.2));
+  
+  // STRICT: Don't allow ANY high severity issues (distance >10%, highways >30%, U-turns)
+  const isValid = highIssues === 0 && mediumIssues <= 2;
+  
+  if (!isValid) {
+    console.log(`❌ Route validation FAILED: ${highIssues} HIGH issues, ${mediumIssues} MEDIUM issues`);
+  }
   
   return { isValid, issues, qualityScore };
 }
@@ -321,9 +330,10 @@ export async function generateIntelligentRoute(
   const profile = 'foot';
   
   console.log(`🗺️ Generating ${distanceKm}km (${distanceMeters}m) route at (${latitude}, ${longitude})`);
+  console.log(`📏 Target distance tolerance: ${(distanceMeters * 0.9).toFixed(0)}m - ${(distanceMeters * 1.1).toFixed(0)}m (±10%)`);
   
-  // Generate multiple candidates with different seeds
-  const maxAttempts = 3;
+  // Generate multiple candidates with different seeds (increased from 3 to 10 due to stricter validation)
+  const maxAttempts = 10;
   const candidates: Array<{
     route: any;
     validation: ValidationResult;
@@ -335,6 +345,12 @@ export async function generateIntelligentRoute(
   console.log(`🎲 Using random base seed: ${baseSeed}`);
   
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Stop early if we already have 3 good candidates
+    if (candidates.length >= 3) {
+      console.log(`✅ Found 3 valid routes, stopping early at attempt ${attempt}`);
+      break;
+    }
+    
     const seed = baseSeed + attempt;
     try {
       const ghResponse = await generateGraphHopperRoute(
