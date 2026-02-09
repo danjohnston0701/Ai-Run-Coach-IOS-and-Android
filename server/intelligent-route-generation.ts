@@ -201,7 +201,8 @@ function validateRoute(
     console.log(`❌ REJECTED: Distance ${(distanceDiffPercent * 100).toFixed(1)}% off target (actual=${(actualDistanceMeters/1000).toFixed(2)}km, target=${(targetDistanceMeters/1000).toFixed(2)}km)`);
   }
   
-  // Check for U-turns (180° turns)
+  // Check for U-turns (sharp turns >150°)
+  let uTurnCount = 0;
   for (let i = 1; i < coordinates.length - 1; i++) {
     const angle = calculateAngle(
       coordinates[i - 1],
@@ -209,13 +210,20 @@ function validateRoute(
       coordinates[i + 1]
     );
     
-    if (angle > 160) {
+    // Lower threshold from 160° to 150° to catch minor U-turns
+    if (angle > 150) {
+      uTurnCount++;
       issues.push({
         type: 'U_TURN',
         location: coordinates[i],
         severity: 'HIGH',
       });
+      console.log(`❌ U-turn detected at point ${i}: ${angle.toFixed(1)}° turn`);
     }
+  }
+  
+  if (uTurnCount > 0) {
+    console.log(`❌ Total U-turns: ${uTurnCount} (route will be REJECTED)`);
   }
   
   // Check for repeated segments (running same road twice)
@@ -330,10 +338,11 @@ export async function generateIntelligentRoute(
   const profile = 'foot';
   
   console.log(`🗺️ Generating ${distanceKm}km (${distanceMeters}m) route at (${latitude}, ${longitude})`);
-  console.log(`📏 Target distance tolerance: ${(distanceMeters * 0.9).toFixed(0)}m - ${(distanceMeters * 1.1).toFixed(0)}m (±10%)`);
+  console.log(`📏 STRICT: Target distance tolerance: ${(distanceMeters * 0.9 / 1000).toFixed(2)}km - ${(distanceMeters * 1.1 / 1000).toFixed(2)}km (±10%)`);
+  console.log(`🚫 STRICT: Zero U-turns >150°, zero highways >30%, zero distance errors >10%`);
   
-  // Generate multiple candidates with different seeds (increased from 3 to 10 due to stricter validation)
-  const maxAttempts = 10;
+  // Generate multiple candidates with different seeds (increased to 15 due to very strict validation)
+  const maxAttempts = 15;
   const candidates: Array<{
     route: any;
     validation: ValidationResult;
@@ -385,6 +394,16 @@ export async function generateIntelligentRoute(
       // Debug: Log what GraphHopper returned
       console.log(`Seed ${seed}: GraphHopper returned distance=${path.distance}m, ascend=${path.ascend}m, time=${path.time}ms, points=${coordinates.length}`);
       
+      // CRITICAL: Check distance IMMEDIATELY before any other validation
+      const actualDistance = path.distance;
+      const distanceDiffPercent = Math.abs(actualDistance - distanceMeters) / distanceMeters;
+      console.log(`Seed ${seed}: Distance check: target=${(distanceMeters/1000).toFixed(2)}km, actual=${(actualDistance/1000).toFixed(2)}km, diff=${(distanceDiffPercent * 100).toFixed(1)}%`);
+      
+      if (distanceDiffPercent > 0.10) {
+        console.log(`❌ Seed ${seed}: REJECTED - Distance ${(distanceDiffPercent * 100).toFixed(1)}% off target (outside ±10% tolerance)`);
+        continue; // Skip this route immediately
+      }
+      
       // Extract road class details for validation
       const roadClassDetails = path.details?.road_class || [];
       
@@ -398,14 +417,19 @@ export async function generateIntelligentRoute(
         continue;
       }
       
-      // Validate route quality (includes distance tolerance, U-turns, highways)
+      // Validate route quality (includes U-turns, highways, repeated segments)
       const validation = validateRoute(coordinates, path.distance, distanceMeters, roadClassDetails);
-      console.log(`Seed ${seed}: Valid=${validation.isValid}, Quality=${validation.qualityScore.toFixed(2)}, Issues=${validation.issues.length}`);
+      
+      const highIssues = validation.issues.filter(i => i.severity === 'HIGH').length;
+      const medIssues = validation.issues.filter(i => i.severity === 'MEDIUM').length;
+      console.log(`Seed ${seed}: Validation - HIGH issues=${highIssues}, MEDIUM issues=${medIssues}, Quality=${validation.qualityScore.toFixed(2)}`);
       
       if (!validation.isValid) {
-        console.log(`Seed ${seed}: Rejected - invalid route`);
+        console.log(`❌ Seed ${seed}: REJECTED - Failed validation (${highIssues} HIGH, ${medIssues} MEDIUM issues)`);
         continue;
       }
+      
+      console.log(`✅ Seed ${seed}: PASSED all validation checks`);
       
       // Check popularity score
       const popularityScore = await getRoutePopularityScore(coordinates);
@@ -449,10 +473,27 @@ export async function generateIntelligentRoute(
   
   scored.sort((a, b) => b.totalScore - a.totalScore);
   
-  console.log(`✅ Generated ${scored.length} routes, returning top ${Math.min(3, scored.length)}`);
+  // FINAL SAFETY CHECK: Filter out any routes that somehow have wrong distances
+  const finalFiltered = scored.filter((c: any) => {
+    const routeDistance = c.route.distance;
+    const distDiff = Math.abs(routeDistance - distanceMeters) / distanceMeters;
+    const isAcceptable = distDiff <= 0.10;
+    
+    if (!isAcceptable) {
+      console.log(`🚨 FINAL FILTER: Removing route with distance ${(routeDistance/1000).toFixed(2)}km (${(distDiff * 100).toFixed(1)}% off target)`);
+    }
+    
+    return isAcceptable;
+  });
+  
+  if (finalFiltered.length === 0) {
+    throw new Error("All routes failed final distance validation. Try a different distance or location.");
+  }
+  
+  console.log(`✅ Generated ${finalFiltered.length} valid routes, returning top ${Math.min(3, finalFiltered.length)}`);
   
   // Return top 3 routes (or fewer if less than 3 valid routes)
-  const topRoutes = scored.slice(0, 3);
+  const topRoutes = finalFiltered.slice(0, 3);
   
   return topRoutes.map((candidate: any, index: number) => {
     const route = candidate.route;
