@@ -417,9 +417,26 @@ export async function generateIntelligentRoute(
   // Always use 'foot' for running routes
   const profile = 'foot';
   
-  console.log(`🗺️ Generating ${distanceKm}km (${distanceMeters}m) route at (${latitude}, ${longitude})`);
-  console.log(`📏 Target distance tolerance: ${(distanceMeters * 0.85 / 1000).toFixed(2)}km - ${(distanceMeters * 1.15 / 1000).toFixed(2)}km (±15%)`);
-  console.log(`🚫 STRICT: Zero U-turns >155°, zero highways >30%, zero distance errors >10%`);
+  console.log(`\n🗺️ ========== GENERATING ${distanceKm}km ROUTE ==========`);
+  console.log(`📍 Location: (${latitude}, ${longitude})`);
+  console.log(`📏 Target: ${(distanceMeters * 0.85 / 1000).toFixed(2)}km - ${(distanceMeters * 1.15 / 1000).toFixed(2)}km (±15%)`);
+  console.log(`🌲 Prefer trails: ${preferTrails}`);
+  
+  // Track rejection reasons for detailed reporting
+  const rejectionStats = {
+    distance: 0,        // Outside ±15% tolerance
+    distanceEarly: 0,   // Outside ±10% early check
+    uTurns: 0,          // Sharp U-turns >160°
+    highways: 0,        // Too much highway usage
+    outAndBack: 0,      // Running back on same road
+    deadEnd: 0,         // Dead-end turnaround pattern
+    inefficient: 0,     // Path efficiency too low (MEDIUM only, not rejected)
+    terrain: 0,         // Low trail score when preferTrails=true
+    validationFailed: 0,// Other validation issues
+    noRoute: 0,         // GraphHopper returned no route
+    error: 0,           // API errors
+    passed: 0           // Routes that passed all checks
+  };
   
   // Generate multiple candidates with different seeds (30 attempts for quality routes)
   const maxAttempts = 30;
@@ -431,7 +448,7 @@ export async function generateIntelligentRoute(
   
   // Use random starting seed to ensure different routes each generation
   const baseSeed = Math.floor(Math.random() * 100);
-  console.log(`🎲 Using random base seed: ${baseSeed}`);
+  console.log(`🎲 Base seed: ${baseSeed}, Max attempts: ${maxAttempts}\n`);
   
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     // Stop early if we already have 3 good candidates
@@ -451,7 +468,8 @@ export async function generateIntelligentRoute(
       );
       
       if (!ghResponse.paths || ghResponse.paths.length === 0) {
-        console.log(`Seed ${seed}: No route found`);
+        console.log(`Seed ${seed}: ❌ No route found from GraphHopper`);
+        rejectionStats.noRoute++;
         continue;
       }
       
@@ -480,7 +498,8 @@ export async function generateIntelligentRoute(
       console.log(`Seed ${seed}: Distance check: target=${(distanceMeters/1000).toFixed(2)}km, actual=${(actualDistance/1000).toFixed(2)}km, diff=${(distanceDiffPercent * 100).toFixed(1)}%`);
       
       if (distanceDiffPercent > 0.10) {
-        console.log(`❌ Seed ${seed}: REJECTED - Distance ${(distanceDiffPercent * 100).toFixed(1)}% off target (outside ±10% tolerance)`);
+        console.log(`❌ Seed ${seed}: REJECTED - Distance ${(distanceDiffPercent * 100).toFixed(1)}% off target (outside ±10% early check)`);
+        rejectionStats.distanceEarly++;
         continue; // Skip this route immediately
       }
       
@@ -493,7 +512,8 @@ export async function generateIntelligentRoute(
       
       // If user prefers trails but route has very few, penalize it
       if (preferTrails && roadAnalysis.terrainScore < 0.3) {
-        console.log(`Seed ${seed}: Rejected - user prefers trails but route has low terrain score`);
+        console.log(`❌ Seed ${seed}: REJECTED - Low terrain score (${roadAnalysis.terrainScore.toFixed(2)} < 0.3)`);
+        rejectionStats.terrain++;
         continue;
       }
       
@@ -505,11 +525,25 @@ export async function generateIntelligentRoute(
       console.log(`Seed ${seed}: Validation - HIGH issues=${highIssues}, MEDIUM issues=${medIssues}, Quality=${validation.qualityScore.toFixed(2)}`);
       
       if (!validation.isValid) {
-        console.log(`❌ Seed ${seed}: REJECTED - Failed validation (${highIssues} HIGH, ${medIssues} MEDIUM issues)`);
+        // Track specific rejection reasons from validation
+        validation.issues.forEach(issue => {
+          if (issue.severity === 'HIGH') {
+            if (issue.type === 'U_TURN') rejectionStats.uTurns++;
+            else if (issue.type === 'DISTANCE_MISMATCH') rejectionStats.distance++;
+            else if (issue.type === 'HIGHWAY_OVERUSE') rejectionStats.highways++;
+            else if (issue.type === 'OUT_AND_BACK') rejectionStats.outAndBack++;
+            else if (issue.type === 'DEAD_END_TURNAROUND') rejectionStats.deadEnd++;
+            else rejectionStats.validationFailed++;
+          } else if (issue.severity === 'MEDIUM') {
+            if (issue.type === 'INEFFICIENT_PATH') rejectionStats.inefficient++;
+          }
+        });
+        console.log(`❌ Seed ${seed}: REJECTED - Failed validation (${highIssues} HIGH, ${medIssues} MEDIUM issues: ${validation.issues.map(i => i.type).join(', ')})`);
         continue;
       }
       
       console.log(`✅ Seed ${seed}: PASSED all validation checks`);
+      rejectionStats.passed++;
       
       // Check popularity score
       const popularityScore = await getRoutePopularityScore(coordinates);
@@ -523,13 +557,38 @@ export async function generateIntelligentRoute(
       } as any);
       
     } catch (error) {
-      console.error(`Seed ${seed} failed:`, error);
+      console.error(`❌ Seed ${seed} failed with error:`, error);
+      rejectionStats.error++;
     }
   }
   
-  // No valid routes found
+  // No valid routes found - print detailed rejection report
   if (candidates.length === 0) {
-    throw new Error(`Could not generate valid routes within ±15% of ${distanceKm}km in this area. Try a different distance (e.g., ${Math.max(3, distanceKm - 2)}km or ${distanceKm + 2}km) or move to a different location with more path options.`);
+    console.log(`\n❌ ========== ROUTE GENERATION FAILED ==========`);
+    console.log(`📊 REJECTION STATISTICS (out of ${maxAttempts} attempts):`);
+    console.log(`   • Distance (>10% early): ${rejectionStats.distanceEarly}`);
+    console.log(`   • Distance (>15% final): ${rejectionStats.distance}`);
+    console.log(`   • U-Turns (>160°): ${rejectionStats.uTurns}`);
+    console.log(`   • Highways (>30%): ${rejectionStats.highways}`);
+    console.log(`   • Out-and-back: ${rejectionStats.outAndBack}`);
+    console.log(`   • Dead-end turnaround: ${rejectionStats.deadEnd}`);
+    console.log(`   • Low terrain score: ${rejectionStats.terrain}`);
+    console.log(`   • No route found: ${rejectionStats.noRoute}`);
+    console.log(`   • API errors: ${rejectionStats.error}`);
+    console.log(`   • Other validation: ${rejectionStats.validationFailed}`);
+    console.log(`   ✅ PASSED: ${rejectionStats.passed}`);
+    
+    // Build detailed error message
+    const topReasons = [];
+    if (rejectionStats.distanceEarly > 5) topReasons.push(`distance mismatch (${rejectionStats.distanceEarly + rejectionStats.distance} rejected)`);
+    if (rejectionStats.uTurns > 3) topReasons.push(`U-turns/dead-ends (${rejectionStats.uTurns} rejected)`);
+    if (rejectionStats.highways > 3) topReasons.push(`highway usage (${rejectionStats.highways} rejected)`);
+    if (rejectionStats.outAndBack + rejectionStats.deadEnd > 3) topReasons.push(`out-and-back patterns (${rejectionStats.outAndBack + rejectionStats.deadEnd} rejected)`);
+    if (rejectionStats.terrain > 3) topReasons.push(`low trail coverage (${rejectionStats.terrain} rejected)`);
+    
+    const reasonText = topReasons.length > 0 ? ` Main issues: ${topReasons.join(', ')}.` : '';
+    
+    throw new Error(`Could not generate valid ${distanceKm}km routes in this area.${reasonText} Try ${Math.max(3, distanceKm - 2)}km or ${distanceKm + 2}km, or enable/disable "Prefer Trails".`);
   }
   
   console.log(`✅ Found ${candidates.length} valid route(s) that meet all criteria`);
