@@ -442,8 +442,9 @@ export async function generateIntelligentRoute(
     passed: 0           // Routes that passed all checks
   };
   
-  // Generate multiple candidates with different seeds (15 attempts to stay within GraphHopper free tier limits)
-  const maxAttempts = 15;
+  // Generate multiple candidates with different seeds (8 attempts to stay within GraphHopper free tier limits)
+  const maxAttempts = 8;
+  const apiDelayMs = 2000; // 2 second delay between API calls to avoid rate limits
   const candidates: Array<{
     route: any;
     validation: ValidationResult;
@@ -459,6 +460,12 @@ export async function generateIntelligentRoute(
     if (candidates.length >= 3) {
       console.log(`✅ Found 3 valid routes, stopping early at attempt ${attempt}`);
       break;
+    }
+    
+    // Add delay between API calls to avoid GraphHopper rate limits (except first attempt)
+    if (attempt > 0) {
+      console.log(`⏳ Waiting ${apiDelayMs}ms to avoid rate limits...`);
+      await new Promise(resolve => setTimeout(resolve, apiDelayMs));
     }
     
     const seed = baseSeed + attempt;
