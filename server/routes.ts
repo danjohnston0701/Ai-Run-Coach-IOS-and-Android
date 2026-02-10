@@ -1861,12 +1861,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("⏭️ Skipping historical activity sync (historyDays = 0)");
       }
       
-      // Redirect back to mobile app with success
+      // Redirect back to mobile app with success using HTML page
       const successUrl = appRedirectUrl.includes('?') 
         ? `${appRedirectUrl}&garmin=success` 
         : `${appRedirectUrl}?garmin=success`;
       console.log("Garmin OAuth successful, redirecting to:", successUrl);
-      res.redirect(successUrl);
+      
+      // Return HTML page that triggers deep link (browsers handle this better than direct redirects)
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Garmin Connected</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              margin: 0;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              text-align: center;
+              padding: 20px;
+            }
+            .container {
+              max-width: 400px;
+            }
+            .icon {
+              font-size: 64px;
+              margin-bottom: 20px;
+            }
+            h1 {
+              font-size: 24px;
+              margin-bottom: 10px;
+            }
+            p {
+              opacity: 0.9;
+              margin-bottom: 20px;
+            }
+            .button {
+              background: white;
+              color: #667eea;
+              border: none;
+              padding: 12px 24px;
+              border-radius: 8px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              text-decoration: none;
+              display: inline-block;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="icon">✓</div>
+            <h1>Garmin Connected!</h1>
+            <p>Your Garmin account has been successfully connected. Returning to AI Run Coach...</p>
+            <a href="${successUrl}" class="button">Open App</a>
+          </div>
+          <script>
+            // Attempt automatic redirect to app
+            setTimeout(function() {
+              window.location.href = "${successUrl}";
+            }, 1000);
+            
+            // Fallback: If app doesn't open after 3 seconds, user can tap button
+            setTimeout(function() {
+              document.querySelector('.button').style.display = 'inline-block';
+            }, 3000);
+          </script>
+        </body>
+        </html>
+      `);
     } catch (error: any) {
       console.error("Garmin callback error:", error);
       // Fallback redirect - decode state if possible to get appRedirect

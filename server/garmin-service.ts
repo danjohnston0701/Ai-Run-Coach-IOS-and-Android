@@ -192,22 +192,27 @@ export async function getGarminActivities(
   startTime?: Date,
   endTime?: Date
 ): Promise<any[]> {
-  // Use activitylist-service for OAuth 2.0 API
-  const params = new URLSearchParams();
-  params.set('limit', '100'); // Max activities to fetch
+  // Use wellness-api for OAuth 2.0 - Daily Summaries endpoint
+  // This is the official Garmin Health API for OAuth 2.0 applications
   
-  if (startTime) {
-    params.set('startDate', startTime.toISOString().split('T')[0]); // YYYY-MM-DD format
-  }
-  if (endTime) {
-    params.set('endDate', endTime.toISOString().split('T')[0]); // YYYY-MM-DD format
+  if (!startTime || !endTime) {
+    throw new Error('Start and end times are required for Garmin activities fetch');
   }
   
-  const response = await fetch(`${GARMIN_API_BASE}/activitylist-service/activities/search/activities?${params}`, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-    },
-  });
+  // Format: YYYY-MM-DD
+  const startDate = startTime.toISOString().split('T')[0];
+  const endDate = endTime.toISOString().split('T')[0];
+  
+  console.log(`📅 Fetching Garmin dailies from ${startDate} to ${endDate}`);
+  
+  const response = await fetch(
+    `${GARMIN_API_BASE}/wellness-api/rest/dailies?uploadStartTimeInSeconds=${Math.floor(startTime.getTime() / 1000)}&uploadEndTimeInSeconds=${Math.floor(endTime.getTime() / 1000)}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    }
+  );
   
   if (!response.ok) {
     const errorText = await response.text();
@@ -215,7 +220,12 @@ export async function getGarminActivities(
     throw new Error(`Failed to fetch Garmin activities: ${response.status}`);
   }
   
-  return response.json();
+  const data = await response.json();
+  console.log(`📊 Garmin API returned:`, JSON.stringify(data).substring(0, 500));
+  
+  // The wellness API returns daily summaries, not individual activities
+  // For now, return the dailies data - we'll need to enhance this later to get individual activities
+  return Array.isArray(data) ? data : [];
 }
 
 /**
