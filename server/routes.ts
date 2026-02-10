@@ -1701,12 +1701,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/auth/garmin", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const garminService = await import("./garmin-service");
-      // Get app_redirect from query params (sent by mobile app)
+      // Get app_redirect and history_days from query params (sent by mobile app)
       const appRedirect = req.query.app_redirect as string || 'airuncoach://connected-devices';
+      const historyDays = parseInt(req.query.history_days as string || '30', 10);
       // Generate a simple nonce for PKCE verifier lookup (avoids URL encoding issues)
       const nonce = Date.now().toString() + Math.random().toString(36).substring(2, 10);
-      // Encode userId, appRedirect, and nonce in state (base64 encoded JSON)
-      const stateData = { userId: req.user!.userId, appRedirect, nonce };
+      // Encode userId, appRedirect, historyDays, and nonce in state (base64 encoded JSON)
+      const stateData = { userId: req.user!.userId, appRedirect, historyDays, nonce };
       const state = Buffer.from(JSON.stringify(stateData)).toString('base64');
       // Use dynamic redirect URI based on request host
       // Ensure we always include port 5000 for the callback
@@ -1746,18 +1747,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { code, state, error } = req.query;
       
-      // Decode state to get userId, appRedirect, and nonce
-      let stateData: { userId: string; appRedirect: string; nonce: string } | null = null;
+      // Decode state to get userId, appRedirect, historyDays, and nonce
+      let stateData: { userId: string; appRedirect: string; historyDays?: number; nonce: string } | null = null;
       let appRedirectUrl = 'airuncoach://connected-devices';
       let userId = '';
+      let historyDays = 30;
       let nonce = '';
       
       try {
         stateData = JSON.parse(Buffer.from(state as string, 'base64').toString('utf-8'));
         appRedirectUrl = stateData?.appRedirect || appRedirectUrl;
         userId = stateData?.userId || '';
+        historyDays = stateData?.historyDays || 30;
         nonce = stateData?.nonce || '';
-        console.log("Garmin callback - decoded state:", { userId, appRedirect: appRedirectUrl, nonce });
+        console.log("Garmin callback - decoded state:", { userId, appRedirect: appRedirectUrl, historyDays, nonce });
       } catch (e) {
         console.error("Garmin callback - failed to decode state:", e);
         const errorUrl = appRedirectUrl.includes('?') 
@@ -1823,6 +1826,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
           tokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
           lastSyncAt: new Date(),
         });
+      }
+      
+      // Sync historical activities if historyDays > 0
+      if (historyDays > 0) {
+        try {
+          console.log(`📅 Syncing historical Garmin activities for the last ${historyDays} days...`);
+          const startDate = new Date();
+          startDate.setDate(startDate.getDate() - historyDays);
+          const endDate = new Date();
+          
+          // Trigger background sync (don't wait for it)
+          garminService.syncGarminActivities(
+            userId,
+            tokens.accessToken,
+            startDate.toISOString(),
+            endDate.toISOString()
+          ).then(() => {
+            console.log(`✅ Historical Garmin activities synced for user ${userId}`);
+          }).catch((err: any) => {
+            console.error(`❌ Failed to sync historical Garmin activities: ${err.message}`);
+          });
+        } catch (error: any) {
+          console.error("Error initiating historical sync:", error);
+          // Don't fail the connection if historical sync fails
+        }
+      } else {
+        console.log("⏭️ Skipping historical activity sync (historyDays = 0)");
       }
       
       // Redirect back to mobile app with success
