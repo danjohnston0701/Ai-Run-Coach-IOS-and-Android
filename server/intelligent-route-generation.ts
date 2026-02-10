@@ -103,10 +103,6 @@ async function generateGraphHopperRoute(
         // Use 90% of target as seed - GraphHopper usually overshoots by ~10-15%
         'round_trip.distance': seedDistance,
         'round_trip.seed': seed,
-        // CRITICAL: Disable contraction hierarchies for more accurate distance control
-        'ch.disable': true,
-        // Prefer pedestrian routing (better for running paths)
-        'pedestrian': true,
         points_encoded: false,
         elevation: true,
         instructions: true,
