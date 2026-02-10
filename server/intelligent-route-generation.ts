@@ -277,7 +277,7 @@ function validateRoute(
   
   // If start->mid and mid->end are very similar, it's likely an out-and-back
   const outAndBackRatio = Math.min(distStartToMid, distMidToEnd) / Math.max(distStartToMid, distMidToEnd);
-  if (outAndBackRatio > 0.85 && distStartToMid > 200) { // Within 15% similarity and significant distance
+  if (outAndBackRatio > 0.92 && distStartToMid > 300) { // Within 8% similarity and significant distance (strict)
     issues.push({
       type: 'DEAD_END_TURNAROUND',
       location: midPoint,
@@ -290,16 +290,16 @@ function validateRoute(
   // Calculate the ratio of actual path distance to "as the crow flies" distance
   const directDistance = calculateDistance(startPoint[0], startPoint[1], endPoint[0], endPoint[1]);
   const pathEfficiency = actualDistanceMeters / (directDistance * 1000 + 1); // +1 to avoid div by zero
-  
-  // If the route is nearly a straight line out and back, reject it
-  // A good circuit should have pathEfficiency < 2.0 (not going nearly straight out and back)
-  if (pathEfficiency > 2.5 && actualDistanceMeters > 1000) {
+
+  // If the route is nearly a straight line out and back, flag it but don't reject (MEDIUM only)
+  // A good circuit should have pathEfficiency < 3.0 (not going nearly straight out and back)
+  if (pathEfficiency > 3.0 && actualDistanceMeters > 1000) {
     issues.push({
       type: 'INEFFICIENT_PATH',
       location: midPoint,
-      severity: 'MEDIUM',
+      severity: 'MEDIUM', // Only MEDIUM, not HIGH - allows some straight-ish routes
     });
-    console.log(`⚠️ INEFFICIENT PATH: Ratio ${pathEfficiency.toFixed(2)} suggests out-and-back`);
+    console.log(`⚠️ INEFFICIENT PATH: Ratio ${pathEfficiency.toFixed(2)} suggests out-and-back (scored down, not rejected)`);
   }
   
   // Check for highways/motorways
