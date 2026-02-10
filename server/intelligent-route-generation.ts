@@ -192,18 +192,18 @@ function validateRoute(
     return { isValid: false, issues: [], qualityScore: 0 };
   }
   
-  // Check distance tolerance (±10% of target) - STRICT
+  // Check distance tolerance (±15% of target) - BALANCED
   const distanceDiffPercent = Math.abs(actualDistanceMeters - targetDistanceMeters) / targetDistanceMeters;
-  if (distanceDiffPercent > 0.10) {
+  if (distanceDiffPercent > 0.15) {
     issues.push({
       type: 'DISTANCE_MISMATCH',
       location: coordinates[0],
-      severity: 'HIGH', // Any distance mismatch >10% is HIGH severity = auto-reject
+      severity: 'HIGH', // Any distance mismatch >15% is HIGH severity = auto-reject
     });
     console.log(`❌ REJECTED: Distance ${(distanceDiffPercent * 100).toFixed(1)}% off target (actual=${(actualDistanceMeters/1000).toFixed(2)}km, target=${(targetDistanceMeters/1000).toFixed(2)}km)`);
   }
   
-  // Check for U-turns (sharp turns >155°)
+  // Check for U-turns (sharp turns >160°)
   let uTurnCount = 0;
   for (let i = 1; i < coordinates.length - 1; i++) {
     const angle = calculateAngle(
@@ -211,9 +211,9 @@ function validateRoute(
       coordinates[i],
       coordinates[i + 1]
     );
-    
-    // U-turn threshold: 155° (allows gentle curves but rejects dead-end turnarounds)
-    if (angle > 155) {
+
+    // U-turn threshold: 160° (allows gentle curves but rejects dead-end turnarounds)
+    if (angle > 160) {
       uTurnCount++;
       issues.push({
         type: 'U_TURN',
@@ -343,8 +343,8 @@ export async function generateIntelligentRoute(
   console.log(`📏 STRICT: Target distance tolerance: ${(distanceMeters * 0.9 / 1000).toFixed(2)}km - ${(distanceMeters * 1.1 / 1000).toFixed(2)}km (±10%)`);
   console.log(`🚫 STRICT: Zero U-turns >155°, zero highways >30%, zero distance errors >10%`);
   
-  // Generate multiple candidates with different seeds (increased to 30 due to very strict validation)
-  const maxAttempts = 30;
+  // Generate multiple candidates with different seeds (increased to 50 for balanced validation)
+  const maxAttempts = 50;
   const candidates: Array<{
     route: any;
     validation: ValidationResult;
@@ -451,7 +451,7 @@ export async function generateIntelligentRoute(
   
   // No valid routes found
   if (candidates.length === 0) {
-    throw new Error(`Could not generate valid routes within ±10% of ${distanceKm}km in this area. Try a different distance (e.g., ${Math.max(3, distanceKm - 2)}km or ${distanceKm + 2}km) or move to a different location with more path options.`);
+    throw new Error(`Could not generate valid routes within ±15% of ${distanceKm}km in this area. Try a different distance (e.g., ${Math.max(3, distanceKm - 2)}km or ${distanceKm + 2}km) or move to a different location with more path options.`);
   }
   
   console.log(`✅ Found ${candidates.length} valid route(s) that meet all criteria`);
@@ -481,7 +481,7 @@ export async function generateIntelligentRoute(
   const finalFiltered = scored.filter((c: any) => {
     const routeDistance = c.route.distance;
     const distDiff = Math.abs(routeDistance - distanceMeters) / distanceMeters;
-    const isAcceptable = distDiff <= 0.10;
+    const isAcceptable = distDiff <= 0.15;
     
     if (!isAcceptable) {
       console.log(`🚨 FINAL FILTER: Removing route with distance ${(routeDistance/1000).toFixed(2)}km (${(distDiff * 100).toFixed(1)}% off target)`);
