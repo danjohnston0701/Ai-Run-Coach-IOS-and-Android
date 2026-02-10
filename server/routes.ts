@@ -1710,11 +1710,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const stateData = { userId: req.user!.userId, appRedirect, historyDays, nonce };
       const state = Buffer.from(JSON.stringify(stateData)).toString('base64');
       // Use dynamic redirect URI based on request host
-      // Ensure we always include port 5000 for the callback
       let host = req.get('host') || '';
-      if (!host.includes(':5000')) {
+      
+      // Only add port 5000 for local development, NOT for production Replit
+      const isProduction = host.includes('replit.app');
+      if (!isProduction && !host.includes(':5000') && !host.includes(':')) {
         host = host.split(':')[0] + ':5000';
       }
+      
       const baseUrl = `https://${host}`;
       const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
       
@@ -1787,11 +1790,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const garminService = await import("./garmin-service");
       // Use dynamic redirect URI based on request host
-      // Ensure we always include port 5000 for the callback
       let host = req.get('host') || '';
-      if (!host.includes(':5000')) {
+      
+      // Only add port 5000 for local development, NOT for production Replit
+      const isProduction = host.includes('replit.app');
+      if (!isProduction && !host.includes(':5000') && !host.includes(':')) {
         host = host.split(':')[0] + ':5000';
       }
+      
       const baseUrl = `https://${host}`;
       const redirectUri = `${baseUrl}/api/auth/garmin/callback`;
       
