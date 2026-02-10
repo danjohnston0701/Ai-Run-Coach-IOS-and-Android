@@ -982,17 +982,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== FRIENDS ENDPOINTS ====================
   
+  // Alias for /api/friends to match Android app expectations
   app.get("/api/users/:userId/friends", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId } = req.params;
       console.log(`[GET /api/users/:userId/friends] Fetching friends for userId: ${userId}`);
       
-      // TODO: Implement actual friends functionality with database
-      // For now, return empty array to prevent 404 errors
-      const friends: any[] = [];
+      const friends = await storage.getFriends(userId);
+      res.json(friends.map(f => ({
+        id: f.id,
+        name: f.name,
+        email: f.email,
+        profilePic: f.profilePic,
+        userCode: f.userCode,
+      })));
       
       console.log(`[GET /api/users/:userId/friends] Returning ${friends.length} friends`);
-      res.json(friends);
     } catch (error: any) {
       console.error("[GET /api/users/:userId/friends] Error:", error);
       res.status(500).json({ error: "Failed to fetch friends" });
