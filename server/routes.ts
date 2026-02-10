@@ -278,6 +278,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Alias for Android app compatibility
+  app.get("/api/users/:userId/runs", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const runs = await storage.getUserRuns(req.params.userId);
+      res.json(runs);
+    } catch (error: any) {
+      console.error("Get user runs error:", error);
+      res.status(500).json({ error: "Failed to get runs" });
+    }
+  });
+
   app.get("/api/runs/:id", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const run = await storage.getRun(req.params.id);
