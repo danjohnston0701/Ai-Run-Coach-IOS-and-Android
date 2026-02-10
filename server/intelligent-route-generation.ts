@@ -89,22 +89,24 @@ async function generateGraphHopperRoute(
   seed: number = 0
 ): Promise<any> {
   try {
-    // Constrain GraphHopper to produce routes within ±15% of target distance
-    // This reduces waste from generating routes we have to reject
-    const minDistance = Math.floor(distanceMeters * 0.85);
-    const maxDistance = Math.ceil(distanceMeters * 1.15);
+    // OPTIMIZED: Better parameters for round_trip distance accuracy
+    // Use 90% of target distance as seed (GraphHopper tends to overshoot)
+    const seedDistance = Math.floor(distanceMeters * 0.90);
     
-    console.log(`📐 Requesting GraphHopper route: target=${distanceMeters}m, min=${minDistance}m, max=${maxDistance}m, seed=${seed}`);
+    console.log(`📐 GraphHopper request: target=${distanceMeters}m, seed_distance=${seedDistance}m, seed=${seed}`);
     
     const response = await axios.get(`${GRAPHHOPPER_BASE_URL}/route`, {
       params: {
         point: `${lat},${lng}`,
         profile: profile,
         algorithm: 'round_trip',
-        'round_trip.distance': distanceMeters,
+        // Use 90% of target as seed - GraphHopper usually overshoots by ~10-15%
+        'round_trip.distance': seedDistance,
         'round_trip.seed': seed,
-        // Add distance constraints to limit wasted API calls
-        'alternative_route.max_weight': maxDistance, // Upper limit on distance
+        // CRITICAL: Disable contraction hierarchies for more accurate distance control
+        'ch.disable': true,
+        // Prefer pedestrian routing (better for running paths)
+        'pedestrian': true,
         points_encoded: false,
         elevation: true,
         instructions: true,
