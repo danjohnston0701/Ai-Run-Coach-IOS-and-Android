@@ -192,17 +192,26 @@ export async function getGarminActivities(
   startTime?: Date,
   endTime?: Date
 ): Promise<any[]> {
+  // Use activitylist-service for OAuth 2.0 API
   const params = new URLSearchParams();
-  if (startTime) params.set('uploadStartTimeInSeconds', Math.floor(startTime.getTime() / 1000).toString());
-  if (endTime) params.set('uploadEndTimeInSeconds', Math.floor(endTime.getTime() / 1000).toString());
+  params.set('limit', '100'); // Max activities to fetch
   
-  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/activities?${params}`, {
+  if (startTime) {
+    params.set('startDate', startTime.toISOString().split('T')[0]); // YYYY-MM-DD format
+  }
+  if (endTime) {
+    params.set('endDate', endTime.toISOString().split('T')[0]); // YYYY-MM-DD format
+  }
+  
+  const response = await fetch(`${GARMIN_API_BASE}/activitylist-service/activities/search/activities?${params}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
     },
   });
   
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Garmin activities API error:', response.status, errorText);
     throw new Error(`Failed to fetch Garmin activities: ${response.status}`);
   }
   
@@ -216,13 +225,16 @@ export async function getGarminActivityDetail(
   accessToken: string,
   activityId: string
 ): Promise<any> {
-  const response = await fetch(`${GARMIN_API_BASE}/activity-api/rest/activities/${activityId}`, {
+  // Use activity-service for detailed activity data
+  const response = await fetch(`${GARMIN_API_BASE}/activity-service/activity/${activityId}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
     },
   });
   
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Garmin activity detail API error:', response.status, errorText);
     throw new Error(`Failed to fetch Garmin activity detail: ${response.status}`);
   }
   
@@ -848,14 +860,22 @@ export async function syncGarminActivities(
     
     // Fetch all activities in the date range from Garmin
     console.log('🔄 Fetching activities from Garmin API...');
-    const activities = await getGarminActivities(accessToken, startDate, endDate);
+    const activitiesResponse = await getGarminActivities(accessToken, startDate, endDate);
+    
+    // Handle different response formats (might be array or wrapped object)
+    const activities = Array.isArray(activitiesResponse) ? activitiesResponse : activitiesResponse.activities || [];
     console.log(`📊 Found ${activities.length} activities from Garmin`);
     
+    if (activities.length > 0) {
+      console.log('📝 Sample activity structure:', JSON.stringify(activities[0], null, 2).substring(0, 500));
+    }
+    
     // Filter for running activities only
-    const runningActivities = activities.filter((act: any) => 
-      act.activityType?.toLowerCase().includes('run') || 
-      act.activityName?.toLowerCase().includes('run')
-    );
+    const runningActivities = activities.filter((act: any) => {
+      const typeName = (act.activityType?.activityTypeKey || act.activityType || act.sport || '').toLowerCase();
+      const actName = (act.activityName || '').toLowerCase();
+      return typeName.includes('run') || actName.includes('run');
+    });
     console.log(`🏃 ${runningActivities.length} running activities to process`);
     
     for (const activity of runningActivities) {
