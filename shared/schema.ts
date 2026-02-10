@@ -115,6 +115,8 @@ export const runs = pgTable("runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
   routeId: varchar("route_id").references(() => routes.id),
+  externalId: varchar("external_id"), // Garmin activity ID, Strava activity ID, etc.
+  externalSource: varchar("external_source"), // 'garmin', 'strava', 'coros', etc.
   distance: real("distance").notNull(),
   duration: integer("duration").notNull(),
   avgPace: text("avg_pace"),

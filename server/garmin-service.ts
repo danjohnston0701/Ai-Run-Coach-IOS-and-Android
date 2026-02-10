@@ -821,12 +821,202 @@ export function parseGarminActivity(activity: any): {
   };
 }
 
+/**
+ * Sync Garmin activities to database and create run sessions
+ * This is called automatically after OAuth connection
+ */
+export async function syncGarminActivities(
+  userId: string,
+  accessToken: string,
+  startDateISO: string,
+  endDateISO: string
+): Promise<{ synced: number; skipped: number; errors: number }> {
+  console.log(`📥 Starting Garmin activity sync for user ${userId}`);
+  console.log(`📅 Date range: ${startDateISO} to ${endDateISO}`);
+  
+  const { db } = await import('./db');
+  const { runs } = await import('@shared/schema');
+  const { eq, and, gte, lte } = await import('drizzle-orm');
+  
+  let syncedCount = 0;
+  let skippedCount = 0;
+  let errorCount = 0;
+  
+  try {
+    const startDate = new Date(startDateISO);
+    const endDate = new Date(endDateISO);
+    
+    // Fetch all activities in the date range from Garmin
+    console.log('🔄 Fetching activities from Garmin API...');
+    const activities = await getGarminActivities(accessToken, startDate, endDate);
+    console.log(`📊 Found ${activities.length} activities from Garmin`);
+    
+    // Filter for running activities only
+    const runningActivities = activities.filter((act: any) => 
+      act.activityType?.toLowerCase().includes('run') || 
+      act.activityName?.toLowerCase().includes('run')
+    );
+    console.log(`🏃 ${runningActivities.length} running activities to process`);
+    
+    for (const activity of runningActivities) {
+      try {
+        const activityId = activity.activityId || activity.id;
+        const activityDate = new Date(activity.startTimeGMT || activity.beginTimestamp);
+        
+        // Check if this activity already exists in database
+        const existing = await db
+          .select()
+          .from(runs)
+          .where(
+            and(
+              eq(runs.userId, userId),
+              eq(runs.externalId, activityId.toString())
+            )
+          )
+          .limit(1);
+        
+        if (existing.length > 0) {
+          console.log(`⏭️  Activity ${activityId} already exists, skipping`);
+          skippedCount++;
+          continue;
+        }
+        
+        // Fetch detailed activity data (GPS, heart rate, etc.)
+        console.log(`🔍 Fetching details for activity ${activityId}...`);
+        let activityDetail = null;
+        try {
+          activityDetail = await getGarminActivityDetail(accessToken, activityId);
+        } catch (detailError: any) {
+          console.warn(`⚠️  Could not fetch details for ${activityId}: ${detailError.message}`);
+          // Continue with summary data only
+        }
+        
+        // Parse and map Garmin data to our run session format
+        const distance = (activity.distance || 0) / 1000; // Convert meters to km
+        const duration = (activity.duration || activity.movingDuration || 0) * 1000; // Convert seconds to milliseconds
+        const avgPace = distance > 0 && duration > 0 ? formatPace(duration / 1000 / distance) : null;
+        const avgHeartRate = activity.averageHR || activityDetail?.averageHR || null;
+        const maxHeartRate = activity.maxHR || activityDetail?.maxHR || null;
+        const calories = activity.calories || activityDetail?.calories || null;
+        const avgCadence = activity.averageRunCadence || activityDetail?.avgRunCadence || null;
+        const elevationGain = activity.elevationGain || activityDetail?.elevationGain || null;
+        const elevationLoss = activity.elevationLoss || activityDetail?.elevationLoss || null;
+        
+        // Extract GPS track
+        const gpsTrack = activityDetail?.geoPolylineDTO?.polyline || 
+                        activityDetail?.summaryPolyline || 
+                        activity.summaryPolyline || 
+                        null;
+        
+        // Extract heart rate data
+        const heartRateData = activityDetail?.heartRateSamples || 
+                             activityDetail?.timeSeriesData?.heartRate || 
+                             null;
+        
+        // Extract pace/speed data
+        const paceData = activityDetail?.timeSeriesData?.speed || 
+                        activityDetail?.speedSamples || 
+                        null;
+        
+        // Extract splits/laps
+        const kmSplits = activityDetail?.laps?.map((lap: any, index: number) => ({
+          km: index + 1,
+          time: lap.duration,
+          pace: formatPace(lap.duration / (lap.distance / 1000)),
+          avgHeartRate: lap.averageHR,
+          maxHeartRate: lap.maxHR,
+          cadence: lap.avgRunCadence,
+          elevation: lap.elevationGain
+        })) || null;
+        
+        // Starting location
+        const startLat = activity.startLatitude || activityDetail?.startLatitude || null;
+        const startLng = activity.startLongitude || activityDetail?.startLongitude || null;
+        
+        // Activity name/description
+        const activityName = activity.activityName || 
+                            `${activity.activityType || 'Run'} - ${activityDate.toLocaleDateString()}`;
+        
+        // Insert into database
+        console.log(`💾 Saving activity ${activityId} to database...`);
+        await db.insert(runs).values({
+          userId,
+          externalId: activityId.toString(),
+          externalSource: 'garmin',
+          distance,
+          duration: Math.floor(duration),
+          avgPace,
+          avgHeartRate,
+          maxHeartRate,
+          minHeartRate: activityDetail?.minHR || null,
+          calories,
+          cadence: avgCadence,
+          elevation: elevationGain,
+          elevationGain,
+          elevationLoss,
+          difficulty: determineDifficulty(distance, duration, elevationGain),
+          startLat,
+          startLng,
+          gpsTrack: gpsTrack ? { encoded: gpsTrack } : null,
+          heartRateData: heartRateData ? { samples: heartRateData } : null,
+          paceData: paceData ? { samples: paceData } : null,
+          kmSplits,
+          completedAt: activityDate,
+          name: activityName,
+          aiCoachEnabled: false,
+          runDate: activityDate.toISOString().split('T')[0],
+          runTime: activityDate.toTimeString().split(' ')[0],
+          terrainType: activity.activityType || 'road',
+          isPublic: false
+        });
+        
+        syncedCount++;
+        console.log(`✅ Successfully synced activity ${activityId}`);
+        
+      } catch (activityError: any) {
+        console.error(`❌ Error syncing activity: ${activityError.message}`);
+        errorCount++;
+      }
+    }
+    
+    console.log(`\n📊 Sync complete: ${syncedCount} synced, ${skippedCount} skipped, ${errorCount} errors`);
+    return { synced: syncedCount, skipped: skippedCount, errors: errorCount };
+    
+  } catch (error: any) {
+    console.error('❌ Fatal error during Garmin sync:', error);
+    throw error;
+  }
+}
+
+/**
+ * Helper function to format pace (min/km)
+ */
+function formatPace(secondsPerKm: number): string {
+  const minutes = Math.floor(secondsPerKm / 60);
+  const seconds = Math.floor(secondsPerKm % 60);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Helper function to determine run difficulty based on metrics
+ */
+function determineDifficulty(distanceKm: number, durationMs: number, elevationGain?: number | null): string {
+  const avgPaceMinPerKm = (durationMs / 1000) / distanceKm / 60;
+  const elevation = elevationGain || 0;
+  
+  // Simple difficulty heuristic
+  if (avgPaceMinPerKm > 7 && elevation < 100) return 'easy';
+  if (avgPaceMinPerKm < 4.5 || elevation > 300) return 'hard';
+  return 'moderate';
+}
+
 export default {
   getGarminAuthUrl,
   exchangeGarminCode,
   refreshGarminToken,
   getGarminActivities,
   getGarminActivityDetail,
+  syncGarminActivities,
   getGarminDailySummary,
   getGarminSleepData,
   getGarminSleepDetails,
