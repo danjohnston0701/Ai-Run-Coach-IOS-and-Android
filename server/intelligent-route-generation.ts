@@ -3,10 +3,13 @@
  * 
  * Uses GraphHopper API + OSM segment popularity data to generate high-quality running routes
  * 
- * ROUTE QUALITY RULES (Feb 10, 2026):
+ * ROUTE QUALITY RULES (Feb 10, 2026 - Enhanced Dead-End Detection):
  * ✅ Avoids highways, motorways, and major roads (using GraphHopper road_class data)
- * ✅ Validates distance within ±10% of target (STRICT)
- * ✅ Detects and rejects routes with U-turns >155° (dead-end turnarounds)
+ * ✅ Validates distance within ±15% of target (balanced)
+ * ✅ Detects and rejects routes with U-turns >160° (dead-end turnarounds)
+ * ✅ Detects OUT-AND-BACK patterns (running back on same road)
+ * ✅ Detects DEAD-END turnarounds (goes to point and returns)
+ * ✅ Detects INEFFICIENT paths (too direct = out-and-back)
  * ✅ Prevents repeated segments (backtracking)
  * ✅ Enforces genuine circular routes (start = end)
  * ✅ Optimizes for trails, parks, paths, cycleways when preferTrails=true
@@ -14,7 +17,7 @@
  * ✅ Filters out routes with >10% highway usage (MEDIUM severity)
  * ✅ Scores routes: Quality (50%) + Popularity (30%) + Terrain (20% if preferTrails)
  * ✅ Triple-layer validation: early distance check + full validation + final filter
- * ✅ 30 attempts to find perfect routes (increased from 3 to handle strict rules)
+ * ✅ 30 attempts to find perfect routes
  */
 
 import axios from "axios";
@@ -230,16 +233,73 @@ function validateRoute(
   
   // Check for repeated segments (running same road twice)
   const segmentSet = new Set<string>();
+  const reverseSegmentSet = new Set<string>(); // For detecting out-and-back
+  
   for (let i = 0; i < coordinates.length - 1; i++) {
+    // Forward segment
     const segment = `${coordinates[i][0].toFixed(4)},${coordinates[i][1].toFixed(4)}-${coordinates[i + 1][0].toFixed(4)},${coordinates[i + 1][1].toFixed(4)}`;
+    // Reverse segment (to detect going back on same road)
+    const reverseSegment = `${coordinates[i + 1][0].toFixed(4)},${coordinates[i + 1][1].toFixed(4)}-${coordinates[i][0].toFixed(4)},${coordinates[i][1].toFixed(4)}`;
+    
+    // Check for exact repeated segment
     if (segmentSet.has(segment)) {
       issues.push({
         type: 'REPEATED_SEGMENT',
         location: coordinates[i],
         severity: 'MEDIUM',
       });
+      console.log(`⚠️ Repeated segment detected at index ${i}`);
     }
+    
+    // Check for out-and-back (running back on the same road)
+    if (reverseSegmentSet.has(reverseSegment)) {
+      issues.push({
+        type: 'OUT_AND_BACK',
+        location: coordinates[i],
+        severity: 'HIGH', // Out-and-back is HIGH severity
+      });
+      console.log(`❌ OUT-AND-BACK detected: Running back on same road at index ${i}`);
+    }
+    
     segmentSet.add(segment);
+    reverseSegmentSet.add(segment); // Add forward segment - if we see it in reverse later, that's out-and-back
+  }
+  
+  // Check for DEAD-END turnarounds (route goes to a point and returns)
+  // This is different from U-turns - it's about the overall path shape
+  const startPoint = coordinates[0];
+  const endPoint = coordinates[coordinates.length - 1];
+  const midPoint = coordinates[Math.floor(coordinates.length / 2)];
+  
+  // Calculate distance from start to midpoint and midpoint to end
+  const distStartToMid = calculateDistance(startPoint[0], startPoint[1], midPoint[0], midPoint[1]);
+  const distMidToEnd = calculateDistance(midPoint[0], midPoint[1], endPoint[0], endPoint[1]);
+  
+  // If start->mid and mid->end are very similar, it's likely an out-and-back
+  const outAndBackRatio = Math.min(distStartToMid, distMidToEnd) / Math.max(distStartToMid, distMidToEnd);
+  if (outAndBackRatio > 0.85 && distStartToMid > 200) { // Within 15% similarity and significant distance
+    issues.push({
+      type: 'DEAD_END_TURNAROUND',
+      location: midPoint,
+      severity: 'HIGH',
+    });
+    console.log(`❌ DEAD-END TURNAROUND: Out-and-back ratio ${outAndBackRatio.toFixed(2)}`);
+  }
+  
+  // Check path coverage - a true circuit should cover area, not just a line
+  // Calculate the ratio of actual path distance to "as the crow flies" distance
+  const directDistance = calculateDistance(startPoint[0], startPoint[1], endPoint[0], endPoint[1]);
+  const pathEfficiency = actualDistanceMeters / (directDistance * 1000 + 1); // +1 to avoid div by zero
+  
+  // If the route is nearly a straight line out and back, reject it
+  // A good circuit should have pathEfficiency < 2.0 (not going nearly straight out and back)
+  if (pathEfficiency > 2.5 && actualDistanceMeters > 1000) {
+    issues.push({
+      type: 'INEFFICIENT_PATH',
+      location: midPoint,
+      severity: 'MEDIUM',
+    });
+    console.log(`⚠️ INEFFICIENT PATH: Ratio ${pathEfficiency.toFixed(2)} suggests out-and-back`);
   }
   
   // Check for highways/motorways
@@ -281,11 +341,29 @@ function calculateAngle(
 ): number {
   const bearing1 = calculateBearing(p1, p2);
   const bearing2 = calculateBearing(p2, p3);
-  
+
   let angle = Math.abs(bearing2 - bearing1);
   if (angle > 180) angle = 360 - angle;
-  
+
   return angle;
+}
+
+/**
+ * Calculate distance between two coordinates using Haversine formula
+ * Returns distance in meters
+ */
+function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+           Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+           Math.sin(dLng/2) * Math.sin(dLng/2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  
+  return R * c;
 }
 
 function calculateBearing(p1: [number, number], p2: [number, number]): number {
@@ -340,11 +418,11 @@ export async function generateIntelligentRoute(
   const profile = 'foot';
   
   console.log(`🗺️ Generating ${distanceKm}km (${distanceMeters}m) route at (${latitude}, ${longitude})`);
-  console.log(`📏 STRICT: Target distance tolerance: ${(distanceMeters * 0.9 / 1000).toFixed(2)}km - ${(distanceMeters * 1.1 / 1000).toFixed(2)}km (±10%)`);
+  console.log(`📏 Target distance tolerance: ${(distanceMeters * 0.85 / 1000).toFixed(2)}km - ${(distanceMeters * 1.15 / 1000).toFixed(2)}km (±15%)`);
   console.log(`🚫 STRICT: Zero U-turns >155°, zero highways >30%, zero distance errors >10%`);
   
-  // Generate multiple candidates with different seeds (increased to 50 for balanced validation)
-  const maxAttempts = 50;
+  // Generate multiple candidates with different seeds (30 attempts for quality routes)
+  const maxAttempts = 30;
   const candidates: Array<{
     route: any;
     validation: ValidationResult;
