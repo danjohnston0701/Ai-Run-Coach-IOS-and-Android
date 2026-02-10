@@ -438,8 +438,8 @@ export async function generateIntelligentRoute(
     passed: 0           // Routes that passed all checks
   };
   
-  // Generate multiple candidates with different seeds (30 attempts for quality routes)
-  const maxAttempts = 30;
+  // Generate multiple candidates with different seeds (15 attempts to stay within GraphHopper free tier limits)
+  const maxAttempts = 15;
   const candidates: Array<{
     route: any;
     validation: ValidationResult;
