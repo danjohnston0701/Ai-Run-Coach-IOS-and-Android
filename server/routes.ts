@@ -1730,10 +1730,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("Nonce for PKCE:", nonce);
       console.log("State data:", stateData);
       
-      const authUrl = garminService.getGarminAuthUrl(redirectUri, state, nonce);
+      const authUrl = await garminService.getGarminAuthUrl(redirectUri, state, nonce);
       console.log("Full auth URL:", authUrl);
       console.log("=========================");
-      
+
       res.json({ authUrl, state });
     } catch (error: any) {
       console.error("Garmin auth initiation error:", error);

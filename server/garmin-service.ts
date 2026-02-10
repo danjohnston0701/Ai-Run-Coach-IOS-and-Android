@@ -8,17 +8,58 @@ const GARMIN_AUTH_URL = 'https://connect.garmin.com/oauth2Confirm';
 const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/token';
 const GARMIN_API_BASE = 'https://apis.garmin.com';
 
-// Store PKCE code verifiers temporarily (in production, use Redis or database)
-// Key is a simple nonce to avoid URL encoding issues
-const codeVerifiers = new Map<string, { verifier: string; timestamp: number }>();
+// Import database for PKCE storage
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
-// Clean up old verifiers (older than 10 minutes)
-function cleanupOldVerifiers() {
-  const now = Date.now();
-  for (const [key, data] of codeVerifiers.entries()) {
-    if (now - data.timestamp > 10 * 60 * 1000) {
-      codeVerifiers.delete(key);
+// Store PKCE code verifiers in database (survives server restarts)
+async function storeCodeVerifier(nonce: string, verifier: string): Promise<void> {
+  try {
+    await db.execute(sql`
+      INSERT INTO oauth_state (nonce, code_verifier, created_at)
+      VALUES (${nonce}, ${verifier}, NOW())
+      ON CONFLICT (nonce) DO UPDATE SET code_verifier = ${verifier}, created_at = NOW()
+    `);
+    console.log(`[Garmin] Stored code verifier in database for nonce: ${nonce}`);
+  } catch (error) {
+    console.error(`[Garmin] Failed to store code verifier:`, error);
+    throw error;
+  }
+}
+
+async function getCodeVerifier(nonce: string): Promise<string | null> {
+  try {
+    const result = await db.execute(sql`
+      SELECT code_verifier FROM oauth_state WHERE nonce = ${nonce}
+    `);
+    const verifier = (result.rows[0] as any)?.code_verifier || null;
+    if (verifier) {
+      console.log(`[Garmin] Found code verifier in database for nonce: ${nonce}`);
+    } else {
+      console.log(`[Garmin] Code verifier NOT found in database for nonce: ${nonce}`);
     }
+    return verifier;
+  } catch (error) {
+    console.error(`[Garmin] Failed to get code verifier:`, error);
+    return null;
+  }
+}
+
+async function deleteCodeVerifier(nonce: string): Promise<void> {
+  try {
+    await db.execute(sql`DELETE FROM oauth_state WHERE nonce = ${nonce}`);
+    console.log(`[Garmin] Deleted code verifier from database for nonce: ${nonce}`);
+  } catch (error) {
+    console.error(`[Garmin] Failed to delete code verifier:`, error);
+  }
+}
+
+// Clean up old verifiers (older than 15 minutes) - called periodically
+async function cleanupOldVerifiers(): Promise<void> {
+  try {
+    await db.execute(sql`DELETE FROM oauth_state WHERE created_at < NOW() - INTERVAL '15 minutes'`);
+  } catch (error) {
+    console.error(`[Garmin] Failed to cleanup old verifiers:`, error);
   }
 }
 
@@ -35,38 +76,31 @@ function generatePKCE(): { codeVerifier: string; codeChallenge: string } {
 }
 
 /**
- * Store code verifier for a given nonce
+ * Get and remove code verifier for a given nonce (one-time use) - DATABASE VERSION
  */
-export function storeCodeVerifier(nonce: string, codeVerifier: string): void {
-  cleanupOldVerifiers();
-  codeVerifiers.set(nonce, { verifier: codeVerifier, timestamp: Date.now() });
-  console.log(`[Garmin] Stored code verifier for nonce: ${nonce}, total stored: ${codeVerifiers.size}`);
-}
-
-/**
- * Retrieve and remove code verifier for a given nonce
- */
-export function getAndRemoveCodeVerifier(nonce: string): string | null {
+export async function getAndRemoveCodeVerifier(nonce: string): Promise<string | null> {
   console.log(`[Garmin] Looking up code verifier for nonce: ${nonce}`);
-  console.log(`[Garmin] Available nonces: ${Array.from(codeVerifiers.keys()).join(', ')}`);
-  const data = codeVerifiers.get(nonce);
-  if (data) {
-    codeVerifiers.delete(nonce);
+  const verifier = await getCodeVerifier(nonce);
+  if (verifier) {
+    await deleteCodeVerifier(nonce);
     console.log(`[Garmin] Found and removed code verifier for nonce: ${nonce}`);
-    return data.verifier;
+    return verifier;
   }
   console.log(`[Garmin] Code verifier NOT found for nonce: ${nonce}`);
   return null;
 }
 
 /**
- * Generate the Garmin OAuth authorization URL
+ * Generate the Garmin OAuth authorization URL - ASYNC DATABASE VERSION
  */
-export function getGarminAuthUrl(redirectUri: string, state: string, nonce: string): string {
+export async function getGarminAuthUrl(redirectUri: string, state: string, nonce: string): Promise<string> {
   const { codeVerifier, codeChallenge } = generatePKCE();
   
-  // Store the code verifier using the simple nonce as key
-  storeCodeVerifier(nonce, codeVerifier);
+  // Store the code verifier using database (survives server restarts)
+  await storeCodeVerifier(nonce, codeVerifier);
+  
+  // Cleanup old verifiers periodically
+  cleanupOldVerifiers().catch(err => console.error('Failed to cleanup old verifiers:', err));
   
   // Note: Garmin's scope is managed via app configuration, not in the auth request
   const params = new URLSearchParams({
@@ -94,7 +128,7 @@ export async function exchangeGarminCode(
   expiresIn: number;
   athleteId?: string;
 }> {
-  const codeVerifier = getAndRemoveCodeVerifier(nonce);
+  const codeVerifier = await getAndRemoveCodeVerifier(nonce);
   if (!codeVerifier) {
     throw new Error('Invalid state - PKCE code verifier not found for nonce: ' + nonce);
   }
