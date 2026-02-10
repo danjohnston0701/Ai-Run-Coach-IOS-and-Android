@@ -252,13 +252,17 @@ function validateRoute(
     }
     
     // Check for out-and-back (running back on the same road)
-    if (reverseSegmentSet.has(reverseSegment)) {
+    // RELAXED: Only flag if we've seen this exact segment before (true backtracking)
+    // Not if we're just near similar coordinates in a loop
+    if (reverseSegmentSet.has(reverseSegment) && i > coordinates.length * 0.3) {
+      // Only flag as out-and-back if it happens in the latter part of route (true turnaround)
+      // Skip for early segments which might be loop overlaps
       issues.push({
         type: 'OUT_AND_BACK',
         location: coordinates[i],
-        severity: 'HIGH', // Out-and-back is HIGH severity
+        severity: 'MEDIUM', // Changed from HIGH to MEDIUM - allows some flexibility
       });
-      console.log(`❌ OUT-AND-BACK detected: Running back on same road at index ${i}`);
+      console.log(`⚠️ OUT-AND-BACK detected at index ${i} (MEDIUM severity)`);
     }
     
     segmentSet.add(segment);
@@ -277,7 +281,7 @@ function validateRoute(
   
   // If start->mid and mid->end are very similar, it's likely an out-and-back
   const outAndBackRatio = Math.min(distStartToMid, distMidToEnd) / Math.max(distStartToMid, distMidToEnd);
-  if (outAndBackRatio > 0.92 && distStartToMid > 300) { // Within 8% similarity and significant distance (strict)
+  if (outAndBackRatio > 0.97 && distStartToMid > 400) { // Within 3% similarity = very strict for true out-and-back
     issues.push({
       type: 'DEAD_END_TURNAROUND',
       location: midPoint,
