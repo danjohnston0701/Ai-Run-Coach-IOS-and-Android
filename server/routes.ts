@@ -2400,6 +2400,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ==========================================
+  // GARMIN PRODUCTION API ENDPOINTS
+  // Required for Garmin Production App Approval
+  // ==========================================
+
+  /**
+   * PING Endpoint - Garmin uses this to test if your server is alive
+   * REQUIRED for production approval
+   * Must respond within 30 seconds
+   */
+  app.post("/api/garmin/ping", (req: Request, res: Response) => {
+    console.log("📡 Garmin PING received");
+    res.status(200).json({ 
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      service: "AI Run Coach API"
+    });
+  });
+
+  /**
+   * User Permissions GET Endpoint
+   * REQUIRED for production approval
+   * Allows Garmin to query what permissions a user has granted
+   */
+  app.get("/api/garmin/user-permissions/:garminUserId", async (req: Request, res: Response) => {
+    try {
+      const { garminUserId } = req.params;
+      console.log(`🔍 Garmin requesting permissions for user: ${garminUserId}`);
+
+      // Find user by Garmin user ID (stored as deviceId in our system)
+      const device = await db.query.connectedDevices.findFirst({
+        where: (d, { and, eq }) => and(
+          eq(d.deviceType, 'garmin'),
+          eq(d.deviceId, garminUserId),
+          eq(d.isActive, true)
+        ),
+      });
+
+      if (!device) {
+        console.log(`⚠️ No active Garmin device found for Garmin user ${garminUserId}`);
+        return res.status(404).json({ 
+          error: "User not found or no active Garmin connection" 
+        });
+      }
+
+      // Return permissions the user has granted
+      res.status(200).json({
+        userId: garminUserId,
+        permissions: [
+          "WELLNESS_READ",
+          "ACTIVITY_READ",
+          "SLEEP_READ",
+          "HEARTRATE_READ",
+          "STRESS_READ",
+          "BODY_COMPOSITION_READ",
+          "RESPIRATION_READ",
+          "PULSE_OX_READ",
+          "HRV_READ"
+        ],
+        status: "active",
+        connectedAt: device.createdAt,
+        lastSync: device.lastSyncAt
+      });
+
+      console.log(`✅ Returned permissions for Garmin user ${garminUserId}`);
+    } catch (error: any) {
+      console.error("Error fetching user permissions:", error);
+      res.status(500).json({ error: "Failed to fetch user permissions" });
+    }
+  });
+
+  // ==========================================
   // GARMIN PUSH WEBHOOK ENDPOINTS
   // These endpoints receive real-time data from Garmin's servers
   // No auth required - Garmin validates with their own mechanism
