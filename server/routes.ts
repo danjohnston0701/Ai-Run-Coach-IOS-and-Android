@@ -322,6 +322,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const endTime = completedAtMs;
     const startTime = completedAtMs - durationMs;
 
+    // Transform weather data to match Android format (if exists)
+    let weatherData = null;
+    if (run.weatherData) {
+      try {
+        weatherData = {
+          temperature: run.weatherData.temperature || 0,
+          humidity: run.weatherData.humidity || 0,
+          windSpeed: run.weatherData.windSpeed || 0,
+          description: run.weatherData.description || run.weatherData.condition || "Unknown",
+          feelsLike: run.weatherData.feelsLike || null,
+          // Convert wind direction to degrees (0-360) if it's a string, otherwise use as-is
+          windDirection: typeof run.weatherData.windDirection === 'string' ? null : (run.weatherData.windDirection || null),
+          uvIndex: run.weatherData.uvIndex || null,
+          condition: run.weatherData.condition || run.weatherData.description || null
+        };
+      } catch (e) {
+        console.error('Error transforming weather data:', e);
+        weatherData = null;
+      }
+    }
+
     return {
       id: run.id,
       startTime: startTime,
@@ -338,8 +359,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       kmSplits: Array.isArray(run.kmSplits) ? run.kmSplits : [],
       isStruggling: false,
       phase: "GENERIC",
-      weatherAtStart: run.weatherData || null,
-      weatherAtEnd: run.weatherData || null,
+      weatherAtStart: weatherData,
+      weatherAtEnd: weatherData,
       totalElevationGain: run.elevationGain || 0,
       totalElevationLoss: run.elevationLoss || 0,
       averageGradient: 0,
