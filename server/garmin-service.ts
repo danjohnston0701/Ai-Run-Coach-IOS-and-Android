@@ -6,7 +6,8 @@ const GARMIN_CLIENT_SECRET = process.env.GARMIN_CLIENT_SECRET;
 // Garmin OAuth 2.0 endpoints (PKCE flow)
 const GARMIN_AUTH_URL = 'https://connect.garmin.com/oauth2Confirm';
 const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/token';
-const GARMIN_API_BASE = 'https://apis.garmin.com';
+// Use Garmin Connect API for personal user data, not Health API
+const GARMIN_CONNECT_API = 'https://connect.garmin.com/modern/proxy';
 
 // Import database for PKCE storage
 import { db } from './db';
@@ -226,8 +227,8 @@ export async function getGarminActivities(
   startTime?: Date,
   endTime?: Date
 ): Promise<any[]> {
-  // Use wellness-api for OAuth 2.0 - Daily Summaries endpoint
-  // This is the official Garmin Health API for OAuth 2.0 applications
+  // Use Garmin Connect API for OAuth 2.0 - Activity List endpoint
+  // This is the correct API for accessing personal Garmin Connect data
   
   if (!startTime || !endTime) {
     throw new Error('Start and end times are required for Garmin activities fetch');
@@ -237,28 +238,32 @@ export async function getGarminActivities(
   const startDate = startTime.toISOString().split('T')[0];
   const endDate = endTime.toISOString().split('T')[0];
   
-  console.log(`📅 Fetching Garmin dailies from ${startDate} to ${endDate}`);
+  console.log(`📅 Fetching Garmin Connect activities from ${startDate} to ${endDate}`);
+  
+  // Garmin Connect activity search endpoint
+  const start = 0;
+  const limit = 100; // Max activities per request
   
   const response = await fetch(
-    `${GARMIN_API_BASE}/wellness-api/rest/dailies?uploadStartTimeInSeconds=${Math.floor(startTime.getTime() / 1000)}&uploadEndTimeInSeconds=${Math.floor(endTime.getTime() / 1000)}`,
+    `${GARMIN_CONNECT_API}/activitylist-service/activities/search/activities?start=${start}&limit=${limit}&startDate=${startDate}&endDate=${endDate}`,
     {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
       },
     }
   );
   
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('Garmin activities API error:', response.status, errorText);
+    console.error('Garmin Connect API error:', response.status, errorText);
     throw new Error(`Failed to fetch Garmin activities: ${response.status}`);
   }
   
   const data = await response.json();
-  console.log(`📊 Garmin API returned:`, JSON.stringify(data).substring(0, 500));
+  console.log(`📊 Garmin Connect API returned ${data.length || 0} activities`);
   
-  // The wellness API returns daily summaries, not individual activities
-  // For now, return the dailies data - we'll need to enhance this later to get individual activities
+  // Garmin Connect returns an array of activities directly
   return Array.isArray(data) ? data : [];
 }
 
@@ -269,10 +274,11 @@ export async function getGarminActivityDetail(
   accessToken: string,
   activityId: string
 ): Promise<any> {
-  // Use activity-service for detailed activity data
-  const response = await fetch(`${GARMIN_API_BASE}/activity-service/activity/${activityId}`, {
+  // Use Garmin Connect API for detailed activity data
+  const response = await fetch(`${GARMIN_CONNECT_API}/activity-service/activity/${activityId}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
     },
   });
   
