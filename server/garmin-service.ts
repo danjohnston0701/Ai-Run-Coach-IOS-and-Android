@@ -244,27 +244,40 @@ export async function getGarminActivities(
   const start = 0;
   const limit = 100; // Max activities per request
   
-  const response = await fetch(
-    `${GARMIN_CONNECT_API}/activitylist-service/activities/search/activities?start=${start}&limit=${limit}&startDate=${startDate}&endDate=${endDate}`,
-    {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/json',
-      },
-    }
-  );
+  const url = `${GARMIN_CONNECT_API}/activitylist-service/activities/search/activities?start=${start}&limit=${limit}&startDate=${startDate}&endDate=${endDate}`;
+  console.log(`🔍 Fetching from URL: ${url}`);
+  
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
+    },
+  });
+  
+  const responseText = await response.text();
   
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Garmin Connect API error:', response.status, errorText);
+    console.error('Garmin Connect API error:', response.status);
+    console.error('Response body (first 500 chars):', responseText.substring(0, 500));
     throw new Error(`Failed to fetch Garmin activities: ${response.status}`);
   }
   
-  const data = await response.json();
-  console.log(`📊 Garmin Connect API returned ${data.length || 0} activities`);
+  // Check if response is HTML (error page)
+  if (responseText.trim().startsWith('<')) {
+    console.error('❌ API returned HTML instead of JSON (likely redirect to login)');
+    console.error('Response (first 500 chars):', responseText.substring(0, 500));
+    throw new Error('API returned HTML - endpoint may be incorrect');
+  }
   
-  // Garmin Connect returns an array of activities directly
-  return Array.isArray(data) ? data : [];
+  try {
+    const data = JSON.parse(responseText);
+    console.log(`📊 Garmin Connect API returned ${data.length || 0} activities`);
+    return Array.isArray(data) ? data : [];
+  } catch (parseError) {
+    console.error('❌ Failed to parse JSON response');
+    console.error('Response (first 500 chars):', responseText.substring(0, 500));
+    throw new Error('Invalid JSON response from API');
+  }
 }
 
 /**
