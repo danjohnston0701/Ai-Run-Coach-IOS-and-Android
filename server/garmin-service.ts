@@ -9,7 +9,7 @@ const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/toke
 const GARMIN_API_BASE = 'https://apis.garmin.com';
 
 // Import database for PKCE storage
-import { db } from '../db';
+import { db } from './db';
 import { sql } from 'drizzle-orm';
 
 // Store PKCE code verifiers in database (survives server restarts)
