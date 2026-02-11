@@ -6,7 +6,9 @@ const GARMIN_CLIENT_SECRET = process.env.GARMIN_CLIENT_SECRET;
 // Garmin OAuth 2.0 endpoints (PKCE flow)
 const GARMIN_AUTH_URL = 'https://connect.garmin.com/oauth2Confirm';
 const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/token';
-// Use Garmin Connect API for personal user data, not Health API
+// Garmin Health API base (for wellness data - works with OAuth 2.0)
+const GARMIN_API_BASE = 'https://apis.garmin.com';
+// Garmin Connect proxy (for activity data if available)
 const GARMIN_CONNECT_API = 'https://connect.garmin.com/modern/proxy';
 
 // Import database for PKCE storage
@@ -244,7 +246,12 @@ export async function getGarminActivities(
   const start = 0;
   const limit = 100; // Max activities per request
   
-  const url = `${GARMIN_CONNECT_API}/activitylist-service/activities/search/activities?start=${start}&limit=${limit}&startDate=${startDate}&endDate=${endDate}`;
+  // Try the Garmin Health API activities endpoint (OAuth 2.0 compatible)
+  // Convert dates to Unix timestamps (seconds)
+  const startTimeSeconds = Math.floor(startTime.getTime() / 1000);
+  const endTimeSeconds = Math.floor(endTime.getTime() / 1000);
+  
+  const url = `${GARMIN_API_BASE}/wellnessapi/rest/activities?uploadStartTimeInSeconds=${startTimeSeconds}&uploadEndTimeInSeconds=${endTimeSeconds}`;
   console.log(`🔍 Fetching from URL: ${url}`);
   
   const response = await fetch(url, {
