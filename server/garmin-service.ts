@@ -293,16 +293,18 @@ export async function getGarminActivityDetail(
 
 /**
  * Fetch user's daily health summary (steps, HR, sleep, stress)
+ * Uses Garmin Connect API (OAuth 2.0 compatible)
  */
 export async function getGarminDailySummary(
   accessToken: string,
   date: Date
 ): Promise<any> {
-  const dateStr = date.toISOString().split('T')[0];
+  const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD format
   
-  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/dailies?uploadStartTimeInSeconds=${Math.floor(date.getTime() / 1000)}`, {
+  const response = await fetch(`${GARMIN_CONNECT_API}/usersummary-service/usersummary/daily/${dateStr}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
     },
   });
   
@@ -314,21 +316,21 @@ export async function getGarminDailySummary(
 }
 
 /**
- * Fetch user's sleep data
+ * Fetch user's sleep data (stages, scores, duration)
+ * Uses Garmin Connect API (OAuth 2.0 compatible)
  */
 export async function getGarminSleepData(
   accessToken: string,
   startDate: Date,
   endDate: Date
 ): Promise<any> {
-  const params = new URLSearchParams({
-    uploadStartTimeInSeconds: Math.floor(startDate.getTime() / 1000).toString(),
-    uploadEndTimeInSeconds: Math.floor(endDate.getTime() / 1000).toString(),
-  });
+  const startDateStr = startDate.toISOString().split('T')[0];
+  const endDateStr = endDate.toISOString().split('T')[0];
   
-  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/epochs?${params}`, {
+  const response = await fetch(`${GARMIN_CONNECT_API}/wellness-service/wellness/dailySleepData?date=${startDateStr}&nonSleepBufferMinutes=60`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
     },
   });
   
@@ -340,25 +342,19 @@ export async function getGarminSleepData(
 }
 
 /**
- * Fetch user's heart rate data
+ * Fetch user's all-day heart rate data
+ * Uses Garmin Connect API (OAuth 2.0 compatible)
  */
 export async function getGarminHeartRateData(
   accessToken: string,
   date: Date
 ): Promise<any> {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
+  const dateStr = date.toISOString().split('T')[0];
   
-  const params = new URLSearchParams({
-    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
-    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
-  });
-  
-  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/allDayHeartRate?${params}`, {
+  const response = await fetch(`${GARMIN_CONNECT_API}/wellness-service/wellness/dailyHeartRate/${dateStr}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
     },
   });
   
@@ -370,25 +366,19 @@ export async function getGarminHeartRateData(
 }
 
 /**
- * Fetch user's stress data
+ * Fetch user's stress data throughout the day
+ * Uses Garmin Connect API (OAuth 2.0 compatible)
  */
 export async function getGarminStressData(
   accessToken: string,
   date: Date
 ): Promise<any> {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
+  const dateStr = date.toISOString().split('T')[0];
   
-  const params = new URLSearchParams({
-    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
-    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
-  });
-  
-  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/stressDetails?${params}`, {
+  const response = await fetch(`${GARMIN_CONNECT_API}/wellness-service/wellness/dailyStress/${dateStr}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
     },
   });
   
@@ -430,25 +420,19 @@ export async function getGarminSleepDetails(
 }
 
 /**
- * Fetch Body Battery data
+ * Fetch Body Battery data (Garmin's energy metric)
+ * Uses Garmin Connect API (OAuth 2.0 compatible)
  */
 export async function getGarminBodyBattery(
   accessToken: string,
   date: Date
 ): Promise<any> {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
+  const dateStr = date.toISOString().split('T')[0];
   
-  const params = new URLSearchParams({
-    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
-    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
-  });
-  
-  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/bodyBattery?${params}`, {
+  const response = await fetch(`${GARMIN_CONNECT_API}/wellness-service/wellness/bodyBattery/${dateStr}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
     },
   });
   
@@ -461,24 +445,18 @@ export async function getGarminBodyBattery(
 
 /**
  * Fetch HRV (Heart Rate Variability) data
+ * Uses Garmin Connect API (OAuth 2.0 compatible)
  */
 export async function getGarminHRVData(
   accessToken: string,
   date: Date
 ): Promise<any> {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
+  const dateStr = date.toISOString().split('T')[0];
   
-  const params = new URLSearchParams({
-    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
-    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
-  });
-  
-  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/hrv?${params}`, {
+  const response = await fetch(`${GARMIN_CONNECT_API}/wellness-service/wellness/daily/hrv/${dateStr}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
     },
   });
   
@@ -492,23 +470,20 @@ export async function getGarminHRVData(
 /**
  * Fetch Respiration data
  */
+/**
+ * Fetch Respiration rate data
+ * Uses Garmin Connect API (OAuth 2.0 compatible)
+ */
 export async function getGarminRespirationData(
   accessToken: string,
   date: Date
 ): Promise<any> {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
+  const dateStr = date.toISOString().split('T')[0];
   
-  const params = new URLSearchParams({
-    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
-    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
-  });
-  
-  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/respiration?${params}`, {
+  const response = await fetch(`${GARMIN_CONNECT_API}/wellness-service/wellness/dailyRespiration/${dateStr}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
     },
   });
   
@@ -521,24 +496,18 @@ export async function getGarminRespirationData(
 
 /**
  * Fetch Pulse Ox (SpO2) data
+ * Uses Garmin Connect API (OAuth 2.0 compatible)
  */
 export async function getGarminPulseOx(
   accessToken: string,
   date: Date
 ): Promise<any> {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
+  const dateStr = date.toISOString().split('T')[0];
   
-  const params = new URLSearchParams({
-    uploadStartTimeInSeconds: Math.floor(startOfDay.getTime() / 1000).toString(),
-    uploadEndTimeInSeconds: Math.floor(endOfDay.getTime() / 1000).toString(),
-  });
-  
-  const response = await fetch(`${GARMIN_API_BASE}/wellness-api/rest/pulseOx?${params}`, {
+  const response = await fetch(`${GARMIN_CONNECT_API}/wellness-service/wellness/dailySpo2/${dateStr}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
     },
   });
   
