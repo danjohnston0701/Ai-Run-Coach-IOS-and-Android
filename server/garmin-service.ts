@@ -891,7 +891,7 @@ export async function syncGarminActivities(
   console.log(`📅 Date range: ${startDateISO} to ${endDateISO}`);
   
   const { db } = await import('./db');
-  const { runs } = await import('@shared/schema');
+  const { runs, connectedDevices } = await import('@shared/schema');
   const { eq, and, gte, lte } = await import('drizzle-orm');
   
   let syncedCount = 0;
@@ -899,6 +899,50 @@ export async function syncGarminActivities(
   let errorCount = 0;
   
   try {
+    // Check if token is expired and refresh if needed
+    const deviceRecords = await db
+      .select()
+      .from(connectedDevices)
+      .where(
+        and(
+          eq(connectedDevices.userId, userId),
+          eq(connectedDevices.deviceType, 'garmin')
+        )
+      )
+      .limit(1);
+    
+    let currentAccessToken = accessToken;
+    
+    if (deviceRecords.length > 0) {
+      const device = deviceRecords[0];
+      const expiresAt = device.tokenExpiresAt;
+      const now = new Date();
+      
+      // Refresh token if expired or expiring within 5 minutes
+      if (expiresAt && expiresAt <= new Date(now.getTime() + 5 * 60 * 1000)) {
+        console.log('🔄 Access token expired or expiring soon, refreshing...');
+        try {
+          const tokens = await refreshGarminToken(device.refreshToken!);
+          currentAccessToken = tokens.accessToken;
+          
+          // Update stored tokens
+          await db
+            .update(connectedDevices)
+            .set({
+              accessToken: tokens.accessToken,
+              refreshToken: tokens.refreshToken,
+              tokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+            })
+            .where(eq(connectedDevices.id, device.id));
+          
+          console.log('✅ Token refreshed successfully');
+        } catch (refreshError: any) {
+          console.error('❌ Failed to refresh token:', refreshError.message);
+          throw new Error('Token expired and refresh failed. Please reconnect Garmin.');
+        }
+      }
+    }
+    
     const startDate = new Date(startDateISO);
     const endDate = new Date(endDateISO);
     
@@ -919,7 +963,7 @@ export async function syncGarminActivities(
       
       try {
         console.log(`📅 Fetching day: ${dayStart.toISOString().split('T')[0]}`);
-        const dailyActivities = await getGarminActivities(accessToken, dayStart, dayEnd);
+        const dailyActivities = await getGarminActivities(currentAccessToken, dayStart, dayEnd);
         const activities = Array.isArray(dailyActivities) ? dailyActivities : dailyActivities.activities || [];
         allActivities.push(...activities);
         console.log(`   Found ${activities.length} activities`);
@@ -977,7 +1021,7 @@ export async function syncGarminActivities(
         console.log(`🔍 Fetching details for activity ${activityId}...`);
         let activityDetail = null;
         try {
-          activityDetail = await getGarminActivityDetail(accessToken, activityId);
+          activityDetail = await getGarminActivityDetail(currentAccessToken, activityId);
         } catch (detailError: any) {
           console.warn(`⚠️  Could not fetch details for ${activityId}: ${detailError.message}`);
           // Continue with summary data only
