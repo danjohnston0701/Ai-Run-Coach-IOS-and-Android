@@ -2470,6 +2470,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * ACTIVITY UPLOAD Endpoint - Upload AI Run Coach runs to Garmin Connect
+   * Allows two-way sync: READ from Garmin + WRITE to Garmin
+   * Requires Training/Courses API permissions
+   */
+  app.post("/api/garmin/upload-run", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { runId } = req.body;
+
+      if (!runId) {
+        return res.status(400).json({ error: "runId is required" });
+      }
+
+      console.log(`📤 Upload to Garmin requested for run: ${runId}`);
+
+      // Get run data from database
+      const run = await db.query.runs.findFirst({
+        where: (r, { eq }) => eq(r.id, runId),
+      });
+
+      if (!run) {
+        return res.status(404).json({ error: "Run not found" });
+      }
+
+      // Check if user owns this run
+      if (run.userId !== req.user!.userId) {
+        return res.status(403).json({ error: "Unauthorized - run belongs to different user" });
+      }
+
+      // Check if already uploaded
+      if (run.uploadedToGarmin) {
+        return res.status(200).json({
+          success: true,
+          message: "Run already uploaded to Garmin",
+          garminActivityId: run.garminActivityId,
+          alreadyUploaded: true,
+        });
+      }
+
+      // Check if this run came FROM Garmin (don't upload back)
+      if (run.externalSource === 'garmin') {
+        return res.status(400).json({
+          error: "Cannot upload Garmin-sourced runs back to Garmin",
+        });
+      }
+
+      // Get Garmin connection
+      const devices = await storage.getConnectedDevices(req.user!.userId);
+      const garminDevice = devices.find(d => d.deviceType === 'garmin' && d.isActive);
+
+      if (!garminDevice || !garminDevice.accessToken) {
+        return res.status(400).json({
+          error: "Garmin not connected. Please connect Garmin first.",
+        });
+      }
+
+      // Import garmin service
+      const garminService = await import("./garmin-service");
+
+      // Upload to Garmin
+      const result = await garminService.uploadRunToGarmin(
+        req.user!.userId,
+        run,
+        garminDevice.accessToken,
+        garminDevice.refreshToken!,
+        garminDevice.tokenExpiresAt!
+      );
+
+      if (result.success) {
+        console.log(`✅ Run ${runId} uploaded to Garmin successfully`);
+        if (result.garminActivityId) {
+          console.log(`   Garmin Activity ID: ${result.garminActivityId}`);
+        }
+
+        res.json({
+          success: true,
+          message: "Run uploaded to Garmin Connect successfully",
+          garminActivityId: result.garminActivityId,
+        });
+      } else {
+        console.error(`❌ Failed to upload run ${runId}:`, result.error);
+        res.status(500).json({
+          success: false,
+          error: result.error || "Failed to upload to Garmin",
+        });
+      }
+    } catch (error: any) {
+      console.error("Garmin upload error:", error);
+      res.status(500).json({ error: "Failed to upload run to Garmin" });
+    }
+  });
+
   // ==========================================
   // GARMIN PUSH WEBHOOK ENDPOINTS
   // These endpoints receive real-time data from Garmin's servers

@@ -1141,6 +1141,247 @@ function determineDifficulty(distanceKm: number, durationMs: number, elevationGa
   return 'moderate';
 }
 
+/**
+ * ============================================================
+ * ACTIVITY UPLOAD API - PUBLISH RUNS TO GARMIN CONNECT
+ * ============================================================
+ * Allows AI Run Coach runs to be uploaded to Garmin Connect
+ * Requires Training/Courses API permissions
+ */
+
+/**
+ * Convert AI Run Coach run data to TCX (Training Center XML) format
+ * TCX is Garmin's preferred format for activity uploads
+ */
+export function generateTCXFile(runData: any): string {
+  const {
+    id,
+    userId,
+    startTime,
+    duration, // milliseconds
+    distance, // meters
+    avgPace, // min/km
+    calories,
+    avgHeartRate,
+    maxHeartRate,
+    routePoints, // Array of { latitude, longitude, altitude, speed, timestamp, heartRate }
+    splits,
+  } = runData;
+
+  // Convert times to ISO 8601 format
+  const startDate = new Date(startTime);
+  const endDate = new Date(startDate.getTime() + duration);
+
+  // Build TCX XML
+  let tcx = `<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+  <Activities>
+    <Activity Sport="Running">
+      <Id>${startDate.toISOString()}</Id>
+      <Lap StartTime="${startDate.toISOString()}">
+        <TotalTimeSeconds>${(duration / 1000).toFixed(2)}</TotalTimeSeconds>
+        <DistanceMeters>${distance.toFixed(2)}</DistanceMeters>
+        <Calories>${calories || 0}</Calories>
+        <AverageHeartRateBpm>
+          <Value>${avgHeartRate || 0}</Value>
+        </AverageHeartRateBpm>
+        <MaximumHeartRateBpm>
+          <Value>${maxHeartRate || 0}</Value>
+        </MaximumHeartRateBpm>
+        <Intensity>Active</Intensity>
+        <TriggerMethod>Manual</TriggerMethod>
+        <Track>`;
+
+  // Add trackpoints (GPS data)
+  if (routePoints && routePoints.length > 0) {
+    routePoints.forEach((point: any) => {
+      tcx += `
+          <Trackpoint>
+            <Time>${new Date(point.timestamp || startTime).toISOString()}</Time>`;
+      
+      if (point.latitude && point.longitude) {
+        tcx += `
+            <Position>
+              <LatitudeDegrees>${point.latitude}</LatitudeDegrees>
+              <LongitudeDegrees>${point.longitude}</LongitudeDegrees>
+            </Position>`;
+      }
+      
+      if (point.altitude) {
+        tcx += `
+            <AltitudeMeters>${point.altitude}</AltitudeMeters>`;
+      }
+      
+      if (point.heartRate) {
+        tcx += `
+            <HeartRateBpm>
+              <Value>${point.heartRate}</Value>
+            </HeartRateBpm>`;
+      }
+      
+      tcx += `
+          </Trackpoint>`;
+    });
+  } else {
+    // If no GPS data, create single trackpoint with summary
+    tcx += `
+          <Trackpoint>
+            <Time>${startDate.toISOString()}</Time>
+            <HeartRateBpm>
+              <Value>${avgHeartRate || 0}</Value>
+            </HeartRateBpm>
+          </Trackpoint>`;
+  }
+
+  tcx += `
+        </Track>
+      </Lap>
+      <Notes>Uploaded from AI Run Coach</Notes>
+    </Activity>
+  </Activities>
+</TrainingCenterDatabase>`;
+
+  return tcx;
+}
+
+/**
+ * Upload activity to Garmin Connect
+ * Uses Garmin Upload API endpoint
+ */
+export async function uploadActivityToGarmin(
+  accessToken: string,
+  tcxData: string,
+  activityName?: string
+): Promise<{ success: boolean; garminActivityId?: string; error?: string }> {
+  try {
+    console.log('📤 Uploading activity to Garmin Connect...');
+
+    // Garmin Upload API endpoint
+    const uploadUrl = `${GARMIN_API_BASE}/upload-service/upload/.tcx`;
+
+    // Upload TCX file as multipart/form-data
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('file', Buffer.from(tcxData), {
+      filename: `activity_${Date.now()}.tcx`,
+      contentType: 'application/xml',
+    });
+
+    if (activityName) {
+      form.append('activityName', activityName);
+    }
+
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        ...form.getHeaders(),
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: form,
+    });
+
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      console.error('❌ Garmin upload failed:', response.status, responseText);
+      return {
+        success: false,
+        error: `Upload failed: ${response.status} ${responseText}`,
+      };
+    }
+
+    // Parse response to get activity ID
+    let garminActivityId: string | undefined;
+    try {
+      const jsonResponse = JSON.parse(responseText);
+      garminActivityId = jsonResponse.detailedImportResult?.successes?.[0]?.internalId;
+    } catch (e) {
+      // Response might not be JSON
+      console.log('Upload response (non-JSON):', responseText);
+    }
+
+    console.log('✅ Activity uploaded to Garmin Connect successfully');
+    if (garminActivityId) {
+      console.log(`   Garmin Activity ID: ${garminActivityId}`);
+    }
+
+    return {
+      success: true,
+      garminActivityId,
+    };
+  } catch (error: any) {
+    console.error('❌ Error uploading to Garmin:', error.message);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * Upload AI Run Coach run to Garmin Connect
+ * Convenience function that handles token refresh and TCX generation
+ */
+export async function uploadRunToGarmin(
+  userId: string,
+  runData: any,
+  accessToken: string,
+  refreshToken: string,
+  tokenExpiresAt: Date
+): Promise<{ success: boolean; garminActivityId?: string; error?: string }> {
+  try {
+    // Check if token needs refresh
+    let currentAccessToken = accessToken;
+    const now = new Date();
+    const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
+
+    if (!tokenExpiresAt || new Date(tokenExpiresAt) < fiveMinutesFromNow) {
+      console.log('🔄 Access token expired or expiring soon, refreshing...');
+      
+      const tokenData = await refreshGarminToken(refreshToken);
+      currentAccessToken = tokenData.accessToken;
+
+      // Update token in database
+      await db.execute(sql`
+        UPDATE connected_devices
+        SET 
+          access_token = ${tokenData.accessToken},
+          refresh_token = ${tokenData.refreshToken},
+          token_expires_at = ${tokenData.expiresAt}
+        WHERE user_id = ${userId} AND device_type = 'garmin' AND is_active = true
+      `);
+
+      console.log('✅ Token refreshed successfully for upload');
+    }
+
+    // Generate TCX file
+    const tcxData = generateTCXFile(runData);
+
+    // Upload to Garmin
+    const activityName = `AI Run Coach - ${new Date(runData.startTime).toLocaleDateString()}`;
+    const result = await uploadActivityToGarmin(currentAccessToken, tcxData, activityName);
+
+    if (result.success && result.garminActivityId) {
+      // Update run in database to mark as uploaded to Garmin
+      await db.execute(sql`
+        UPDATE runs
+        SET 
+          uploaded_to_garmin = true,
+          garmin_activity_id = ${result.garminActivityId}
+        WHERE id = ${runData.id}
+      `);
+    }
+
+    return result;
+  } catch (error: any) {
+    console.error('❌ Error in uploadRunToGarmin:', error.message);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
 export default {
   getGarminAuthUrl,
   exchangeGarminCode,
@@ -1161,4 +1402,7 @@ export default {
   getGarminComprehensiveWellness,
   getGarminUserProfile,
   parseGarminActivity,
+  generateTCXFile,
+  uploadActivityToGarmin,
+  uploadRunToGarmin,
 };

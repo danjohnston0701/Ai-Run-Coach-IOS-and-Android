@@ -156,6 +156,9 @@ export const runs = pgTable("runs", {
   targetDistance: real("target_distance"), // User's target distance in km
   targetTime: integer("target_time"), // User's target time in milliseconds
   wasTargetAchieved: boolean("was_target_achieved"), // Whether target was met
+  // Garmin upload tracking (two-way sync)
+  uploadedToGarmin: boolean("uploaded_to_garmin").default(false), // TRUE if uploaded to Garmin Connect
+  garminActivityId: varchar("garmin_activity_id"), // Garmin activity ID if uploaded
 });
 
 // Goals table
