@@ -902,13 +902,41 @@ export async function syncGarminActivities(
     const startDate = new Date(startDateISO);
     const endDate = new Date(endDateISO);
     
-    // Fetch all activities in the date range from Garmin
-    console.log('🔄 Fetching activities from Garmin API...');
-    const activitiesResponse = await getGarminActivities(accessToken, startDate, endDate);
+    // Garmin API limits time range to 24 hours (86400 seconds)
+    // Fetch activities day by day
+    console.log('🔄 Fetching activities from Garmin API (day by day)...');
     
-    // Handle different response formats (might be array or wrapped object)
-    const activities = Array.isArray(activitiesResponse) ? activitiesResponse : activitiesResponse.activities || [];
-    console.log(`📊 Found ${activities.length} activities from Garmin`);
+    const allActivities: any[] = [];
+    const currentDate = new Date(startDate);
+    
+    while (currentDate <= endDate) {
+      const dayStart = new Date(currentDate);
+      const dayEnd = new Date(currentDate);
+      dayEnd.setHours(23, 59, 59, 999);
+      
+      // Don't fetch future dates
+      if (dayStart > new Date()) break;
+      
+      try {
+        console.log(`📅 Fetching day: ${dayStart.toISOString().split('T')[0]}`);
+        const dailyActivities = await getGarminActivities(accessToken, dayStart, dayEnd);
+        const activities = Array.isArray(dailyActivities) ? dailyActivities : dailyActivities.activities || [];
+        allActivities.push(...activities);
+        console.log(`   Found ${activities.length} activities`);
+        
+        // Small delay to avoid rate limiting (500ms between requests)
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error: any) {
+        console.error(`⚠️  Failed to fetch activities for ${dayStart.toISOString().split('T')[0]}:`, error.message);
+        // Continue with next day even if one day fails
+      }
+      
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    console.log(`📊 Total activities fetched: ${allActivities.length}`);
+    const activities = allActivities;
     
     if (activities.length > 0) {
       console.log('📝 Sample activity structure:', JSON.stringify(activities[0], null, 2).substring(0, 500));
