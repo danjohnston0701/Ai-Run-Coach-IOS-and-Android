@@ -246,6 +246,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/friend-requests/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      
+      // Verify user is requesting their own friend requests
+      if (req.user?.userId !== userId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      const requests = await storage.getFriendRequests(userId);
+      
+      // Separate sent and received requests and enrich with user data
+      const sent: any[] = [];
+      const received: any[] = [];
+
+      for (const request of requests) {
+        if (request.requesterId === userId) {
+          // Sent request - get addressee info
+          const addressee = await storage.getUser(request.addresseeId);
+          sent.push({
+            ...request,
+            addresseeName: addressee?.name,
+            addresseeProfilePic: addressee?.profilePic
+          });
+        } else if (request.addresseeId === userId) {
+          // Received request - get requester info
+          const requester = await storage.getUser(request.requesterId);
+          received.push({
+            ...request,
+            requesterName: requester?.name,
+            requesterProfilePic: requester?.profilePic
+          });
+        }
+      }
+
+      res.json({ sent, received });
+    } catch (error: any) {
+      console.error("Get friend requests error:", error);
+      res.status(500).json({ error: "Failed to get friend requests" });
+    }
+  });
+
   app.post("/api/friend-requests/:id/accept", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.acceptFriendRequest(req.params.id);
@@ -268,10 +310,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== RUNS ENDPOINTS ====================
   
+  // Helper function to transform database run to Android format
+  function transformRunForAndroid(run: any) {
+    // Convert completedAt timestamp to milliseconds
+    const completedAtMs = run.completedAt ? new Date(run.completedAt).getTime() : Date.now();
+    
+    // Ensure duration is in milliseconds
+    const durationMs = run.duration || 0;
+    
+    // Calculate startTime and endTime
+    const endTime = completedAtMs;
+    const startTime = completedAtMs - durationMs;
+
+    return {
+      id: run.id,
+      startTime: startTime,
+      endTime: endTime,
+      duration: durationMs,
+      distance: run.distance || 0,
+      averageSpeed: run.distance && run.duration ? (run.distance / (run.duration / 1000)) : 0,
+      maxSpeed: 0, // Calculate from gpsTrack if needed
+      averagePace: run.avgPace || "0'00\"/km",
+      calories: run.calories || 0,
+      cadence: run.cadence || 0,
+      heartRate: run.avgHeartRate || 0,
+      routePoints: Array.isArray(run.gpsTrack) ? run.gpsTrack : [],
+      kmSplits: Array.isArray(run.kmSplits) ? run.kmSplits : [],
+      isStruggling: false,
+      phase: "GENERIC",
+      weatherAtStart: run.weatherData || null,
+      weatherAtEnd: run.weatherData || null,
+      totalElevationGain: run.elevationGain || 0,
+      totalElevationLoss: run.elevationLoss || 0,
+      averageGradient: 0,
+      maxGradient: 0,
+      terrainType: run.terrainType || "FLAT",
+      routeHash: null,
+      routeName: run.name || null,
+      externalSource: run.externalSource || null,
+      externalId: run.externalId || null,
+      uploadedToGarmin: run.uploadedToGarmin || false,
+      garminActivityId: run.garminActivityId || null,
+      isActive: false
+    };
+  }
+
   app.get("/api/runs/user/:userId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const runs = await storage.getUserRuns(req.params.userId);
-      res.json(runs);
+      const transformedRuns = runs.map(transformRunForAndroid);
+      res.json(transformedRuns);
     } catch (error: any) {
       console.error("Get user runs error:", error);
       res.status(500).json({ error: "Failed to get runs" });
@@ -282,7 +370,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/:userId/runs", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const runs = await storage.getUserRuns(req.params.userId);
-      res.json(runs);
+      const transformedRuns = runs.map(transformRunForAndroid);
+      res.json(transformedRuns);
     } catch (error: any) {
       console.error("Get user runs error:", error);
       res.status(500).json({ error: "Failed to get runs" });
@@ -295,7 +384,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!run) {
         return res.status(404).json({ error: "Run not found" });
       }
-      res.json(run);
+      const transformedRun = transformRunForAndroid(run);
+      res.json(transformedRun);
     } catch (error: any) {
       console.error("Get run error:", error);
       res.status(500).json({ error: "Failed to get run" });
