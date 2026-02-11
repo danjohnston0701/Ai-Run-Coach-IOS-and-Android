@@ -315,8 +315,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Convert completedAt timestamp to milliseconds
     const completedAtMs = run.completedAt ? new Date(run.completedAt).getTime() : Date.now();
     
-    // Ensure duration is in milliseconds
-    const durationMs = run.duration || 0;
+    // Convert duration from SECONDS to MILLISECONDS (database stores seconds, Android expects milliseconds)
+    const durationMs = (run.duration || 0) * 1000;
     
     // Calculate startTime and endTime
     const endTime = completedAtMs;
