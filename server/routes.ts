@@ -1576,6 +1576,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/connected-devices/:deviceId", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const deviceId = req.params.deviceId;
+      
+      if (!deviceId || deviceId.trim() === "") {
+        return res.status(400).json({ error: "Invalid device ID" });
+      }
+      
+      // Verify device belongs to user before deleting
+      const devices = await storage.getConnectedDevices(req.user!.userId);
+      const device = devices.find(d => d.id === deviceId);
+      
+      if (!device) {
+        return res.status(404).json({ error: "Device not found" });
+      }
+      
+      // Delete (deactivate) the device
+      await storage.deleteConnectedDevice(deviceId);
+      
+      console.log(`✅ Device ${deviceId} (${device.deviceType}) disconnected for user ${req.user!.userId}`);
+      res.status(204).send(); // No content - successful deletion
+    } catch (error: any) {
+      console.error("Disconnect device error:", error);
+      res.status(500).json({ error: "Failed to disconnect device" });
+    }
+  });
+
   app.delete("/api/connected-devices/:id", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const device = await storage.getConnectedDevice(req.params.id);
